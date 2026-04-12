@@ -1,0 +1,195 @@
+/* ===== LOGIN SCREEN ===== */
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+.login-overlay.hidden { display: none; }
+.login-card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 36px 40px;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+  text-align: center;
+}
+.login-logo svg {
+  width: 42px;
+  height: 42px;
+  padding: 8px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+.login-title {
+  font-size: 18px;
+  font-weight: 800;
+  margin-top: 14px;
+  color: var(--text);
+}
+.login-subtitle {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+  margin-bottom: 22px;
+}
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+.login-form label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-top: 8px;
+}
+.login-form input {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text);
+}
+.login-form input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+.login-error {
+  font-size: 12px;
+  color: var(--danger);
+  background: #fee2e2;
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin-top: 10px;
+}
+.login-error.hidden { display: none; }
+.login-btn {
+  margin-top: 16px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  color: #ffffff;
+  border: none;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
+.login-btn:hover { filter: brightness(1.08); }
+.login-forgot {
+  margin-top: 14px;
+  background: transparent;
+  border: none;
+  color: var(--primary);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+.login-forgot:hover { color: var(--primary-600); }
+.login-hint {
+  margin-top: 14px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ===== MODAL ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+  backdrop-filter: blur(3px);
+  animation: modalFade 0.18s ease;
+}
+.modal-overlay.hidden { display: none; }
+@keyframes modalFade { from { opacity: 0; } to { opacity: 1; } }
+.modal {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.25);
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  padding: 24px;
+  animation: modalSlide 0.22s cubic-bezier(0.22, 0.8, 0.36, 1);
+  max-height: 86vh;
+  overflow-y: auto;
+}
+.modal.wide { width: 560px; }
+@keyframes modalSlide {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+.modal-body {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin-bottom: 18px;
+}
+.modal-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  margin-bottom: 18px;
+  box-sizing: border-box;
+}
+.modal-input.hidden { display: none; }
+.modal-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.modal-btn {
+  padding: 9px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--text);
+}
+.modal-btn:hover { background: var(--panel-2); }
+.modal-ok {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  color: #ffffff;
+  border: none;
+}
+.modal-ok:hover { filter: brightness(1.08); background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%); }
+.modal-ok.danger {
+  background: var(--danger);
+}
+.modal-ok.danger:hover { background: #dc2626; }

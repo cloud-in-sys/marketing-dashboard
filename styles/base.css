@@ -1,0 +1,34 @@
+/* ===== ROOT VARIABLES ===== */
+:root {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --panel: #f8fafc;
+  --panel-2: #eef2ff;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --text: #0f172a;
+  --muted: #64748b;
+  --primary: #2563eb;
+  --primary-600: #1d4ed8;
+  --primary-soft: #dbeafe;
+  --secondary: #0ea5e9;
+  --violet: #7c3aed;
+  --violet-soft: #ede9fe;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+/* ===== RESET / BASE ===== */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  background: #f1f5f9;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}

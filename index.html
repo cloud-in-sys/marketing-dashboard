@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Marketing Metrics Dashboard</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%232563eb'/%3E%3Cstop offset='100%25' stop-color='%230ea5e9'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='24' height='24' rx='5' fill='url(%23g)'/%3E%3Cg fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='13' width='3' height='6' rx='0.5'/%3E%3Crect x='10.5' y='9' width='3' height='10' rx='0.5'/%3E%3Crect x='16' y='5' width='3' height='14' rx='0.5'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/header.css">
+<link rel="stylesheet" href="styles/sidebar.css">
+<link rel="stylesheet" href="styles/filters.css">
+<link rel="stylesheet" href="styles/view.css">
+<link rel="stylesheet" href="styles/chart.css">
+<link rel="stylesheet" href="styles/table.css">
+<link rel="stylesheet" href="styles/settings.css">
+<link rel="stylesheet" href="styles/modal.css">
+</head>
+<body>
+<div class="login-overlay" id="login-overlay">
+  <div class="login-card">
+    <div class="login-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="13" width="4" height="8" rx="1"/>
+        <rect x="10" y="8" width="4" height="13" rx="1"/>
+        <rect x="17" y="3" width="4" height="18" rx="1"/>
+      </svg>
+    </div>
+    <div class="login-title">AdMetrics Dashboard</div>
+    <div class="login-subtitle">ログインしてください</div>
+    <form id="login-form" class="login-form">
+      <label>ユーザーID</label>
+      <input type="text" id="login-id" autocomplete="username" required>
+      <label>パスワード</label>
+      <input type="password" id="login-pw" autocomplete="current-password" required>
+      <div class="login-error hidden" id="login-error">IDまたはパスワードが違います</div>
+      <button type="submit" class="login-btn">ログイン</button>
+    </form>
+  </div>
+</div>
+<header class="app-header">
+  <div class="header-left">
+    <button type="button" class="icon-btn" id="toggle-sidebar" aria-label="サイドバー切替">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="3" y1="6" x2="21" y2="6"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+    <div class="logo">
+      <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="13" width="4" height="8" rx="1"/>
+        <rect x="10" y="8" width="4" height="13" rx="1"/>
+        <rect x="17" y="3" width="4" height="18" rx="1"/>
+      </svg>
+      <span class="logo-text">Marketing Metrics<em>DASHBOARD</em></span>
+    </div>
+  </div>
+  <div class="header-actions">
+    <div class="meta">対象行数: <span id="row-count">0</span></div>
+    <label class="file-btn">
+      CSV読み込み
+      <input type="file" id="file" accept=".csv">
+    </label>
+    <div class="header-user">
+      <div class="header-user-avatar" id="header-user-avatar"></div>
+      <div class="header-user-info">
+        <div class="header-user-name" id="header-user-name"></div>
+        <div class="header-user-role" id="header-user-role"></div>
+      </div>
+      <button type="button" class="header-logout" id="header-logout">ログアウト</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+<aside class="sidebar">
+  <div class="sidebar-group" data-group="default">
+    <div class="nav-title group-title"><span class="group-toggle">デフォルト</span><span class="group-caret">▾</span></div>
+    <div class="group-body">
+      <nav class="nav" id="view-nav"></nav>
+    </div>
+  </div>
+  <div class="sidebar-group" data-group="custom">
+    <div class="nav-title group-title">
+      <span class="group-toggle">カスタム</span>
+      <span class="group-caret">▾</span>
+    </div>
+    <div class="group-body">
+      <button type="button" class="save-btn" id="add-custom-tab">+ カスタムタブを追加</button>
+      <nav class="nav" id="custom-nav"></nav>
+    </div>
+  </div>
+  <div class="sidebar-group" data-group="presets">
+    <div class="nav-title group-title">
+      <span class="group-toggle">プリセット</span>
+      <span class="group-caret">▾</span>
+    </div>
+    <div class="group-body">
+      <button type="button" class="save-btn" id="save-preset">+ 現在の設定を保存</button>
+      <div class="preset-list" id="preset-list"></div>
+    </div>
+  </div>
+  <div class="sidebar-group" data-group="settings">
+    <div class="nav-title group-title">
+      <span class="group-toggle">設定</span>
+      <span class="group-caret">▾</span>
+    </div>
+    <div class="group-body">
+      <nav class="nav">
+        <button type="button" class="nav-item settings-item" id="open-settings">ユーザー管理</button>
+        <button type="button" class="nav-item settings-item" id="open-dims-doc">ディメンション定義</button>
+        <button type="button" class="nav-item settings-item" id="open-metrics-doc">メトリクス定義</button>
+        <button type="button" class="nav-item settings-item" id="open-filters-doc">フィルタ定義</button>
+        <button type="button" class="nav-item settings-item" id="open-defaults-doc">標準定義</button>
+      </nav>
+    </div>
+  </div>
+</aside>
+
+<main class="main">
+  <section class="filters" id="filters"></section>
+
+  <section class="view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb" id="view-crumb">デフォルト</div>
+        <h2 id="view-title">全体サマリー</h2>
+      </div>
+      <div class="view-actions">
+        <div class="view-preset-wrap">
+          <label for="tab-preset">プリセット</label>
+          <select id="tab-preset"></select>
+        </div>
+        <span class="readonly-badge">編集不可</span>
+        <span class="preset-edit-badge">プリセット編集モード</span>
+        <input type="color" id="preset-color-picker" class="preset-color-picker" title="プリセット色">
+        <button type="button" id="preset-save-btn" class="preset-save-btn">保存</button>
+        <button type="button" id="preset-exit-btn" class="preset-exit-btn">終了</button>
+      </div>
+    </div>
+
+    <div class="panel collapsible" data-panel="chart">
+      <div class="panel-head">
+        <div class="panel-title">グラフ</div>
+        <div class="panel-ctrl">
+          <button type="button" class="add-btn" id="add-main-chart">+ メイングラフ</button>
+          <button type="button" class="add-btn" id="add-sub-chart">+ サブグラフ</button>
+          <button type="button" class="collapse-btn" aria-label="折りたたみ">▾</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="charts-grid" id="charts-grid"></div>
+      </div>
+    </div>
+
+    <div class="panel collapsible" data-panel="dim">
+      <div class="panel-head">
+        <div class="panel-title">ディメンション</div>
+        <div class="panel-ctrl">
+          <button type="button" class="collapse-btn" aria-label="折りたたみ">▾</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="pivot-row">
+          <div class="pivot-pills" id="dim-pills"></div>
+          <div class="pivot-add">
+            <button type="button" class="add-btn" id="dim-add-btn">+ 追加</button>
+            <div class="add-menu hidden" id="dim-add-menu"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel collapsible" data-panel="metric">
+      <div class="panel-head">
+        <div class="panel-title">メトリクス</div>
+        <div class="panel-ctrl">
+          <button type="button" class="link-btn" id="metric-all">すべて</button>
+          <button type="button" class="link-btn" id="metric-none">クリア</button>
+          <button type="button" class="collapse-btn" aria-label="折りたたみ">▾</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="chip-row" id="metric-chips" data-sort-axis="x"></div>
+      </div>
+    </div>
+
+    <div class="panel collapsible" data-panel="thresholds">
+      <div class="panel-head">
+        <div class="panel-title">許容値設定</div>
+        <div class="panel-ctrl">
+          <div class="pivot-add">
+            <button type="button" class="add-btn" id="threshold-add-btn">+ 指標を追加</button>
+            <div class="add-menu hidden" id="threshold-add-menu"></div>
+          </div>
+          <button type="button" class="link-btn" id="threshold-clear">クリア</button>
+          <button type="button" class="collapse-btn" aria-label="折りたたみ">▾</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="threshold-head" id="threshold-head">
+          <div></div><div>最低許容値</div><div>最大許容値</div><div>目標値</div><div></div>
+        </div>
+        <div class="threshold-list" id="threshold-list"></div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="data-table"></table>
+    </div>
+  </section>
+
+  <section class="settings-view hidden" id="settings-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">設定</div>
+        <h2>ユーザー管理</h2>
+      </div>
+      <div class="view-actions">
+        <button type="button" class="save-btn admin-only" id="add-user-btn">+ ユーザーを追加</button>
+        <button type="button" class="preset-save-btn admin-only" id="users-save-btn" style="display:inline-block">変更を保存</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">ユーザー一覧</div>
+      </div>
+      <div class="users-list" id="users-list"></div>
+    </div>
+    <div class="non-admin-note admin-hidden">管理者のみが他のユーザーの設定を変更できます。</div>
+  </section>
+
+  <section class="settings-view hidden" id="defaults-doc-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">設定</div>
+        <h2>標準定義</h2>
+      </div>
+      <div class="view-actions">
+        <button type="button" class="preset-save-btn admin-only" id="defaults-save-btn" style="display:inline-block">変更を保存</button>
+      </div>
+    </div>
+    <div class="non-admin-note admin-hidden">権限があるユーザーのみが標準定義を変更できます。</div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">タブとプリセットの対応</div>
+      </div>
+      <div class="defaults-doc" id="defaults-doc"></div>
+    </div>
+  </section>
+
+  <section class="settings-view hidden" id="dims-doc-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">設定</div>
+        <h2>ディメンション定義</h2>
+      </div>
+      <div class="view-actions">
+        <button type="button" class="save-btn" id="dims-help-btn">使い方</button>
+        <button type="button" class="preset-save-btn admin-only" id="dims-save-btn" style="display:inline-block">変更を保存</button>
+      </div>
+    </div>
+    <div class="non-admin-note admin-hidden">権限があるユーザーのみがディメンション定義を変更できます。</div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">CSVカラム</div>
+        <div class="panel-ctrl"><span class="csv-column-count" id="dims-csv-column-count"></span></div>
+      </div>
+      <div class="csv-columns" id="dims-csv-columns"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">ディメンション一覧</div>
+      </div>
+      <div class="dims-doc" id="dims-doc"></div>
+    </div>
+  </section>
+
+  <section class="settings-view hidden" id="filters-doc-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">設定</div>
+        <h2>フィルタ定義</h2>
+      </div>
+      <div class="view-actions">
+        <button type="button" class="preset-save-btn admin-only" id="filters-save-btn" style="display:inline-block">変更を保存</button>
+      </div>
+    </div>
+    <div class="non-admin-note admin-hidden">管理者のみがフィルタ定義を変更できます。</div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">フィルタ一覧</div>
+      </div>
+      <div class="filters-doc" id="filters-doc"></div>
+    </div>
+  </section>
+
+  <section class="settings-view hidden" id="metrics-doc-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">設定</div>
+        <h2>メトリクス定義</h2>
+      </div>
+      <div class="view-actions">
+        <button type="button" class="save-btn" id="metrics-help-btn">使い方</button>
+        <button type="button" class="preset-save-btn admin-only" id="metrics-save-btn" style="display:inline-block">変更を保存</button>
+      </div>
+    </div>
+    <div class="non-admin-note admin-hidden">管理者のみがメトリクスの計算式を編集できます。</div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">CSVカラム</div>
+        <div class="panel-ctrl"><span class="csv-column-count" id="csv-column-count"></span></div>
+      </div>
+      <div class="csv-columns" id="csv-columns"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">計算方法一覧</div>
+      </div>
+      <div class="metrics-doc" id="metrics-doc"></div>
+    </div>
+  </section>
+</main>
+</div>
+
+<div class="modal-overlay hidden" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-title" id="modal-title"></div>
+    <div class="modal-body" id="modal-body"></div>
+    <input type="text" class="modal-input hidden" id="modal-input">
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-cancel" id="modal-cancel">キャンセル</button>
+      <button type="button" class="modal-btn modal-ok" id="modal-ok">OK</button>
+    </div>
+  </div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

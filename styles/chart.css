@@ -1,0 +1,150 @@
+/* ===== CHARTS: GRID / CARDS / TOOLTIPS ===== */
+.chart { padding: 8px 4px; }
+.chart svg { display: block; width: 100%; }
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 14px 16px;
+}
+.charts-grid:empty::after {
+  content: 'グラフがありません。右上の＋ボタンから追加してください';
+  grid-column: 1 / -1;
+  padding: 32px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.chart-card {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.chart-card.main { grid-column: 1 / -1; }
+.chart-card .chart-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(90deg, var(--panel) 0%, #f5f7fb 100%);
+  border-radius: 10px 10px 0 0;
+  gap: 8px;
+}
+.chart-card .chart-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 1;
+  min-width: 0;
+}
+.chart-name {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  font-family: inherit;
+  min-width: 80px;
+  max-width: 220px;
+  width: 100%;
+}
+.chart-name::placeholder { color: var(--muted); font-weight: 600; }
+.chart-name:hover { background: #ffffff; border-color: var(--border); }
+.chart-name:focus { outline: none; background: #ffffff; border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+.chart-card.main .chart-title::before { content: ''; width: 3px; height: 12px; background: linear-gradient(180deg, var(--primary), var(--secondary)); border-radius: 2px; }
+.chart-card.sub .chart-title::before { content: ''; width: 3px; height: 12px; background: var(--violet); border-radius: 2px; }
+.chart-card .chart-ctrl {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+.chart-card .chart-ctrl select {
+  background: #ffffff;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 7px;
+  font-size: 12px;
+  font-family: inherit;
+  max-width: 160px;
+}
+.chart-card .chart-ctrl select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+.chart-color {
+  width: 28px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px;
+  cursor: pointer;
+  background: #ffffff;
+}
+.chart-color::-webkit-color-swatch-wrapper { padding: 0; }
+.chart-color::-webkit-color-swatch { border: none; border-radius: 3px; }
+.chart-remove {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.chart-remove:hover { background: #fee2e2; border-color: var(--danger); color: var(--danger); }
+.chart-card.main .chart svg { height: 280px; }
+.chart-card.sub .chart svg { height: 180px; }
+.chart-wrap { position: relative; }
+.chart-guide {
+  position: absolute;
+  width: 1px;
+  background: rgba(37, 99, 235, 0.5);
+  pointer-events: none;
+  z-index: 2;
+}
+.chart-guide.hidden { display: none; }
+.chart-tooltip {
+  position: absolute;
+  background: rgba(15, 23, 42, 0.92);
+  color: #ffffff;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: none;
+  z-index: 3;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+.chart-tooltip.hidden { display: none; }
+.chart-tooltip .tt-x { font-size: 10px; opacity: 0.75; }
+.chart-tooltip .tt-m { font-size: 10px; opacity: 0.6; }
+.chart-tooltip .tt-y { font-weight: 700; font-size: 13px; margin-top: 2px; }
+.chart-card[draggable="true"] .chart-head { cursor: grab; }
+.chart-card.dragging { opacity: 0.4; }
+.chart-card.drop-target { outline: 2px dashed var(--primary); outline-offset: -2px; }
+.drag-handle {
+  color: var(--muted);
+  font-size: 14px;
+  letter-spacing: -2px;
+  cursor: grab;
+  user-select: none;
+  padding-right: 2px;
+}
+.drag-handle:active { cursor: grabbing; }
