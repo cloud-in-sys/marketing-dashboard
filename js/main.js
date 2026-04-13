@@ -201,11 +201,16 @@ document.getElementById('custom-nav').addEventListener('click', e => {
   const del = e.target.closest('[data-del-custom]');
   if (del) {
     const key = del.dataset.delCustom;
-    S.CUSTOM_TABS = S.CUSTOM_TABS.filter(t => t.key !== key);
-    delete S.TAB_STATES[key];
-    saveCustomTabs();
-    if (S.CURRENT_VIEW === key) applyView('summary_daily');
-    else renderCustomTabs();
+    const tab = S.CUSTOM_TABS.find(t => t.key === key);
+    const tabName = tab ? tab.label : key;
+    showModal({title: '\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u3092\u524a\u9664', body: `\u300c${tabName}\u300d\u3092\u524a\u9664\u3057\u307e\u3059\u304b\uff1f\u3053\u306e\u64cd\u4f5c\u306f\u53d6\u308a\u6d88\u305b\u307e\u305b\u3093\u3002`, okText: '\u524a\u9664', danger: true}).then(ok => {
+      if (!ok) return;
+      S.CUSTOM_TABS = S.CUSTOM_TABS.filter(t => t.key !== key);
+      delete S.TAB_STATES[key];
+      saveCustomTabs();
+      if (S.CURRENT_VIEW === key) applyView('summary_daily');
+      else renderCustomTabs();
+    });
     return;
   }
   const btn = e.target.closest('[data-custom]');
@@ -221,8 +226,10 @@ document.getElementById('custom-nav').addEventListener('input', e => {
   renderCustomTabs();
 });
 document.getElementById('add-custom-tab').addEventListener('click', async () => {
-  const label = await showModal({title: '\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u3092\u8ffd\u52a0', body: '\u30bf\u30d6\u306e\u540d\u524d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', input: true, placeholder: '\u4f8b: \u81ea\u5206\u7528\u306e\u5206\u6790', okText: '\u8ffd\u52a0'});
+  const label = await showModal({title: '\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u3092\u8ffd\u52a0', body: '\u30bf\u30d6\u306e\u540d\u524d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', input: true, placeholder: '\u4f8b: \u81ea\u5206\u7528\u306e\u5206\u6790', okText: '\u6b21\u3078'});
   if (!label) return;
+  const ok = await showModal({title: '\u4f5c\u6210\u306e\u78ba\u8a8d', body: `\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u300c${label}\u300d\u3092\u4f5c\u6210\u3057\u307e\u3059\u304b\uff1f`, okText: '\u4f5c\u6210'});
+  if (!ok) return;
   const key = 'custom_' + Date.now();
   const color = '#64748b';
   S.CUSTOM_TABS.push({key, label, color});
@@ -455,19 +462,6 @@ document.querySelectorAll('.panel.collapsible .collapse-btn').forEach(btn => {
   });
 });
 
-document.getElementById('file').addEventListener('change', async e => {
-  const f = e.target.files[0];
-  if (!f) return;
-  const text = await f.text();
-  const rows = parseCSV(text);
-  S.SOURCE_DATA[S.CURRENT_SOURCE] = rows;
-  S.RAW = rows;
-  populateFilters();
-  renderCsvColumns();
-  renderSourceNav();
-  render();
-});
-
 // ===== DATA SOURCES =====
 function reloadFullUI() {
   exitSettingsMode();
@@ -502,6 +496,7 @@ function renderSourceNav() {
       <button type="button" class="nav-item${active}" data-source="${ds.id}">
         <span class="source-name">${escapeHtml(ds.name)}</span>${badge}
       </button>
+      <button type="button" class="source-rename" data-rename-source="${ds.id}" title="\u540d\u524d\u3092\u5909\u66f4">\u270e</button>
       <button type="button" class="preset-del source-del" data-del-source="${ds.id}" title="\u524a\u9664">\u00d7</button>
     </div>`;
   }).join('');
@@ -518,7 +513,7 @@ document.getElementById('source-nav').addEventListener('click', e => {
     const dsName = S.DATA_SOURCES.find(d=>d.id===id)?.name||id;
     showModal({title: '\u30c7\u30fc\u30bf\u30bd\u30fc\u30b9\u3092\u524a\u9664', body: `\u300c${dsName}\u300d\u3092\u524a\u9664\u3057\u307e\u3059\u304b\uff1f\n\u3053\u306e\u30c7\u30fc\u30bf\u30bd\u30fc\u30b9\u306e\u5168\u3066\u306e\u8a2d\u5b9a\u30fb\u30d7\u30ea\u30bb\u30c3\u30c8\u304c\u524a\u9664\u3055\u308c\u307e\u3059\u3002`, okText: '\u524a\u9664', danger: true}).then(async ok => {
       if (!ok) return;
-      const typed = await showModal({title: '\u672c\u5f53\u306b\u524a\u9664\u3057\u307e\u3059\u304b\uff1f', body: `\u300c${dsName}\u300d\u306e\u524a\u9664\u306f\u53d6\u308a\u6d88\u305b\u307e\u305b\u3093\u3002\u78ba\u8a8d\u306e\u305f\u3081\u300c\u524a\u9664\u300d\u3068\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002`, input: true, placeholder: '\u524a\u9664', okText: '\u524a\u9664\u3059\u308b', danger: true});
+      const typed = await showModal({title: '\u672c\u5f53\u306b\u524a\u9664\u3057\u307e\u3059\u304b\uff1f', body: `\u300c${dsName}\u300d\u306e\u524a\u9664\u306f\u53d6\u308a\u6d88\u305b\u307e\u305b\u3093\u3002\u78ba\u8a8d\u306e\u305f\u3081\u300c\u524a\u9664\u300d\u3068\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002`, input: true, placeholder: '\u524a\u9664', okText: '\u524a\u9664\u3059\u308b', danger: true, noEnter: true});
       if (typed !== '\u524a\u9664') return;
       S.DATA_SOURCES = S.DATA_SOURCES.filter(d => d.id !== id);
       delete S.SOURCE_DATA[id];
@@ -530,11 +525,117 @@ document.getElementById('source-nav').addEventListener('click', e => {
     });
     return;
   }
+  const rename = e.target.closest('[data-rename-source]');
+  if (rename) {
+    const id = rename.dataset.renameSource;
+    const ds = S.DATA_SOURCES.find(d => d.id === id);
+    if (!ds) return;
+    (async () => {
+      const newName = await showModal({title: '\u540d\u524d\u3092\u5909\u66f4', body: `\u300c${ds.name}\u300d\u306e\u65b0\u3057\u3044\u540d\u524d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044`, input: true, defaultValue: ds.name, okText: '\u6b21\u3078'});
+      if (!newName || newName === ds.name) return;
+      const ok = await showModal({title: '\u540d\u524d\u5909\u66f4\u306e\u78ba\u8a8d', body: `\u300c${ds.name}\u300d\u3092\u300c${newName}\u300d\u306b\u5909\u66f4\u3057\u307e\u3059\u304b\uff1f`, okText: '\u5909\u66f4'});
+      if (!ok) return;
+      ds.name = newName;
+      saveDataSources();
+      renderSourceNav();
+    })();
+    return;
+  }
   const btn = e.target.closest('[data-source]');
   if (btn) {
-    switchSource(btn.dataset.source);
-    reloadFullUI();
+    const id = btn.dataset.source;
+    if (S.CURRENT_SOURCE !== id) {
+      switchSource(id);
+      reloadFullUI();
+    }
+    enterSourceView();
   }
+});
+
+// ===== SOURCE VIEW =====
+function enterSourceView() {
+  exitSettingsMode();
+  document.body.classList.add('settings-mode');
+  document.getElementById('source-view').classList.remove('hidden');
+  document.querySelectorAll('#view-nav .nav-item, #custom-nav .nav-item').forEach(b => b.classList.remove('active'));
+  renderSourceView();
+  renderSourceNav();
+}
+
+function renderSourceView() {
+  const ds = S.DATA_SOURCES.find(d => d.id === S.CURRENT_SOURCE);
+  const name = ds ? ds.name : S.CURRENT_SOURCE;
+  document.getElementById('source-view-title').textContent = name;
+
+  const rows = S.SOURCE_DATA[S.CURRENT_SOURCE] || [];
+  const info = document.getElementById('source-info');
+  if (rows.length === 0) {
+    info.innerHTML = '<div class="source-info-empty"><div class="source-info-icon">\u{1F4C1}</div><div class="source-info-text">CSV\u304C\u8AAD\u307F\u8FBC\u307E\u308C\u3066\u3044\u307E\u305B\u3093</div><div class="source-info-hint">\u53F3\u4E0A\u306E\u300CCSV\u3092\u30A2\u30C3\u30D7\u30ED\u30FC\u30C9\u300D\u304B\u3089\u30D5\u30A1\u30A4\u30EB\u3092\u9078\u629E\u3057\u3066\u304F\u3060\u3055\u3044</div></div>';
+  } else {
+    const cols = Object.keys(rows[0]);
+    info.innerHTML = `<div class="source-info-grid">
+      <div class="source-info-card"><div class="source-info-label">\u884C\u6570</div><div class="source-info-value">${rows.length.toLocaleString()}</div></div>
+      <div class="source-info-card"><div class="source-info-label">\u30AB\u30E9\u30E0\u6570</div><div class="source-info-value">${cols.length}</div></div>
+    </div>`;
+  }
+
+  // CSV columns
+  const colEl = document.getElementById('source-csv-columns');
+  const countEl = document.getElementById('source-csv-column-count');
+  if (rows.length === 0) {
+    colEl.innerHTML = '<div class="preset-empty">CSV\u304C\u8AAD\u307F\u8FBC\u307E\u308C\u3066\u3044\u307E\u305B\u3093</div>';
+    if (countEl) countEl.textContent = '';
+  } else {
+    const columns = Object.keys(rows[0]);
+    if (countEl) countEl.textContent = `${columns.length}\u30AB\u30E9\u30E0`;
+    colEl.innerHTML = columns.map(col => {
+      const vals = [];
+      const seen = new Set();
+      for (const r of rows) {
+        const v = r[col];
+        if (v == null || v === '' || seen.has(v)) continue;
+        seen.add(v);
+        vals.push(v);
+        if (vals.length >= 5) break;
+      }
+      const isNumeric = vals.slice(0, 10).every(v => !isNaN(Number(v)) && v !== '');
+      const kind = isNumeric ? '\u6570\u5024' : '\u6587\u5B57\u5217';
+      return `<div class="csv-col-row">
+        <div class="csv-col-head">
+          <code class="csv-col-name">${escapeHtml(col)}</code>
+          <span class="csv-col-kind">${kind}</span>
+        </div>
+        <div class="csv-col-sample">\u4F8B: ${vals.length ? vals.map(v => `<span>${escapeHtml(String(v).slice(0, 30))}</span>`).join(' / ') : ''}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // Preview
+  const previewEl = document.getElementById('source-preview');
+  if (rows.length === 0) {
+    previewEl.innerHTML = '<div class="preset-empty">\u30C7\u30FC\u30BF\u306A\u3057</div>';
+  } else {
+    const cols = Object.keys(rows[0]);
+    const previewRows = rows.slice(0, 20);
+    previewEl.innerHTML = `<div class="source-preview-wrap"><table class="source-preview-table">
+      <thead><tr>${cols.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead>
+      <tbody>${previewRows.map(r => `<tr>${cols.map(c => `<td>${escapeHtml(String(r[c] ?? ''))}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table></div>`;
+  }
+}
+
+// Source file upload
+document.getElementById('source-file').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const text = await f.text();
+  const rows = parseCSV(text);
+  S.SOURCE_DATA[S.CURRENT_SOURCE] = rows;
+  S.RAW = rows;
+  populateFilters();
+  renderSourceView();
+  renderSourceNav();
+  renderCsvColumns();
 });
 
 
@@ -550,6 +651,11 @@ document.getElementById('add-source').addEventListener('click', async () => {
   switchSource(id);
   seedDefaultPresets();
   reloadFullUI();
+});
+
+// ===== FILTERS TOGGLE =====
+document.getElementById('filters-toggle').addEventListener('click', () => {
+  document.getElementById('filters-bar').classList.toggle('collapsed');
 });
 
 document.getElementById('filters').addEventListener('change', e => {

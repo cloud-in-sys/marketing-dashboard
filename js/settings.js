@@ -1,4 +1,4 @@
-import { S, PERM_GROUPS, VIEWER_PERMS, DEFAULT_BASE_FORMULAS, DEFAULT_FORMULAS,
+import { S, PERM_GROUPS, PERM_DEFS, ADMIN_PERMS, VIEWER_PERMS, DEFAULT_BASE_FORMULAS, DEFAULT_FORMULAS,
   saveMetricDefs, saveDimensions, saveViews, saveFilterDefs, saveFormulas, saveBaseFormulas,
   saveUsers, saveViewOrder, getPresets, setPresets, compileFilter } from './state.js';
 import { escapeHtml } from './utils.js';
@@ -40,6 +40,36 @@ function markDefaultsDirty() {
 }
 function clearDefaultsDirty() {
   document.getElementById('defaults-save-btn')?.classList.remove('dirty');
+}
+
+// ===== USER ROLES =====
+// Operator perms: everything except settings group
+const OPERATOR_PERMS = Object.fromEntries(PERM_DEFS.map(p => {
+  const isSettings = PERM_GROUPS.find(g => g.group === 'settings')?.perms.some(sp => sp.key === p.key);
+  return [p.key, !isSettings];
+}));
+
+function getUserRole(u) {
+  if (u.isAdmin) return 'admin';
+  const settingsPerms = PERM_GROUPS.find(g => g.group === 'settings')?.perms.map(p => p.key) || [];
+  const nonSettingsPerms = PERM_DEFS.filter(p => !settingsPerms.includes(p.key));
+  const hasAllNonSettings = nonSettingsPerms.every(p => u.perms[p.key]);
+  const hasNoSettings = settingsPerms.every(k => !u.perms[k]);
+  if (hasAllNonSettings && hasNoSettings) return 'operator';
+  return 'viewer';
+}
+
+function applyRole(u, role) {
+  if (role === 'admin') {
+    u.isAdmin = true;
+    u.perms = {...ADMIN_PERMS};
+  } else if (role === 'operator') {
+    u.isAdmin = false;
+    u.perms = {...OPERATOR_PERMS};
+  } else {
+    u.isAdmin = false;
+    u.perms = {...VIEWER_PERMS};
+  }
 }
 
 // ----- ENTER / EXIT SETTINGS MODE -----
@@ -124,6 +154,7 @@ export function enterSettingsMode(target = 'users') {
 
 export function exitSettingsMode() {
   document.body.classList.remove('settings-mode');
+  document.getElementById('source-view').classList.add('hidden');
   document.getElementById('settings-view').classList.add('hidden');
   document.getElementById('metrics-doc-view').classList.add('hidden');
   document.getElementById('filters-doc-view').classList.add('hidden');
@@ -153,15 +184,21 @@ function renderUsersModal() {
   const list = document.getElementById('users-list');
   if (!list) return;
   const src = S.USERS_DRAFT || S.USERS;
-  list.innerHTML = src.map((u, i) => `
+  list.innerHTML = src.map((u, i) => {
+    const role = getUserRole(u);
+    return `
     <div class="user-row" data-user-idx="${i}">
       <div class="user-row-top">
         <div class="user-avatar">${escapeHtml((u.name || u.id || '?').slice(0, 1).toUpperCase())}</div>
         <div class="user-row-main">
           <input type="text" class="user-name-input" data-user-name value="${escapeHtml(u.name)}" placeholder="\u8868\u793a\u540d">
-          <label class="user-admin-toggle"><input type="checkbox" data-admin${u.isAdmin?' checked':''}>\u7ba1\u7406\u8005</label>
+          <select class="user-role-select" data-user-role>
+            <option value="admin"${role==='admin'?' selected':''}>\u7ba1\u7406\u8005</option>
+            <option value="operator"${role==='operator'?' selected':''}>\u904b\u7528\u8005</option>
+            <option value="viewer"${role==='viewer'?' selected':''}>\u4e00\u822c</option>
+          </select>
         </div>
-        <button type="button" class="user-del" data-user-del="${i}" title="\u524a\u9664"${S.USERS.length<=1?' disabled':''}>×</button>
+        <button type="button" class="user-del" data-user-del="${i}" title="\u524a\u9664"${src.length<=1?' disabled':''}>×</button>
       </div>
       <div class="user-field-grid">
         <div class="user-field">
@@ -184,8 +221,8 @@ function renderUsersModal() {
           </div>
         `).join('')}
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
 async function addUser() {
@@ -891,8 +928,20 @@ export function setupSettingsEvents() {
     else if (e.target.matches('[data-user-id]')) u.id = e.target.value;
     else if (e.target.matches('[data-user-pw]')) u.password = e.target.value;
     else if (e.target.matches('[data-perm]')) u.perms[e.target.dataset.perm] = e.target.checked;
-    else if (e.target.matches('[data-admin]')) u.isAdmin = e.target.checked;
     markUsersDirty();
+  });
+  document.getElementById('users-list').addEventListener('change', e => {
+    const row = e.target.closest('[data-user-idx]');
+    if (!row) return;
+    const idx = +row.dataset.userIdx;
+    const draft = S.USERS_DRAFT || S.USERS;
+    const u = draft[idx];
+    if (!u) return;
+    if (e.target.matches('[data-user-role]')) {
+      applyRole(u, e.target.value);
+      markUsersDirty();
+      renderUsersModal();
+    }
   });
   document.getElementById('users-save-btn').addEventListener('click', async () => {
     if (!hasPerm('manageUsers')) return;
@@ -908,6 +957,11 @@ export function setupSettingsEvents() {
     }
     if (ids.some(id => !id)) {
       await showModal({title: '\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093', body: '\u30ed\u30b0\u30a4\u30f3ID\u304c\u7a7a\u306e\u30e6\u30fc\u30b6\u30fc\u304c\u3044\u307e\u3059', okText: 'OK', cancelText: ''});
+      return;
+    }
+    const noPw = S.USERS_DRAFT.find(u => !u.password);
+    if (noPw) {
+      await showModal({title: '\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093', body: `\u300c${noPw.name || noPw.id}\u300d\u306e\u30d1\u30b9\u30ef\u30fc\u30c9\u304c\u5165\u529b\u3055\u308c\u3066\u3044\u307e\u305b\u3093`, okText: 'OK', cancelText: ''});
       return;
     }
     const ok = await showModal({title: '\u30e6\u30fc\u30b6\u30fc\u60c5\u5831\u3092\u4fdd\u5b58', body: '\u5909\u66f4\u5185\u5bb9\u3092\u4fdd\u5b58\u3057\u307e\u3059\u304b\uff1f', okText: '\u4fdd\u5b58'});

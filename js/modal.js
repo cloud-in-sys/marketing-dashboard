@@ -1,5 +1,5 @@
 // ===== Promise-based custom modal =====
-export function showModal({title, body, html = false, wide = false, input = false, defaultValue = '', placeholder = '', okText = 'OK', cancelText = '\u30ad\u30e3\u30f3\u30bb\u30eb', danger = false}) {
+export function showModal({title, body, html = false, wide = false, input = false, defaultValue = '', placeholder = '', okText = 'OK', cancelText = '\u30ad\u30e3\u30f3\u30bb\u30eb', danger = false, noEnter = false}) {
   return new Promise(resolve => {
     const overlay = document.getElementById('modal-overlay');
     const modalEl = overlay.querySelector('.modal');
@@ -33,7 +33,7 @@ export function showModal({title, body, html = false, wide = false, input = fals
     cancelBtn.onclick = cancel;
     overlay.onclick = e => { if (e.target === overlay) cancel(); };
     inputEl.onkeydown = e => {
-      if (e.key === 'Enter') confirm();
+      if (e.key === 'Enter' && !noEnter) confirm();
       else if (e.key === 'Escape') cancel();
     };
   });

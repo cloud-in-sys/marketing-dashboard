@@ -56,10 +56,6 @@
   </div>
   <div class="header-actions">
     <div class="meta">対象行数: <span id="row-count">0</span></div>
-    <label class="file-btn">
-      CSV読み込み
-      <input type="file" id="file" accept=".csv">
-    </label>
     <div class="header-user">
       <div class="header-user-avatar" id="header-user-avatar"></div>
       <div class="header-user-info">
@@ -116,7 +112,6 @@
     </div>
     <div class="group-body">
       <nav class="nav">
-        <button type="button" class="nav-item settings-item" id="open-settings">ユーザー管理</button>
         <button type="button" class="nav-item settings-item" id="open-dims-doc">ディメンション定義</button>
         <button type="button" class="nav-item settings-item" id="open-metrics-doc">メトリクス定義</button>
         <button type="button" class="nav-item settings-item" id="open-filters-doc">フィルタ定義</button>
@@ -124,10 +119,24 @@
       </nav>
     </div>
   </div>
+  <div class="sidebar-group" data-group="users">
+    <div class="nav-title group-title">
+      <span class="group-toggle">ユーザー管理</span>
+      <span class="group-caret">▾</span>
+    </div>
+    <div class="group-body">
+      <nav class="nav">
+        <button type="button" class="nav-item settings-item" id="open-settings">ユーザー一覧</button>
+      </nav>
+    </div>
+  </div>
 </aside>
 
 <main class="main">
-  <section class="filters" id="filters"></section>
+  <div class="filters-bar" id="filters-bar">
+    <button type="button" class="filters-toggle" id="filters-toggle">フィルタ <span id="filters-toggle-icon">▾</span></button>
+    <section class="filters" id="filters"></section>
+  </div>
 
   <section class="view">
     <div class="view-header">
@@ -217,6 +226,57 @@
     <div class="table-toolbar hidden" id="table-toolbar"></div>
     <div class="table-wrap">
       <table id="data-table"></table>
+    </div>
+  </section>
+
+  <section class="settings-view hidden" id="source-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">データソース</div>
+        <h2 id="source-view-title">デフォルト</h2>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">データ取得方法</div>
+      </div>
+      <div class="source-method-grid">
+        <div class="source-method-card active" id="source-method-csv" data-method="csv">
+          <div class="source-method-icon">📄</div>
+          <div class="source-method-name">CSVアップロード</div>
+          <div class="source-method-desc">CSVファイルを読み込んで分析</div>
+          <label class="file-btn source-upload-btn" id="source-csv-btn">
+            ファイルを選択
+            <input type="file" id="source-file" accept=".csv">
+          </label>
+        </div>
+        <div class="source-method-card disabled" id="source-method-bq" data-method="bq">
+          <div class="source-method-icon">🗄️</div>
+          <div class="source-method-name">BigQuery</div>
+          <div class="source-method-desc">Google BigQueryからデータを取得</div>
+          <button type="button" class="file-btn source-bq-btn" id="source-bq-btn" disabled>準備中</button>
+          <span class="source-method-badge">Coming Soon</span>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">データ情報</div>
+      </div>
+      <div class="source-info" id="source-info"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">CSVカラム</div>
+        <div class="panel-ctrl"><span class="csv-column-count" id="source-csv-column-count"></span></div>
+      </div>
+      <div class="csv-columns" id="source-csv-columns"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">データプレビュー</div>
+      </div>
+      <div class="source-preview" id="source-preview"></div>
     </div>
   </section>
 

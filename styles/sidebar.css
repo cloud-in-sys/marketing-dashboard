@@ -67,6 +67,7 @@ body.sidebar-collapsed .sidebar {
 .sidebar-group[data-group="custom"] .group-toggle::before { content: '✦'; }
 .sidebar-group[data-group="presets"] .group-toggle::before { content: '◉'; }
 .sidebar-group[data-group="settings"] .group-toggle::before { content: '⚙'; }
+.sidebar-group[data-group="users"] .group-toggle::before { content: '👤'; }
 .settings-field {
   display: flex;
   flex-direction: column;
@@ -327,6 +328,17 @@ body.no-edit-custom.tab-custom .view-preset-wrap { pointer-events: none; opacity
   font-style: italic;
   opacity: 0.6;
 }
+.source-rename {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 12px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.source-rename:hover { background: var(--primary-soft); color: var(--primary); }
 .preset-sub {
   font-size: 10px;
   font-weight: 700;

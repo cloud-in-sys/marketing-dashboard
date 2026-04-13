@@ -1,11 +1,40 @@
 /* ===== FILTERS BAR ===== */
+.filters-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: linear-gradient(180deg, #ffffff 0%, #f8faff 100%);
+  border-bottom: 1px solid var(--border);
+}
+body.settings-mode .filters-bar { display: none; }
+.filters-bar.collapsed .filters { display: none; }
+.filters-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 8px 24px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+}
+.filters-toggle:hover { color: var(--primary); }
+#filters-toggle-icon {
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+.filters-bar.collapsed #filters-toggle-icon { transform: rotate(-90deg); }
 .filters {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
-  padding: 18px 24px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8faff 100%);
-  border-bottom: 1px solid var(--border);
+  padding: 6px 24px 14px;
 }
 .filters label {
   display: block;
