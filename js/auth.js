@@ -40,6 +40,8 @@ export function renderCurrentUserLabel() {
 export function applyPermissionUI() {
   const u = getCurrentUser();
   document.body.classList.toggle('is-admin', !!u.isAdmin);
+  document.body.classList.toggle('no-view-presets', !u.perms.viewPresets);
+  document.body.classList.toggle('no-view-custom', !u.perms.viewCustom);
   document.body.classList.toggle('no-add-custom', !u.perms.addCustom);
   document.body.classList.toggle('no-save-preset', !u.perms.savePreset);
   document.body.classList.toggle('no-edit-custom', !u.perms.editCustom);

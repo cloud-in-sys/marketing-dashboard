@@ -113,19 +113,28 @@ export const DEFAULT_FORMULAS = {
 export const DOW_LABELS = ['\u65e5','\u6708','\u706b','\u6c34','\u6728','\u91d1','\u571f'];
 export const DOW_ORDER = {'\u65e5':0,'\u6708':1,'\u706b':2,'\u6c34':3,'\u6728':4,'\u91d1':5,'\u571f':6};
 
-export const PERM_DEFS = [
-  {key: 'editPreset',   label: '\u30d7\u30ea\u30bb\u30c3\u30c8\u3092\u7de8\u96c6'},
-  {key: 'savePreset',   label: '\u30d7\u30ea\u30bb\u30c3\u30c8\u3092\u65b0\u898f\u4fdd\u5b58'},
-  {key: 'deletePreset', label: '\u30d7\u30ea\u30bb\u30c3\u30c8\u3092\u524a\u9664'},
-  {key: 'addCustom',    label: '\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u3092\u8ffd\u52a0'},
-  {key: 'editCustom',   label: '\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u3092\u7de8\u96c6'},
-  {key: 'deleteCustom', label: '\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u3092\u524a\u9664'},
-  {key: 'editMetrics',  label: '\u30e1\u30c8\u30ea\u30af\u30b9\u5b9a\u7fa9\u3092\u5909\u66f4'},
-  {key: 'editFilters',  label: '\u30d5\u30a3\u30eb\u30bf\u5b9a\u7fa9\u3092\u5909\u66f4'},
-  {key: 'editDimensions', label: '\u30c7\u30a3\u30e1\u30f3\u30b7\u30e7\u30f3\u5b9a\u7fa9\u3092\u5909\u66f4'},
-  {key: 'editDefaults', label: '\u6a19\u6e96\u5b9a\u7fa9\u3092\u5909\u66f4'},
-  {key: 'manageUsers',  label: '\u30e6\u30fc\u30b6\u30fc\u7ba1\u7406'},
+export const PERM_GROUPS = [
+  {group: 'preset', label: '\u30d7\u30ea\u30bb\u30c3\u30c8', perms: [
+    {key: 'viewPresets',   label: '\u30b0\u30eb\u30fc\u30d7\u3092\u8868\u793a'},
+    {key: 'editPreset',   label: '\u7de8\u96c6'},
+    {key: 'savePreset',   label: '\u65b0\u898f\u4fdd\u5b58'},
+    {key: 'deletePreset', label: '\u524a\u9664'},
+  ]},
+  {group: 'custom', label: '\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6', perms: [
+    {key: 'viewCustom',   label: '\u30b0\u30eb\u30fc\u30d7\u3092\u8868\u793a'},
+    {key: 'addCustom',    label: '\u8ffd\u52a0'},
+    {key: 'editCustom',   label: '\u7de8\u96c6'},
+    {key: 'deleteCustom', label: '\u524a\u9664'},
+  ]},
+  {group: 'settings', label: '\u8a2d\u5b9a', perms: [
+    {key: 'editMetrics',    label: '\u30e1\u30c8\u30ea\u30af\u30b9\u5b9a\u7fa9'},
+    {key: 'editFilters',    label: '\u30d5\u30a3\u30eb\u30bf\u5b9a\u7fa9'},
+    {key: 'editDimensions', label: '\u30c7\u30a3\u30e1\u30f3\u30b7\u30e7\u30f3\u5b9a\u7fa9'},
+    {key: 'editDefaults',   label: '\u6a19\u6e96\u5b9a\u7fa9'},
+    {key: 'manageUsers',    label: '\u30e6\u30fc\u30b6\u30fc\u7ba1\u7406'},
+  ]},
 ];
+export const PERM_DEFS = PERM_GROUPS.flatMap(g => g.perms);
 
 export const ADMIN_PERMS = Object.fromEntries(PERM_DEFS.map(p => [p.key, true]));
 export const VIEWER_PERMS = Object.fromEntries(PERM_DEFS.map(p => [p.key, false]));

@@ -94,6 +94,8 @@ body.sidebar-collapsed .sidebar {
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
 /* ===== PERMISSION-BASED HIDING (TABS/PRESETS) ===== */
+body.no-view-presets .sidebar-group[data-group="presets"] { display: none; }
+body.no-view-custom .sidebar-group[data-group="custom"] { display: none; }
 body.no-add-custom #add-custom-tab { display: none; }
 body.no-save-preset #save-preset { display: none; }
 body.no-delete-custom .custom-tab-item .preset-del { display: none; }

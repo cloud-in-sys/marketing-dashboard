@@ -368,27 +368,18 @@ document.getElementById('data-table').addEventListener('mousedown', e => {
   e.preventDefault();
   e.stopPropagation();
   const th = handle.closest('th');
-  const colKey = th.dataset.colKey;
-  const table = th.closest('table');
-  const idx = [...th.parentElement.children].indexOf(th);
-  const col = table.querySelector('colgroup').children[idx];
-  resizingCol = {colKey, col, startX: e.clientX, startWidth: th.offsetWidth};
+  resizingCol = {th, startX: e.clientX, startWidth: th.offsetWidth};
   document.body.classList.add('col-resizing');
 });
 document.addEventListener('mousemove', e => {
   if (!resizingCol) return;
   const delta = e.clientX - resizingCol.startX;
-  const w = Math.max(50, resizingCol.startWidth + delta);
-  resizingCol.col.style.width = w + 'px';
-  const table = document.getElementById('data-table');
-  let total = 0;
-  table.querySelectorAll('colgroup col').forEach(c => { total += parseFloat(c.style.width) || 0; });
-  table.style.width = total + 'px';
+  const w = Math.max(40, resizingCol.startWidth + delta);
+  resizingCol.th.style.width = w + 'px';
+  resizingCol.th.style.minWidth = w + 'px';
 });
 document.addEventListener('mouseup', () => {
   if (!resizingCol) return;
-  const w = parseFloat(resizingCol.col.style.width);
-  if (w) { S.COL_WIDTHS[resizingCol.colKey] = w; saveColWidths(); }
   resizingCol = null;
   document.body.classList.remove('col-resizing');
 });

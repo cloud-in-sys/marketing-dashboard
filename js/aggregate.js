@@ -1,13 +1,30 @@
 import { S, DEFAULT_BASE_FORMULAS, DEFAULT_FORMULAS } from './state.js';
-import { num } from './utils.js';
 
-// ===== Aggregation =====
-export function baseMetricKeys() { return S.METRIC_DEFS.filter(m => m.type === 'base').map(m => m.key); }
-export function derivedMetricKeys() { return S.METRIC_DEFS.filter(m => m.type === 'derived').map(m => m.key); }
+// ===== Aggregation (optimized) =====
+
+// Cache parsed formulas and compiled functions
+const parsedBaseCache = new Map();   // formula string -> parsed object
+const compiledDerivedCache = new Map(); // formula string -> compiled Function
+let cachedBaseKeys = null;
+let cachedDerivedKeys = null;
+let cachedMetricDefsRef = null;
+
+function ensureKeyCache() {
+  if (cachedMetricDefsRef !== S.METRIC_DEFS) {
+    cachedMetricDefsRef = S.METRIC_DEFS;
+    cachedBaseKeys = S.METRIC_DEFS.filter(m => m.type === 'base').map(m => m.key);
+    cachedDerivedKeys = S.METRIC_DEFS.filter(m => m.type === 'derived').map(m => m.key);
+  }
+}
+
+export function baseMetricKeys() { ensureKeyCache(); return cachedBaseKeys; }
+export function derivedMetricKeys() { ensureKeyCache(); return cachedDerivedKeys; }
 
 export function parseBaseFormula(formula) {
-  const m = /^\s*sum\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)(?:\s*where\s+(.+?))?\s*$/i.exec(String(formula || ''));
-  if (!m) return null;
+  const key = String(formula || '');
+  if (parsedBaseCache.has(key)) return parsedBaseCache.get(key);
+  const m = /^\s*sum\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)(?:\s*where\s+(.+?))?\s*$/i.exec(key);
+  if (!m) { parsedBaseCache.set(key, null); return null; }
   const column = m[1];
   const filters = [];
   if (m[2]) {
@@ -16,46 +33,86 @@ export function parseBaseFormula(formula) {
       if (cm) filters.push({field: cm[1], value: cm[2] ?? cm[3] ?? cm[4]});
     });
   }
-  return {column, filters};
+  const result = {column, filters};
+  parsedBaseCache.set(key, result);
+  return result;
 }
 
-export function aggregateBase(rows, formula) {
+function num(v) { const n = +v; return n === n ? n : 0; }  // inline, avoids import overhead
+
+function aggregateBase(rows, formula) {
   const parsed = parseBaseFormula(formula);
   if (!parsed) return 0;
+  const col = parsed.column;
+  const filters = parsed.filters;
+  const fLen = filters.length;
   let s = 0;
-  for (const r of rows) {
-    if (!parsed.filters.every(f => r[f.field] === f.value)) continue;
-    s += num(r[parsed.column]);
+  if (fLen === 0) {
+    for (let i = 0, len = rows.length; i < len; i++) {
+      s += num(rows[i][col]);
+    }
+  } else if (fLen === 1) {
+    const f0field = filters[0].field, f0val = filters[0].value;
+    for (let i = 0, len = rows.length; i < len; i++) {
+      const r = rows[i];
+      if (r[f0field] === f0val) s += num(r[col]);
+    }
+  } else {
+    for (let i = 0, len = rows.length; i < len; i++) {
+      const r = rows[i];
+      let ok = true;
+      for (let j = 0; j < fLen; j++) {
+        if (r[filters[j].field] !== filters[j].value) { ok = false; break; }
+      }
+      if (ok) s += num(r[col]);
+    }
   }
   return s;
 }
 
-export function evalFormula(formula, ctx) {
+function compileDerived(formula) {
+  const key = String(formula);
+  if (compiledDerivedCache.has(key)) return compiledDerivedCache.get(key);
   try {
-    const code = String(formula).replace(/[a-zA-Z_][a-zA-Z0-9_]*/g, m => {
-      if (m in ctx) return `ctx.${m}`;
-      return m;
+    const code = key.replace(/[a-zA-Z_][a-zA-Z0-9_]*/g, m => {
+      // known math names stay as-is in ctx
+      return `ctx.${m}`;
     });
-    const fn = new Function('ctx', `"use strict"; return (${code});`);
-    const v = fn(ctx);
-    return Number.isFinite(v) ? v : 0;
+    const fn = new Function('ctx', `"use strict"; try{var v=(${code});return v===v&&v!==1/0&&v!==-1/0?v:0}catch(e){return 0}`);
+    compiledDerivedCache.set(key, fn);
+    return fn;
   } catch (e) {
-    return 0;
+    const noop = () => 0;
+    compiledDerivedCache.set(key, noop);
+    return noop;
   }
 }
 
+export function evalFormula(formula, ctx) {
+  return compileDerived(formula)(ctx);
+}
+
 export function aggregate(rows) {
+  ensureKeyCache();
   const a = {};
-  for (const key of baseMetricKeys()) {
-    const formula = S.BASE_FORMULAS[key] || DEFAULT_BASE_FORMULAS[key] || '';
-    a[key] = aggregateBase(rows, formula);
+  for (let i = 0, len = cachedBaseKeys.length; i < len; i++) {
+    const key = cachedBaseKeys[i];
+    a[key] = aggregateBase(rows, S.BASE_FORMULAS[key] || DEFAULT_BASE_FORMULAS[key] || '');
   }
-  const ctx = {...a, min: Math.min, max: Math.max, abs: Math.abs, pow: Math.pow, sqrt: Math.sqrt, round: Math.round, Math};
-  for (const key of derivedMetricKeys()) {
+  const ctx = {__proto__: null, ...a, min: Math.min, max: Math.max, abs: Math.abs, pow: Math.pow, sqrt: Math.sqrt, round: Math.round, Math};
+  for (let i = 0, len = cachedDerivedKeys.length; i < len; i++) {
+    const key = cachedDerivedKeys[i];
     const f = S.METRIC_FORMULAS[key] || DEFAULT_FORMULAS[key] || '0';
-    const v = evalFormula(f, ctx);
+    const v = compileDerived(f)(ctx);
     ctx[key] = v;
     a[key] = v;
   }
   return a;
+}
+
+// Clear caches when metric defs change
+export function clearAggregateCache() {
+  parsedBaseCache.clear();
+  compiledDerivedCache.clear();
+  cachedMetricDefsRef = null;
 }

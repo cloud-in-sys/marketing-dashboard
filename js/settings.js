@@ -1,4 +1,4 @@
-import { S, PERM_DEFS, ADMIN_PERMS, VIEWER_PERMS, DEFAULT_BASE_FORMULAS, DEFAULT_FORMULAS,
+import { S, PERM_GROUPS, VIEWER_PERMS, DEFAULT_BASE_FORMULAS, DEFAULT_FORMULAS,
   saveMetricDefs, saveDimensions, saveViews, saveFilterDefs, saveFormulas, saveBaseFormulas,
   saveUsers, saveViewOrder, getPresets, setPresets, compileFilter } from './state.js';
 import { escapeHtml } from './utils.js';
@@ -175,9 +175,14 @@ function renderUsersModal() {
       </div>
       <div class="user-perms-section">
         <div class="user-perms-title">\u64cd\u4f5c\u6a29\u9650</div>
-        <div class="user-perms">
-          ${PERM_DEFS.map(p => `<label><input type="checkbox" data-perm="${p.key}"${u.perms[p.key]?' checked':''}><span>${p.label}</span></label>`).join('')}
-        </div>
+        ${PERM_GROUPS.map(g => `
+          <div class="user-perms-group">
+            <div class="user-perms-group-label">${g.label}</div>
+            <div class="user-perms">
+              ${g.perms.map(p => `<label><input type="checkbox" data-perm="${p.key}"${u.perms[p.key]?' checked':''}><span>${p.label}</span></label>`).join('')}
+            </div>
+          </div>
+        `).join('')}
       </div>
     </div>
   `).join('');

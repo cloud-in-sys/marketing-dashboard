@@ -1,8 +1,19 @@
 import { S, DOW_LABELS, DOW_ORDER } from './state.js';
 
-// ===== Dimensions & Grouping =====
+// ===== Dimensions & Grouping (optimized) =====
+let dimMapRef = null;
+let dimMap = new Map();
+
+function ensureDimMap() {
+  if (dimMapRef !== S.DIMENSIONS) {
+    dimMapRef = S.DIMENSIONS;
+    dimMap = new Map(S.DIMENSIONS.map(d => [d.key, d]));
+  }
+}
+
 export function dimValue(row, key) {
-  const def = S.DIMENSIONS.find(d => d.key === key);
+  ensureDimMap();
+  const def = dimMap.get(key);
   if (!def) return row[key] || '';
   if (def.type === 'expression') {
     let fn = S.DIM_EXPR_CACHE.get(key);
@@ -30,12 +41,14 @@ export function dimSort(key, a, b) {
 }
 
 export function dimLabel(key) {
-  return (S.DIMENSIONS.find(d => d.key === key) || {}).label || key;
+  ensureDimMap();
+  return (dimMap.get(key) || {}).label || key;
 }
 
 export function groupRows(rows, dims) {
   const map = new Map();
-  for (const r of rows) {
+  for (let i = 0, len = rows.length; i < len; i++) {
+    const r = rows[i];
     const vals = dims.map(k => dimValue(r, k));
     const key = vals.join('\u0001');
     if (!map.has(key)) map.set(key, {vals, rows: []});
