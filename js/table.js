@@ -4,13 +4,30 @@ import { dimLabel, dimSort } from './dimensions.js';
 import { aggregate, baseMetricKeys, derivedMetricKeys, evalFormula } from './aggregate.js';
 
 // ===== Table rendering =====
+function compare(value, op, threshold) {
+  switch (op) {
+    case '<':  return value < threshold;
+    case '<=': return value <= threshold;
+    case '>':  return value > threshold;
+    case '>=': return value >= threshold;
+    default:   return false;
+  }
+}
+
 function thresholdClass(metricKey, value) {
   const t = S.THRESHOLDS[metricKey];
-  if (!t || !isFinite(value)) return '';
+  if (!t || !isFinite(value) || value === 0) return '';
   const min = t.min, max = t.max, target = t.target;
-  if (min != null && value <= min) return 'cell-red';
-  if (target != null && value >= target) return 'cell-blue';
-  if (min != null && max != null && value > min && value < max) return 'cell-yellow';
+  const minOp = t.minOp || '<=';
+  const maxOp = t.maxOp || '<=';
+  const targetOp = t.targetOp || '>=';
+  const hitMin = min != null && compare(value, minOp, min);
+  const hitMax = max != null && compare(value, maxOp, max);
+  const hitTarget = target != null && compare(value, targetOp, target);
+  // 目標達成が最優先、次に最低許容値、最後に最大許容値
+  if (hitTarget) return 'cell-blue';
+  if (hitMin) return 'cell-red';
+  if (hitMax) return 'cell-yellow';
   return '';
 }
 

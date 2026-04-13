@@ -73,6 +73,16 @@
 
 <div class="layout">
 <aside class="sidebar">
+  <div class="sidebar-group" data-group="sources">
+    <div class="nav-title group-title">
+      <span class="group-toggle">データソース</span>
+      <span class="group-caret">▾</span>
+    </div>
+    <div class="group-body">
+      <nav class="nav" id="source-nav"></nav>
+      <button type="button" class="save-btn" id="add-source">+ データソースを追加</button>
+    </div>
+  </div>
   <div class="sidebar-group" data-group="default">
     <div class="nav-title group-title"><span class="group-toggle">デフォルト</span><span class="group-caret">▾</span></div>
     <div class="group-body">
@@ -161,7 +171,7 @@
       </div>
       <div class="panel-body">
         <div class="pivot-row">
-          <div class="pivot-pills" id="dim-pills"></div>
+          <div class="pivot-pills" id="dim-pills" data-sort-axis="x"></div>
           <div class="pivot-add">
             <button type="button" class="add-btn" id="dim-add-btn">+ 追加</button>
             <div class="add-menu hidden" id="dim-add-menu"></div>
@@ -198,7 +208,7 @@
       </div>
       <div class="panel-body">
         <div class="threshold-head" id="threshold-head">
-          <div></div><div>最低許容値</div><div>最大許容値</div><div>目標値</div><div></div>
+          <div></div><div class="threshold-head-span">許容値(警告)</div><div class="threshold-head-span">許容値(注意)</div><div class="threshold-head-span">目標値</div><div></div>
         </div>
         <div class="threshold-list" id="threshold-list"></div>
       </div>

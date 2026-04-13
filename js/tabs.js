@@ -1,12 +1,11 @@
-import { S, CUSTOM_TABS_KEY, VIEW_ORDER_KEY, getPresets, syncCurrentTabState } from './state.js';
+import { S, getPresets, syncCurrentTabState } from './state.js';
 import { escapeHtml, hexToSoft } from './utils.js';
 import { loadTabState, exitPresetEdit, renderTabPresetSelect } from './presets.js';
 import { emit } from './events.js';
 
 // ===== Tabs & View navigation =====
 export function loadCustomTabs() {
-  try { S.CUSTOM_TABS = JSON.parse(localStorage.getItem(CUSTOM_TABS_KEY) || '[]'); }
-  catch (e) { S.CUSTOM_TABS = []; }
+  // Now loaded by loadSourceConfig in state.js
 }
 
 export function renderCustomTabs() {
@@ -16,20 +15,13 @@ export function renderCustomTabs() {
     ? S.CUSTOM_TABS.map(t => {
         const color = t.color || '#64748b';
         const soft = hexToSoft(color);
-        return `<div class="custom-tab-item" data-drag-key="${t.key}" draggable="true" style="--tab-color:${color};--tab-color-soft:${soft}"><button type="button" class="nav-item${S.CURRENT_VIEW===t.key?' active':''}" data-custom="${t.key}"><span class="tab-badge">\u30de\u30a4</span>${escapeHtml(t.label)}</button><button type="button" class="preset-del" data-del-custom="${t.key}" title="\u524a\u9664">\u00d7</button></div>`;
+        return `<div class="custom-tab-item" data-drag-key="${t.key}" draggable="true" style="--tab-color:${color};--tab-color-soft:${soft}"><button type="button" class="nav-item${S.CURRENT_VIEW===t.key?' active':''}" data-custom="${t.key}"><span class="tab-badge">\u30de\u30a4</span>${escapeHtml(t.label)}</button><input type="color" class="custom-tab-color" data-color-key="${t.key}" value="${color}" title="\u8272\u3092\u5909\u66f4"><button type="button" class="preset-del" data-del-custom="${t.key}" title="\u524a\u9664">\u00d7</button></div>`;
       }).join('')
     : '<div class="preset-empty">\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u306a\u3057</div>';
 }
 
 export function loadViewOrder() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(VIEW_ORDER_KEY) || 'null');
-    if (Array.isArray(saved)) {
-      const valid = saved.filter(k => S.VIEWS[k]);
-      const missing = Object.keys(S.VIEWS).filter(k => !valid.includes(k));
-      S.VIEW_ORDER = [...valid, ...missing];
-    }
-  } catch (e) {}
+  // Now loaded by loadSourceConfig in state.js
 }
 
 export function renderViewNav() {

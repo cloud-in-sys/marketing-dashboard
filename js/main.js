@@ -1,8 +1,9 @@
 // ===== Dashboard - ES Module Entry Point =====
 import { on, emit } from './events.js';
-import { S, PALETTE, SIDEBAR_KEY, PANELS_KEY, GROUPS_KEY, STATE_KEY,
+import { S, PALETTE, SIDEBAR_KEY, PANELS_KEY, GROUPS_KEY,
   initStateFromStorage, saveState, saveColWidths, saveCustomTabs, saveViewOrder,
-  syncCurrentTabState, getPresets, setPresets } from './state.js';
+  syncCurrentTabState, getPresets, setPresets,
+  saveDataSources, switchSource } from './state.js';
 import { escapeHtml, hexToSoft } from './utils.js';
 import { parseCSV } from './csv.js';
 import { showModal } from './modal.js';
@@ -49,10 +50,22 @@ function renderThresholds() {
       if (!m) return '';
       const t = S.THRESHOLDS[k] || {};
       const unit = m.fmt === 'yen' ? '\u00a5' : m.fmt === 'pct' ? '%' : '';
+      const opMin = t.minOp || '<=';
+      const opMax = t.maxOp || '<=';
+      const opTarget = t.targetOp || '>=';
+      const opSelect = (role, val) => `<select class="threshold-op" data-role="${role}Op">
+        <option value="<"${val==='<'?' selected':''}>&lt; (\u672a\u6e80)</option>
+        <option value="<="${val==='<='?' selected':''}>&le; (\u4ee5\u4e0b)</option>
+        <option value=">"${val==='>'?' selected':''}>&gt; (\u8d85)</option>
+        <option value=">="${val==='>='?' selected':''}>&ge; (\u4ee5\u4e0a)</option>
+      </select>`;
       return `<div class="threshold-row" data-key="${k}">
         <div class="threshold-label">${m.label}${unit ? `<span class="unit">${unit}</span>` : ''}</div>
+        ${opSelect('min', opMin)}
         <input type="number" step="any" data-role="min" placeholder="\u2014" value="${toDisplayThreshold(t.min, m.fmt)}">
+        ${opSelect('max', opMax)}
         <input type="number" step="any" data-role="max" placeholder="\u2014" value="${toDisplayThreshold(t.max, m.fmt)}">
+        ${opSelect('target', opTarget)}
         <input type="number" step="any" data-role="target" placeholder="\u2014" value="${toDisplayThreshold(t.target, m.fmt)}">
         <button type="button" class="threshold-remove" data-remove="${k}" aria-label="\u524a\u9664">\u00d7</button>
       </div>`;
@@ -68,7 +81,7 @@ function renderThresholds() {
 // ===== CHIPS & PILLS =====
 function renderDimPills() {
   document.getElementById('dim-pills').innerHTML = S.SELECTED_DIMS.map(k => `
-    <span class="pill">${dimLabel(k)}<button type="button" class="pill-remove" data-remove="${k}">\u00d7</button></span>
+    <span class="pill" data-drag-key="${k}" draggable="true">${dimLabel(k)}<button type="button" class="pill-remove" data-remove="${k}">\u00d7</button></span>
   `).join('');
   const menu = document.getElementById('dim-add-menu');
   const avail = S.DIMENSIONS.filter(d => !S.SELECTED_DIMS.includes(d.key));
@@ -130,24 +143,7 @@ function render() {
 
 // ===== STATE LOADING =====
 function loadState() {
-  try {
-    const s = JSON.parse(localStorage.getItem(STATE_KEY) || 'null');
-    if (!s) return;
-    if (s.tabStates && typeof s.tabStates === 'object') S.TAB_STATES = s.tabStates;
-    if (s.currentView && S.VIEWS[s.currentView]) S.CURRENT_VIEW = s.currentView;
-    if (Array.isArray(s.charts) && s.charts.length) {
-      S.CHARTS = s.charts.map(c => ({id: c.id, metric: c.metric, type: c.type, size: c.size, color: c.color || '#2563eb', name: c.name || '', bucket: c.bucket || 'auto'}));
-      S.CHART_ID_SEQ = Math.max(...S.CHARTS.map(c => c.id)) + 1;
-    }
-    if (!s.tabStates && (Array.isArray(s.dims) || Array.isArray(s.metrics) || s.thresholds)) {
-      S.TAB_STATES[S.CURRENT_VIEW] = {
-        dims: Array.isArray(s.dims) && s.dims.length ? [...s.dims] : [...S.VIEWS[S.CURRENT_VIEW].dims],
-        metrics: Array.isArray(s.metrics) && s.metrics.length ? [...s.metrics] : S.METRIC_DEFS.map(m => m.key),
-        thresholds: s.thresholds && typeof s.thresholds === 'object' ? s.thresholds : {},
-        thresholdMetrics: Array.isArray(s.thresholdMetrics) ? s.thresholdMetrics : [],
-      };
-    }
-  } catch (e) {}
+  // Now handled by loadSourceConfig in state.js
 }
 
 // ===== SIDEBAR HELPERS =====
@@ -215,12 +211,20 @@ document.getElementById('custom-nav').addEventListener('click', e => {
   const btn = e.target.closest('[data-custom]');
   if (btn) applyView(btn.dataset.custom);
 });
+document.getElementById('custom-nav').addEventListener('input', e => {
+  const picker = e.target.closest('[data-color-key]');
+  if (!picker) return;
+  const tab = S.CUSTOM_TABS.find(t => t.key === picker.dataset.colorKey);
+  if (!tab) return;
+  tab.color = picker.value;
+  saveCustomTabs();
+  renderCustomTabs();
+});
 document.getElementById('add-custom-tab').addEventListener('click', async () => {
   const label = await showModal({title: '\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u3092\u8ffd\u52a0', body: '\u30bf\u30d6\u306e\u540d\u524d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', input: true, placeholder: '\u4f8b: \u81ea\u5206\u7528\u306e\u5206\u6790', okText: '\u8ffd\u52a0'});
   if (!label) return;
-  const palette = ['#7c3aed','#10b981','#f59e0b','#ef4444','#0ea5e9','#ec4899','#14b8a6','#8b5cf6'];
   const key = 'custom_' + Date.now();
-  const color = palette[S.CUSTOM_TABS.length % palette.length];
+  const color = '#64748b';
   S.CUSTOM_TABS.push({key, label, color});
   S.TAB_STATES[key] = {
     dims: ['action_date'],
@@ -455,10 +459,97 @@ document.getElementById('file').addEventListener('change', async e => {
   const f = e.target.files[0];
   if (!f) return;
   const text = await f.text();
-  S.RAW = parseCSV(text);
+  const rows = parseCSV(text);
+  S.SOURCE_DATA[S.CURRENT_SOURCE] = rows;
+  S.RAW = rows;
   populateFilters();
   renderCsvColumns();
+  renderSourceNav();
   render();
+});
+
+// ===== DATA SOURCES =====
+function reloadFullUI() {
+  exitSettingsMode();
+  const main = document.querySelector('.main');
+  if (main) { main.classList.remove('source-transition'); void main.offsetWidth; main.classList.add('source-transition'); }
+  renderFilters();
+  populateFilters();
+  loadViewOrder();
+  renderViewNav();
+  loadCustomTabs();
+  initTabStates();
+  loadTabState(S.CURRENT_VIEW);
+  highlightActiveView();
+  renderCustomTabs();
+  renderChips();
+  renderThresholds();
+  renderPresets();
+  renderTabPresetSelect();
+  renderCsvColumns();
+  renderSourceNav();
+  render();
+}
+
+function renderSourceNav() {
+  const el = document.getElementById('source-nav');
+  if (!el) return;
+  el.innerHTML = S.DATA_SOURCES.map(ds => {
+    const active = S.CURRENT_SOURCE === ds.id ? ' active' : '';
+    const count = (S.SOURCE_DATA[ds.id] || []).length;
+    const badge = count > 0 ? `<span class="source-count">${count.toLocaleString()}\u884c</span>` : '<span class="source-count source-empty">\u672a\u8aad\u307f\u8fbc\u307f</span>';
+    return `<div class="source-item">
+      <button type="button" class="nav-item${active}" data-source="${ds.id}">
+        <span class="source-name">${escapeHtml(ds.name)}</span>${badge}
+      </button>
+      <button type="button" class="preset-del source-del" data-del-source="${ds.id}" title="\u524a\u9664">\u00d7</button>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('source-nav').addEventListener('click', e => {
+  const del = e.target.closest('[data-del-source]');
+  if (del) {
+    const id = del.dataset.delSource;
+    if (S.DATA_SOURCES.length <= 1) {
+      showModal({title: '\u524a\u9664\u3067\u304d\u307e\u305b\u3093', body: '\u30c7\u30fc\u30bf\u30bd\u30fc\u30b9\u306f\u6700\u4f4e1\u3064\u5fc5\u8981\u3067\u3059', okText: 'OK', cancelText: ''});
+      return;
+    }
+    const dsName = S.DATA_SOURCES.find(d=>d.id===id)?.name||id;
+    showModal({title: '\u30c7\u30fc\u30bf\u30bd\u30fc\u30b9\u3092\u524a\u9664', body: `\u300c${dsName}\u300d\u3092\u524a\u9664\u3057\u307e\u3059\u304b\uff1f\n\u3053\u306e\u30c7\u30fc\u30bf\u30bd\u30fc\u30b9\u306e\u5168\u3066\u306e\u8a2d\u5b9a\u30fb\u30d7\u30ea\u30bb\u30c3\u30c8\u304c\u524a\u9664\u3055\u308c\u307e\u3059\u3002`, okText: '\u524a\u9664', danger: true}).then(async ok => {
+      if (!ok) return;
+      const typed = await showModal({title: '\u672c\u5f53\u306b\u524a\u9664\u3057\u307e\u3059\u304b\uff1f', body: `\u300c${dsName}\u300d\u306e\u524a\u9664\u306f\u53d6\u308a\u6d88\u305b\u307e\u305b\u3093\u3002\u78ba\u8a8d\u306e\u305f\u3081\u300c\u524a\u9664\u300d\u3068\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002`, input: true, placeholder: '\u524a\u9664', okText: '\u524a\u9664\u3059\u308b', danger: true});
+      if (typed !== '\u524a\u9664') return;
+      S.DATA_SOURCES = S.DATA_SOURCES.filter(d => d.id !== id);
+      delete S.SOURCE_DATA[id];
+      saveDataSources();
+      if (S.CURRENT_SOURCE === id) {
+        switchSource(S.DATA_SOURCES[0].id);
+      }
+      reloadFullUI();
+    });
+    return;
+  }
+  const btn = e.target.closest('[data-source]');
+  if (btn) {
+    switchSource(btn.dataset.source);
+    reloadFullUI();
+  }
+});
+
+
+document.getElementById('add-source').addEventListener('click', async () => {
+  const name = await showModal({title: '\u30c7\u30fc\u30bf\u30bd\u30fc\u30b9\u3092\u8ffd\u52a0', body: '\u30c7\u30fc\u30bf\u30bd\u30fc\u30b9\u306e\u540d\u524d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', input: true, placeholder: '\u4f8b: CRM\u30c7\u30fc\u30bf', okText: '\u6b21\u3078'});
+  if (!name) return;
+  const confirm = await showModal({title: '\u4f5c\u6210\u306e\u78ba\u8a8d', body: `\u30c7\u30fc\u30bf\u30bd\u30fc\u30b9\u300c${name}\u300d\u3092\u4f5c\u6210\u3057\u307e\u3059\u304b\uff1f`, okText: '\u4f5c\u6210'});
+  if (!confirm) return;
+  const id = 'src_' + Date.now();
+  S.DATA_SOURCES.push({id, name});
+  S.SOURCE_DATA[id] = [];
+  saveDataSources();
+  switchSource(id);
+  seedDefaultPresets();
+  reloadFullUI();
 });
 
 document.getElementById('filters').addEventListener('change', e => {
@@ -474,13 +565,27 @@ document.getElementById('threshold-list').addEventListener('input', e => {
   if (!row) return;
   const key = row.dataset.key;
   const role = e.target.dataset.role;
-  const mdef = S.METRIC_DEFS.find(m => m.key === key);
-  if (!mdef) return;
-  const raw = fromDisplayThreshold(e.target.value, mdef.fmt);
+  if (!role) return;
   if (!S.THRESHOLDS[key]) S.THRESHOLDS[key] = {};
-  if (raw == null) delete S.THRESHOLDS[key][role];
-  else S.THRESHOLDS[key][role] = raw;
-  if (Object.keys(S.THRESHOLDS[key]).length === 0) delete S.THRESHOLDS[key];
+  if (role.endsWith('Op')) {
+    S.THRESHOLDS[key][role] = e.target.value;
+  } else {
+    const mdef = S.METRIC_DEFS.find(m => m.key === key);
+    if (!mdef) return;
+    const raw = fromDisplayThreshold(e.target.value, mdef.fmt);
+    if (raw == null) delete S.THRESHOLDS[key][role];
+    else S.THRESHOLDS[key][role] = raw;
+  }
+  render();
+});
+document.getElementById('threshold-list').addEventListener('change', e => {
+  const row = e.target.closest('.threshold-row');
+  if (!row) return;
+  const key = row.dataset.key;
+  const role = e.target.dataset.role;
+  if (!role || !role.endsWith('Op')) return;
+  if (!S.THRESHOLDS[key]) S.THRESHOLDS[key] = {};
+  S.THRESHOLDS[key][role] = e.target.value;
   render();
 });
 document.getElementById('threshold-list').addEventListener('click', e => {
@@ -607,6 +712,18 @@ makeSortable(document.getElementById('custom-nav'), (from, to, before) => {
   saveCustomTabs();
   renderCustomTabs();
 });
+makeSortable(document.getElementById('dim-pills'), (from, to, before) => {
+  const fromIdx = S.SELECTED_DIMS.indexOf(from);
+  if (fromIdx < 0) return;
+  const [moved] = S.SELECTED_DIMS.splice(fromIdx, 1);
+  let toIdx = S.SELECTED_DIMS.indexOf(to);
+  if (toIdx < 0) toIdx = S.SELECTED_DIMS.length;
+  if (!before) toIdx += 1;
+  S.SELECTED_DIMS.splice(toIdx, 0, moved);
+  syncCurrentTabState();
+  renderDimPills();
+  render();
+});
 makeSortable(document.getElementById('metric-chips'), (from, to, before) => {
   const fromIdx = S.SELECTED_METRICS.indexOf(from);
   if (fromIdx < 0) return;
@@ -660,6 +777,7 @@ applyPermissionUI();
 if (!S.CURRENT_USER) showLogin();
 else hideLogin();
 
+renderSourceNav();
 loadViewOrder();
 renderViewNav();
 loadCustomTabs();

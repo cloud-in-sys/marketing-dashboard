@@ -1,87 +1,87 @@
 // ===== CONSTANTS & DEFAULTS =====
 export const DEFAULT_METRIC_DEFS = [
-  {key:'ad_cost',        label:'\u5e83\u544a\u8cbb',                      fmt:'yen', type:'base'},
-  {key:'ad_cost_fee',    label:'\u5e83\u544a\u8cbb(\u624b\u6570\u6599\u542b\u3080)',          fmt:'yen', type:'base'},
+  {key:'ad_cost',        label:'広告費',                      fmt:'yen', type:'base'},
+  {key:'ad_cost_fee',    label:'広告費(手数料含む)',          fmt:'yen', type:'base'},
   {key:'impression',     label:'impression',                  fmt:'int', type:'base'},
   {key:'reach',          label:'reach',                       fmt:'int', type:'base'},
   {key:'clicks',         label:'clicks',                      fmt:'int', type:'base'},
   {key:'mcv',            label:'mcv',                         fmt:'int', type:'base'},
-  {key:'line_reg',       label:'LINE\u767b\u9332',                    fmt:'int', type:'base'},
-  {key:'answer',         label:'\u56de\u7b54',                        fmt:'int', type:'base'},
-  {key:'booking',        label:'\u4e88\u7d04',                        fmt:'int', type:'base'},
-  {key:'join',           label:'\u53c2\u52a0',                        fmt:'int', type:'base'},
-  {key:'deal',           label:'\u6210\u7d04',                        fmt:'int', type:'base'},
-  {key:'rev_first',      label:'\u58f2\u4e0a(\u521d\u56de)',                  fmt:'yen', type:'base'},
-  {key:'rev_ltv',        label:'\u58f2\u4e0a(LTV12m)',                fmt:'yen', type:'base'},
+  {key:'line_reg',       label:'LINE登録',                    fmt:'int', type:'base'},
+  {key:'answer',         label:'回答',                        fmt:'int', type:'base'},
+  {key:'booking',        label:'予約',                        fmt:'int', type:'base'},
+  {key:'join',           label:'参加',                        fmt:'int', type:'base'},
+  {key:'deal',           label:'成約',                        fmt:'int', type:'base'},
+  {key:'rev_first',      label:'売上(初回)',                  fmt:'yen', type:'base'},
+  {key:'rev_ltv',        label:'売上(LTV12m)',                fmt:'yen', type:'base'},
   {key:'cpm',            label:'CPM',                         fmt:'yen', type:'derived'},
   {key:'ctr',            label:'CTR',                         fmt:'pct', type:'derived'},
   {key:'cpc',            label:'CPC',                         fmt:'yen', type:'derived'},
   {key:'mcvr',           label:'mCVR',                        fmt:'pct', type:'derived'},
   {key:'cvr',            label:'CVR',                         fmt:'pct', type:'derived'},
-  {key:'divergence',     label:'\u4e56\u96e2\u7387',                      fmt:'pct', type:'derived'},
-  {key:'cpa_reg',        label:'\u767b\u9332CPA',                     fmt:'yen', type:'derived'},
-  {key:'answer_rate',    label:'\u56de\u7b54\u7387',                      fmt:'pct', type:'derived'},
-  {key:'cpa_answer',     label:'\u56de\u7b54CPA',                     fmt:'yen', type:'derived'},
-  {key:'cpa_booking',    label:'\u4e88\u7d04CPA',                     fmt:'yen', type:'derived'},
-  {key:'join_rate',      label:'\u53c2\u52a0\u7387',                      fmt:'pct', type:'derived'},
-  {key:'cpa_join',       label:'\u53c2\u52a0CPA',                     fmt:'yen', type:'derived'},
-  {key:'cpa_join_calc',  label:'\u53c2\u52a0CPA(\u56de\u7b54CPA\u00f7\u53c2\u52a0\u7387)',    fmt:'yen', type:'derived'},
-  {key:'seat_first',     label:'\u7740\u5ea7\u5358\u4fa1(\u521d\u56de)',              fmt:'yen', type:'derived'},
-  {key:'seat_ltv',       label:'\u7740\u5ea7\u5358\u4fa1(LTV12m)',            fmt:'yen', type:'derived'},
-  {key:'deal_rate',      label:'\u6210\u7d04\u7387',                      fmt:'pct', type:'derived'},
+  {key:'divergence',     label:'乖離率',                      fmt:'pct', type:'derived'},
+  {key:'cpa_reg',        label:'登録CPA',                     fmt:'yen', type:'derived'},
+  {key:'answer_rate',    label:'回答率',                      fmt:'pct', type:'derived'},
+  {key:'cpa_answer',     label:'回答CPA',                     fmt:'yen', type:'derived'},
+  {key:'cpa_booking',    label:'予約CPA',                     fmt:'yen', type:'derived'},
+  {key:'join_rate',      label:'参加率',                      fmt:'pct', type:'derived'},
+  {key:'cpa_join',       label:'参加CPA',                     fmt:'yen', type:'derived'},
+  {key:'cpa_join_calc',  label:'参加CPA(回答CPA÷参加率)',    fmt:'yen', type:'derived'},
+  {key:'seat_first',     label:'着座単価(初回)',              fmt:'yen', type:'derived'},
+  {key:'seat_ltv',       label:'着座単価(LTV12m)',            fmt:'yen', type:'derived'},
+  {key:'deal_rate',      label:'成約率',                      fmt:'pct', type:'derived'},
   {key:'cpo',            label:'CPO',                         fmt:'yen', type:'derived'},
-  {key:'avg_first',      label:'\u5e73\u5747\u5358\u4fa1(\u521d\u56de)',              fmt:'yen', type:'derived'},
-  {key:'avg_ltv',        label:'\u5e73\u5747\u5358\u4fa1(LTV12m)',            fmt:'yen', type:'derived'},
-  {key:'roas_first',     label:'ROAS(\u521d\u56de)',                  fmt:'pct', type:'derived'},
+  {key:'avg_first',      label:'平均単価(初回)',              fmt:'yen', type:'derived'},
+  {key:'avg_ltv',        label:'平均単価(LTV12m)',            fmt:'yen', type:'derived'},
+  {key:'roas_first',     label:'ROAS(初回)',                  fmt:'pct', type:'derived'},
   {key:'roas_ltv',       label:'ROAS(LTV12m)',                fmt:'pct', type:'derived'},
-  {key:'ad_ratio_first', label:'\u5e83\u544a\u8cbb\u7387(\u521d\u56de)',              fmt:'pct', type:'derived'},
-  {key:'ad_ratio_ltv',   label:'\u5e83\u544a\u8cbb\u7387(LTV12m)',            fmt:'pct', type:'derived'},
+  {key:'ad_ratio_first', label:'広告費率(初回)',              fmt:'pct', type:'derived'},
+  {key:'ad_ratio_ltv',   label:'広告費率(LTV12m)',            fmt:'pct', type:'derived'},
 ];
 
 export const DEFAULT_DIMENSIONS = [
-  {key:'action_date',  label:'\u65e5\u4ed8',   field:'action_date', type:'date'},
-  {key:'month',        label:'\u6708',     field:'action_date', type:'month'},
-  {key:'dow',          label:'\u66dc\u65e5',   field:'action_date', type:'dow'},
-  {key:'operator',     label:'\u4ee3\u7406\u5e97', field:'operator',    type:'value'},
-  {key:'media',        label:'\u5a92\u4f53',   field:'media',       type:'value'},
-  {key:'route',        label:'\u30eb\u30fc\u30c8', field:'route',       type:'value'},
-  {key:'seminar_type', label:'\u8a34\u6c42',   field:'seminar_type',type:'value'},
-  {key:'funnel',       label:'\u30d5\u30a1\u30cd\u30eb',field:'funnel',     type:'value'},
+  {key:'action_date',  label:'日付',   field:'action_date', type:'date'},
+  {key:'month',        label:'月',     field:'action_date', type:'month'},
+  {key:'dow',          label:'曜日',   field:'action_date', type:'dow'},
+  {key:'operator',     label:'代理店', field:'operator',    type:'value'},
+  {key:'media',        label:'媒体',   field:'media',       type:'value'},
+  {key:'route',        label:'ルート', field:'route',       type:'value'},
+  {key:'seminar_type', label:'訴求',   field:'seminar_type',type:'value'},
+  {key:'funnel',       label:'ファネル',field:'funnel',     type:'value'},
 ];
 
 export const DEFAULT_VIEWS_INIT = {
-  summary_daily: {label:'\u5168\u4f53\u30b5\u30de\u30ea\u30fc',         dims:['action_date'], filter: null},
-  summary_month: {label:'\u5168\u4f53\u30b5\u30de\u30ea\u30fc_\u6708\u5168\u4f53',  dims:['month'],       filter: null},
-  non_ad:        {label:'\u5e83\u544a\u4ee5\u5916\u5408\u7b97',         dims:['action_date'], filter: "r.funnel !== '\u5e83\u544a'"},
-  ad_only:       {label:'\u5e83\u544a\u5408\u7b97',             dims:['action_date'], filter: "r.funnel === '\u5e83\u544a'"},
-  op_media:      {label:'\u4ee3\u7406\u5e97\u00d7\u5a92\u4f53\u3054\u3068',      dims:['action_date','operator','media'], filter: null},
-  op_dow:        {label:'\u4ee3\u7406\u5e97\u00d7\u66dc\u65e5\u3054\u3068',      dims:['dow','operator'], filter: null},
-  seminar:       {label:'\u8a34\u6c42\u3054\u3068',             dims:['action_date','seminar_type'], filter: null},
-  media:         {label:'\u5a92\u4f53\u3054\u3068',             dims:['action_date','media'], filter: null},
-  lpcr:          {label:'LP-CR\u3054\u3068',            dims:['action_date','route'], filter: null},
+  summary_daily: {label:'全体サマリー',         dims:['action_date'], filter: null},
+  summary_month: {label:'全体サマリー_月全体',  dims:['month'],       filter: null},
+  non_ad:        {label:'広告以外合算',         dims:['action_date'], filter: "r.funnel !== '広告'"},
+  ad_only:       {label:'広告合算',             dims:['action_date'], filter: "r.funnel === '広告'"},
+  op_media:      {label:'代理店×媒体ごと',      dims:['action_date','operator','media'], filter: null},
+  op_dow:        {label:'代理店×曜日ごと',      dims:['dow','operator'], filter: null},
+  seminar:       {label:'訴求ごと',             dims:['action_date','seminar_type'], filter: null},
+  media:         {label:'媒体ごと',             dims:['action_date','media'], filter: null},
+  lpcr:          {label:'LP-CRごと',            dims:['action_date','route'], filter: null},
 };
 
 export const DEFAULT_FILTER_DEFS = [
-  {id: 'from',     type: 'date_from', field: 'action_date', label: '\u958b\u59cb\u65e5'},
-  {id: 'to',       type: 'date_to',   field: 'action_date', label: '\u7d42\u4e86\u65e5'},
+  {id: 'from',     type: 'date_from', field: 'action_date', label: '開始日'},
+  {id: 'to',       type: 'date_to',   field: 'action_date', label: '終了日'},
   {id: 'operator', type: 'multi',     field: 'operator',    label: 'operator'},
   {id: 'media',    type: 'multi',     field: 'media',       label: 'media'},
 ];
 
 export const DEFAULT_BASE_FORMULAS = {
-  ad_cost:     "sum(amount_1) where funnel = '\u5e83\u544a'",
-  ad_cost_fee: "sum(amount_2) where funnel = '\u5e83\u544a'",
-  impression:  "sum(impression) where funnel = '\u5e83\u544a'",
-  reach:       "sum(reach) where funnel = '\u5e83\u544a'",
-  clicks:      "sum(clicks) where funnel = '\u5e83\u544a'",
-  mcv:         "sum(cv) where funnel = '\u5e83\u544a'",
-  line_reg:    "sum(ac_count) where funnel = 'LINE\u767b\u9332'",
-  answer:      "sum(ac_count) where funnel = '\u56de\u7b54'",
-  booking:     "sum(ac_count) where funnel = '\u4e88\u7d04'",
-  join:        "sum(ac_count) where funnel = '\u53c2\u52a0'",
-  deal:        "sum(ac_count) where funnel = '\u6210\u7d04'",
-  rev_first:   "sum(amount_1) where funnel = '\u6210\u7d04'",
-  rev_ltv:     "sum(amount_2) where funnel = '\u6210\u7d04'",
+  ad_cost:     "sum(amount_1) where funnel = '広告'",
+  ad_cost_fee: "sum(amount_2) where funnel = '広告'",
+  impression:  "sum(impression) where funnel = '広告'",
+  reach:       "sum(reach) where funnel = '広告'",
+  clicks:      "sum(clicks) where funnel = '広告'",
+  mcv:         "sum(cv) where funnel = '広告'",
+  line_reg:    "sum(ac_count) where funnel = 'LINE登録'",
+  answer:      "sum(ac_count) where funnel = '回答'",
+  booking:     "sum(ac_count) where funnel = '予約'",
+  join:        "sum(ac_count) where funnel = '参加'",
+  deal:        "sum(ac_count) where funnel = '成約'",
+  rev_first:   "sum(amount_1) where funnel = '成約'",
+  rev_ltv:     "sum(amount_2) where funnel = '成約'",
 };
 
 export const DEFAULT_FORMULAS = {
@@ -110,28 +110,33 @@ export const DEFAULT_FORMULAS = {
   ad_ratio_ltv:   'ad_cost / rev_ltv',
 };
 
-export const DOW_LABELS = ['\u65e5','\u6708','\u706b','\u6c34','\u6728','\u91d1','\u571f'];
-export const DOW_ORDER = {'\u65e5':0,'\u6708':1,'\u706b':2,'\u6c34':3,'\u6728':4,'\u91d1':5,'\u571f':6};
+export const DOW_LABELS = ['日','月','火','水','木','金','土'];
+export const DOW_ORDER = {'日':0,'月':1,'火':2,'水':3,'木':4,'金':5,'土':6};
 
 export const PERM_GROUPS = [
-  {group: 'preset', label: '\u30d7\u30ea\u30bb\u30c3\u30c8', perms: [
-    {key: 'viewPresets',   label: '\u30b0\u30eb\u30fc\u30d7\u3092\u8868\u793a'},
-    {key: 'editPreset',   label: '\u7de8\u96c6'},
-    {key: 'savePreset',   label: '\u65b0\u898f\u4fdd\u5b58'},
-    {key: 'deletePreset', label: '\u524a\u9664'},
+  {group: 'sources', label: 'データソース', perms: [
+    {key: 'viewSources',   label: 'グループを表示'},
+    {key: 'addSource',     label: '追加'},
+    {key: 'deleteSource',  label: '削除'},
   ]},
-  {group: 'custom', label: '\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6', perms: [
-    {key: 'viewCustom',   label: '\u30b0\u30eb\u30fc\u30d7\u3092\u8868\u793a'},
-    {key: 'addCustom',    label: '\u8ffd\u52a0'},
-    {key: 'editCustom',   label: '\u7de8\u96c6'},
-    {key: 'deleteCustom', label: '\u524a\u9664'},
+  {group: 'preset', label: 'プリセット', perms: [
+    {key: 'viewPresets',   label: 'グループを表示'},
+    {key: 'editPreset',   label: '編集'},
+    {key: 'savePreset',   label: '新規保存'},
+    {key: 'deletePreset', label: '削除'},
   ]},
-  {group: 'settings', label: '\u8a2d\u5b9a', perms: [
-    {key: 'editMetrics',    label: '\u30e1\u30c8\u30ea\u30af\u30b9\u5b9a\u7fa9'},
-    {key: 'editFilters',    label: '\u30d5\u30a3\u30eb\u30bf\u5b9a\u7fa9'},
-    {key: 'editDimensions', label: '\u30c7\u30a3\u30e1\u30f3\u30b7\u30e7\u30f3\u5b9a\u7fa9'},
-    {key: 'editDefaults',   label: '\u6a19\u6e96\u5b9a\u7fa9'},
-    {key: 'manageUsers',    label: '\u30e6\u30fc\u30b6\u30fc\u7ba1\u7406'},
+  {group: 'custom', label: 'カスタムタブ', perms: [
+    {key: 'viewCustom',   label: 'グループを表示'},
+    {key: 'addCustom',    label: '追加'},
+    {key: 'editCustom',   label: '編集'},
+    {key: 'deleteCustom', label: '削除'},
+  ]},
+  {group: 'settings', label: '設定', perms: [
+    {key: 'editMetrics',    label: 'メトリクス定義'},
+    {key: 'editFilters',    label: 'フィルタ定義'},
+    {key: 'editDimensions', label: 'ディメンション定義'},
+    {key: 'editDefaults',   label: '標準定義'},
+    {key: 'manageUsers',    label: 'ユーザー管理'},
   ]},
 ];
 export const PERM_DEFS = PERM_GROUPS.flatMap(g => g.perms);
@@ -139,28 +144,39 @@ export const PERM_DEFS = PERM_GROUPS.flatMap(g => g.perms);
 export const ADMIN_PERMS = Object.fromEntries(PERM_DEFS.map(p => [p.key, true]));
 export const VIEWER_PERMS = Object.fromEntries(PERM_DEFS.map(p => [p.key, false]));
 export const PALETTE = ['#2563eb', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#7c3aed', '#ec4899', '#14b8a6'];
+export const BUILTIN_SEED_VERSION = 3;
 
-// ===== STORAGE KEYS =====
-export const METRIC_DEFS_KEY = 'dashboard.metricDefs.v1';
-export const DIMENSIONS_KEY = 'dashboard.dimensions.v1';
-export const VIEWS_KEY = 'dashboard.views.v1';
-export const FILTER_DEFS_KEY = 'dashboard.filterDefs.v1';
-export const STATE_KEY = 'dashboard.state.v1';
-export const PRESETS_KEY = 'dashboard.presets.all.v1';
+// ===== GLOBAL STORAGE KEYS (not per-source) =====
 export const SIDEBAR_KEY = 'dashboard.sidebar.collapsed';
 export const PANELS_KEY = 'dashboard.panels.collapsed';
-export const COL_WIDTHS_KEY = 'dashboard.colWidths.v1';
-export const CUSTOM_TABS_KEY = 'dashboard.customTabs.v1';
 export const GROUPS_KEY = 'dashboard.sidebarGroups.v1';
-export const VIEW_ORDER_KEY = 'dashboard.viewOrder.v1';
 export const USERS_KEY = 'dashboard.users.v1';
 export const CURRENT_USER_KEY = 'dashboard.currentUser.v1';
-export const FORMULAS_KEY = 'dashboard.metricFormulas.v1';
-export const BASE_FORMULAS_KEY = 'dashboard.baseMetricFormulas.v1';
-export const BUILTIN_SEED_VERSION = 2;
+export const DATA_SOURCES_KEY = 'dashboard.dataSources.v1';
+export const CURRENT_SOURCE_KEY = 'dashboard.currentSource.v1';
+
+// ===== PER-SOURCE STORAGE KEY HELPER =====
+function sk(base) { return `${base}.${S.CURRENT_SOURCE}`; }
+const METRIC_DEFS_BASE   = 'dashboard.metricDefs.v1';
+const DIMENSIONS_BASE    = 'dashboard.dimensions.v1';
+const VIEWS_BASE         = 'dashboard.views.v1';
+const FILTER_DEFS_BASE   = 'dashboard.filterDefs.v1';
+const STATE_BASE         = 'dashboard.state.v1';
+const PRESETS_BASE       = 'dashboard.presets.all.v1';
+const COL_WIDTHS_BASE    = 'dashboard.colWidths.v1';
+const CUSTOM_TABS_BASE   = 'dashboard.customTabs.v1';
+const VIEW_ORDER_BASE    = 'dashboard.viewOrder.v1';
+const FORMULAS_BASE      = 'dashboard.metricFormulas.v1';
+const BASE_FORMULAS_BASE = 'dashboard.baseMetricFormulas.v1';
+
+// Export key bases for migration
+export const STATE_KEY = STATE_BASE;
 
 // ===== SHARED MUTABLE STATE =====
 export const S = {
+  DATA_SOURCES: [],
+  CURRENT_SOURCE: null,
+  SOURCE_DATA: {},
   RAW: [],
   CURRENT_VIEW: 'summary_daily',
   SELECTED_DIMS: ['action_date'],
@@ -202,12 +218,12 @@ export function compileFilter(expr) {
   catch (e) { return null; }
 }
 
-// ===== STORAGE HELPERS =====
+// ===== PER-SOURCE STORAGE HELPERS =====
 export function saveMetricDefs() {
-  try { localStorage.setItem(METRIC_DEFS_KEY, JSON.stringify(S.METRIC_DEFS)); } catch (e) {}
+  try { localStorage.setItem(sk(METRIC_DEFS_BASE), JSON.stringify(S.METRIC_DEFS)); } catch (e) {}
 }
 export function saveDimensions() {
-  try { localStorage.setItem(DIMENSIONS_KEY, JSON.stringify(S.DIMENSIONS)); } catch (e) {}
+  try { localStorage.setItem(sk(DIMENSIONS_BASE), JSON.stringify(S.DIMENSIONS)); } catch (e) {}
 }
 export function saveViews() {
   try {
@@ -215,35 +231,46 @@ export function saveViews() {
     for (const [k, v] of Object.entries(S.VIEWS)) {
       serialize[k] = {label: v.label, dims: v.dims, filterExpr: v.filterExpr || null, presetName: v.presetName || v.label};
     }
-    localStorage.setItem(VIEWS_KEY, JSON.stringify(serialize));
+    localStorage.setItem(sk(VIEWS_BASE), JSON.stringify(serialize));
   } catch (e) {}
 }
 export function saveFilterDefs() {
-  try { localStorage.setItem(FILTER_DEFS_KEY, JSON.stringify(S.FILTER_DEFS)); } catch (e) {}
+  try { localStorage.setItem(sk(FILTER_DEFS_BASE), JSON.stringify(S.FILTER_DEFS)); } catch (e) {}
 }
 export function saveColWidths() {
-  try { localStorage.setItem(COL_WIDTHS_KEY, JSON.stringify(S.COL_WIDTHS)); } catch (e) {}
+  try { localStorage.setItem(sk(COL_WIDTHS_BASE), JSON.stringify(S.COL_WIDTHS)); } catch (e) {}
 }
 export function saveBaseFormulas() {
-  try { localStorage.setItem(BASE_FORMULAS_KEY, JSON.stringify(S.BASE_FORMULAS)); } catch (e) {}
+  try { localStorage.setItem(sk(BASE_FORMULAS_BASE), JSON.stringify(S.BASE_FORMULAS)); } catch (e) {}
 }
 export function saveFormulas() {
-  try { localStorage.setItem(FORMULAS_KEY, JSON.stringify(S.METRIC_FORMULAS)); } catch (e) {}
+  try { localStorage.setItem(sk(FORMULAS_BASE), JSON.stringify(S.METRIC_FORMULAS)); } catch (e) {}
 }
 export function getPresets() {
   try {
-    const v = JSON.parse(localStorage.getItem(PRESETS_KEY) || '[]');
+    const v = JSON.parse(localStorage.getItem(sk(PRESETS_BASE)) || '[]');
     return Array.isArray(v) ? v : [];
   } catch (e) { return []; }
 }
 export function setPresets(list) {
-  try { localStorage.setItem(PRESETS_KEY, JSON.stringify(list)); } catch (e) {}
+  try { localStorage.setItem(sk(PRESETS_BASE), JSON.stringify(list)); } catch (e) {}
 }
 export function saveCustomTabs() {
-  try { localStorage.setItem(CUSTOM_TABS_KEY, JSON.stringify(S.CUSTOM_TABS)); } catch (e) {}
+  try { localStorage.setItem(sk(CUSTOM_TABS_BASE), JSON.stringify(S.CUSTOM_TABS)); } catch (e) {}
 }
 export function saveViewOrder() {
-  try { localStorage.setItem(VIEW_ORDER_KEY, JSON.stringify(S.VIEW_ORDER)); } catch (e) {}
+  try { localStorage.setItem(sk(VIEW_ORDER_BASE), JSON.stringify(S.VIEW_ORDER)); } catch (e) {}
+}
+
+// ===== GLOBAL STORAGE HELPERS =====
+export function saveDataSources() {
+  try { localStorage.setItem(DATA_SOURCES_KEY, JSON.stringify(S.DATA_SOURCES)); } catch (e) {}
+}
+export function saveCurrentSource() {
+  try {
+    if (S.CURRENT_SOURCE) localStorage.setItem(CURRENT_SOURCE_KEY, S.CURRENT_SOURCE);
+    else localStorage.removeItem(CURRENT_SOURCE_KEY);
+  } catch (e) {}
 }
 export function saveUsers() {
   try { localStorage.setItem(USERS_KEY, JSON.stringify(S.USERS)); } catch (e) {}
@@ -268,7 +295,7 @@ export function syncCurrentTabState() {
 export function saveState() {
   syncCurrentTabState();
   try {
-    localStorage.setItem(STATE_KEY, JSON.stringify({
+    localStorage.setItem(sk(STATE_BASE), JSON.stringify({
       charts: S.CHARTS,
       currentView: S.CURRENT_VIEW,
       tabStates: S.TAB_STATES,
@@ -276,12 +303,15 @@ export function saveState() {
   } catch (e) {}
 }
 
-// ===== INIT STATE FROM STORAGE =====
-export function initStateFromStorage() {
+// ===== LOAD SOURCE CONFIG (load per-source settings into globals) =====
+function loadSourceConfig() {
+  const sid = S.CURRENT_SOURCE;
+  S.RAW = S.SOURCE_DATA[sid] || [];
+
   // METRIC_DEFS
   S.METRIC_DEFS = JSON.parse(JSON.stringify(DEFAULT_METRIC_DEFS));
   try {
-    const saved = JSON.parse(localStorage.getItem(METRIC_DEFS_KEY) || 'null');
+    const saved = JSON.parse(localStorage.getItem(sk(METRIC_DEFS_BASE)) || 'null');
     if (Array.isArray(saved) && saved.length) S.METRIC_DEFS = saved.map(m => ({key: m.key, label: m.label, fmt: m.fmt || 'int', type: m.type || 'derived'}));
   } catch (e) {}
   S.SELECTED_METRICS = S.METRIC_DEFS.map(m => m.key);
@@ -289,7 +319,7 @@ export function initStateFromStorage() {
   // DIMENSIONS
   S.DIMENSIONS = JSON.parse(JSON.stringify(DEFAULT_DIMENSIONS));
   try {
-    const saved = JSON.parse(localStorage.getItem(DIMENSIONS_KEY) || 'null');
+    const saved = JSON.parse(localStorage.getItem(sk(DIMENSIONS_BASE)) || 'null');
     if (Array.isArray(saved) && saved.length) S.DIMENSIONS = saved.map(d => ({key: d.key, label: d.label, field: d.field || d.key, type: d.type || 'value'}));
   } catch (e) {}
 
@@ -299,7 +329,7 @@ export function initStateFromStorage() {
     S.VIEWS[k] = {label: v.label, dims: [...v.dims], filterExpr: v.filter, filter: compileFilter(v.filter), presetName: v.label};
   }
   try {
-    const saved = JSON.parse(localStorage.getItem(VIEWS_KEY) || 'null');
+    const saved = JSON.parse(localStorage.getItem(sk(VIEWS_BASE)) || 'null');
     if (saved && typeof saved === 'object') {
       S.VIEWS = {};
       for (const [k, v] of Object.entries(saved)) {
@@ -308,32 +338,138 @@ export function initStateFromStorage() {
     }
   } catch (e) {}
   S.VIEW_ORDER = Object.keys(S.VIEWS);
+  try {
+    const saved = JSON.parse(localStorage.getItem(sk(VIEW_ORDER_BASE)) || 'null');
+    if (Array.isArray(saved)) {
+      const valid = saved.filter(k => S.VIEWS[k]);
+      const missing = Object.keys(S.VIEWS).filter(k => !valid.includes(k));
+      S.VIEW_ORDER = [...valid, ...missing];
+    }
+  } catch (e) {}
 
   // FILTER_DEFS
   S.FILTER_DEFS = JSON.parse(JSON.stringify(DEFAULT_FILTER_DEFS));
   try {
-    const saved = JSON.parse(localStorage.getItem(FILTER_DEFS_KEY) || 'null');
+    const saved = JSON.parse(localStorage.getItem(sk(FILTER_DEFS_BASE)) || 'null');
     if (Array.isArray(saved) && saved.length) S.FILTER_DEFS = saved;
   } catch (e) {}
 
   // COL_WIDTHS
-  try { S.COL_WIDTHS = JSON.parse(localStorage.getItem(COL_WIDTHS_KEY) || '{}'); } catch (e) {}
+  try { S.COL_WIDTHS = JSON.parse(localStorage.getItem(sk(COL_WIDTHS_BASE)) || '{}'); } catch (e) { S.COL_WIDTHS = {}; }
 
   // FORMULAS
   S.BASE_FORMULAS = {...DEFAULT_BASE_FORMULAS};
   try {
-    const saved = JSON.parse(localStorage.getItem(BASE_FORMULAS_KEY) || '{}');
+    const saved = JSON.parse(localStorage.getItem(sk(BASE_FORMULAS_BASE)) || '{}');
     if (saved && typeof saved === 'object') S.BASE_FORMULAS = {...DEFAULT_BASE_FORMULAS, ...saved};
   } catch (e) {}
   S.METRIC_FORMULAS = {...DEFAULT_FORMULAS};
   try {
-    const saved = JSON.parse(localStorage.getItem(FORMULAS_KEY) || '{}');
+    const saved = JSON.parse(localStorage.getItem(sk(FORMULAS_BASE)) || '{}');
     if (saved && typeof saved === 'object') S.METRIC_FORMULAS = {...DEFAULT_FORMULAS, ...saved};
   } catch (e) {}
 
-  // USERS
+  // CUSTOM_TABS
+  try { S.CUSTOM_TABS = JSON.parse(localStorage.getItem(sk(CUSTOM_TABS_BASE)) || '[]'); }
+  catch (e) { S.CUSTOM_TABS = []; }
+
+  // STATE (charts, currentView, tabStates)
+  S.CURRENT_VIEW = 'summary_daily';
+  S.CHARTS = [{id: 1, metric: 'ad_cost', type: 'bar', size: 'main', color: '#2563eb', bucket: 'auto'}];
+  S.CHART_ID_SEQ = 2;
+  S.TAB_STATES = {};
+  try {
+    const s = JSON.parse(localStorage.getItem(sk(STATE_BASE)) || 'null');
+    if (s) {
+      if (s.tabStates && typeof s.tabStates === 'object') S.TAB_STATES = s.tabStates;
+      if (s.currentView && (S.VIEWS[s.currentView] || S.CUSTOM_TABS.some(t => t.key === s.currentView))) S.CURRENT_VIEW = s.currentView;
+      if (Array.isArray(s.charts) && s.charts.length) {
+        S.CHARTS = s.charts.map(c => ({id: c.id, metric: c.metric, type: c.type, size: c.size, color: c.color || '#2563eb', name: c.name || '', bucket: c.bucket || 'auto'}));
+        S.CHART_ID_SEQ = Math.max(...S.CHARTS.map(c => c.id)) + 1;
+      }
+    }
+  } catch (e) {}
+
+  // Reset filter values & drafts
+  S.FILTER_VALUES = {};
+  S.SELECTED_DIMS = ['action_date'];
+  S.THRESHOLDS = {};
+  S.THRESHOLD_METRICS = [];
+  S.CURRENT_FILTER = null;
+  S.PRESET_EDIT_IDX = null;
+  S.USERS_DRAFT = null;
+  S.METRICS_DRAFT = null;
+  S.METRICS_DRAFT_BASE = null;
+  S.METRIC_DEFS_DRAFT = null;
+  S.FILTER_DEFS_DRAFT = null;
+  S.VIEWS_DRAFT = null;
+  S.DIMENSIONS_DRAFT = null;
+  S.DIM_EXPR_CACHE.clear();
+}
+
+// ===== SWITCH SOURCE =====
+// Save ALL per-source settings for current source
+function saveAllSourceConfig() {
+  saveState();
+  saveMetricDefs();
+  saveDimensions();
+  saveViews();
+  saveFilterDefs();
+  saveColWidths();
+  saveBaseFormulas();
+  saveFormulas();
+  saveCustomTabs();
+  saveViewOrder();
+}
+
+export function switchSource(id) {
+  // Save current source settings before switching
+  if (S.CURRENT_SOURCE) saveAllSourceConfig();
+  // Switch
+  S.CURRENT_SOURCE = id;
+  saveCurrentSource();
+  // Load new source config
+  loadSourceConfig();
+}
+
+// ===== MIGRATE: move old global keys to default source =====
+function migrateToSourceScoped() {
+  const migrated = localStorage.getItem('dashboard.migrated.v2');
+  if (migrated) return;
+  const bases = [METRIC_DEFS_BASE, DIMENSIONS_BASE, VIEWS_BASE, FILTER_DEFS_BASE,
+    STATE_BASE, PRESETS_BASE, COL_WIDTHS_BASE, CUSTOM_TABS_BASE, VIEW_ORDER_BASE,
+    FORMULAS_BASE, BASE_FORMULAS_BASE];
+  for (const base of bases) {
+    const old = localStorage.getItem(base);
+    if (old != null && !localStorage.getItem(base + '.default')) {
+      localStorage.setItem(base + '.default', old);
+    }
+  }
+  try { localStorage.setItem('dashboard.migrated.v2', '1'); } catch (e) {}
+}
+
+// ===== INIT (called once at startup) =====
+export function initStateFromStorage() {
+  // DATA SOURCES (global)
+  S.DATA_SOURCES = [{id: 'default', name: 'デフォルト'}];
+  try {
+    const saved = JSON.parse(localStorage.getItem(DATA_SOURCES_KEY) || 'null');
+    if (Array.isArray(saved) && saved.length) S.DATA_SOURCES = saved;
+  } catch (e) {}
+  S.SOURCE_DATA = {};
+  S.DATA_SOURCES.forEach(ds => { S.SOURCE_DATA[ds.id] = []; });
+  const savedSource = localStorage.getItem(CURRENT_SOURCE_KEY);
+  S.CURRENT_SOURCE = (savedSource && S.DATA_SOURCES.some(ds => ds.id === savedSource)) ? savedSource : S.DATA_SOURCES[0]?.id || 'default';
+
+  // Migrate old keys to default source
+  migrateToSourceScoped();
+
+  // USERS (global, not per-source)
   S.USERS = [
-    {id: 'admin',  password: 'admin',  name: '\u7ba1\u7406\u8005', isAdmin: true,  perms: {...ADMIN_PERMS}},
-    {id: 'viewer', password: 'viewer', name: '\u95b2\u89a7\u8005', isAdmin: false, perms: {...VIEWER_PERMS}},
+    {id: 'admin',  password: 'admin',  name: '管理者', isAdmin: true,  perms: {...ADMIN_PERMS}},
+    {id: 'viewer', password: 'viewer', name: '閲覧者', isAdmin: false, perms: {...VIEWER_PERMS}},
   ];
+
+  // Load current source config
+  loadSourceConfig();
 }

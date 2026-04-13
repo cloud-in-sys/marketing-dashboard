@@ -5,6 +5,19 @@ import { hasPerm } from './auth.js';
 import { emit } from './events.js';
 
 // ===== Presets =====
+// 共通閾値定義
+const T_CTR       = {ctr:       {min:0.005, minOp:'<=', max:0.01,  maxOp:'<=', target:0.015, targetOp:'>='}};
+const T_CPC       = {cpc:       {min:500,   minOp:'>=', max:300,   maxOp:'>=', target:150,   targetOp:'<='}};
+const T_CVR       = {cvr:       {min:0.01,  minOp:'<=', max:0.03,  maxOp:'<=', target:0.05,  targetOp:'>='}};
+const T_CPA_REG   = {cpa_reg:   {min:15000, minOp:'>=', max:10000, maxOp:'>=', target:5000,  targetOp:'<='}};
+const T_CPA_ANS   = {cpa_answer:{min:25000, minOp:'>=', max:18000, maxOp:'>=', target:10000, targetOp:'<='}};
+const T_CPA_JOIN  = {cpa_join:  {min:40000, minOp:'>=', max:30000, maxOp:'>=', target:20000, targetOp:'<='}};
+const T_CPO       = {cpo:       {min:80000, minOp:'>=', max:60000, maxOp:'>=', target:40000, targetOp:'<='}};
+const T_ROAS_LTV  = {roas_ltv:  {min:1.0,   minOp:'<=', max:2.0,   maxOp:'<=', target:3.0,   targetOp:'>='}};
+const T_ANS_RATE  = {answer_rate:{min:0.3,  minOp:'<=', max:0.5,   maxOp:'<=', target:0.7,   targetOp:'>='}};
+const T_JOIN_RATE = {join_rate:  {min:0.3,  minOp:'<=', max:0.5,   maxOp:'<=', target:0.7,   targetOp:'>='}};
+const T_DEAL_RATE = {deal_rate:  {min:0.1,  minOp:'<=', max:0.2,   maxOp:'<=', target:0.3,   targetOp:'>='}};
+
 export const BUILTIN_PRESET_DEFS = {
   summary_daily: {
     charts: [
@@ -14,6 +27,8 @@ export const BUILTIN_PRESET_DEFS = {
       {metric: 'deal',     type: 'bar',  size: 'sub',  color: '#f59e0b'},
     ],
     metrics: ['ad_cost','ad_cost_fee','impression','clicks','ctr','cpc','line_reg','cpa_reg','answer','answer_rate','cpa_answer','booking','join','join_rate','cpa_join','deal','cpo','rev_ltv','roas_ltv'],
+    thresholdMetrics: ['ctr','cpc','cpa_reg','cpa_answer','cpa_join','cpo','roas_ltv'],
+    thresholds: {...T_CTR,...T_CPC,...T_CPA_REG,...T_CPA_ANS,...T_CPA_JOIN,...T_CPO,...T_ROAS_LTV},
   },
   summary_month: {
     charts: [
@@ -22,6 +37,8 @@ export const BUILTIN_PRESET_DEFS = {
       {metric: 'roas_ltv', type: 'line', size: 'sub',  color: '#7c3aed'},
     ],
     metrics: ['ad_cost','ad_cost_fee','impression','clicks','line_reg','cpa_reg','answer','booking','join','deal','cpo','rev_first','rev_ltv','roas_first','roas_ltv'],
+    thresholdMetrics: ['cpa_reg','cpo','roas_ltv'],
+    thresholds: {...T_CPA_REG,...T_CPO,...T_ROAS_LTV},
   },
   non_ad: {
     charts: [
@@ -31,6 +48,8 @@ export const BUILTIN_PRESET_DEFS = {
       {metric: 'deal',     type: 'bar',  size: 'sub',  color: '#f59e0b'},
     ],
     metrics: ['line_reg','answer','answer_rate','booking','join','join_rate','seat_first','seat_ltv','deal','deal_rate','avg_first','avg_ltv','rev_first','rev_ltv'],
+    thresholdMetrics: ['answer_rate','join_rate','deal_rate'],
+    thresholds: {...T_ANS_RATE,...T_JOIN_RATE,...T_DEAL_RATE},
   },
   ad_only: {
     charts: [
@@ -40,6 +59,8 @@ export const BUILTIN_PRESET_DEFS = {
       {metric: 'cpc',        type: 'line', size: 'sub',  color: '#f59e0b'},
     ],
     metrics: ['ad_cost','ad_cost_fee','impression','cpm','reach','clicks','ctr','cpc','mcv','mcvr','cvr','divergence'],
+    thresholdMetrics: ['ctr','cpc','cvr'],
+    thresholds: {...T_CTR,...T_CPC,...T_CVR},
   },
   op_media: {
     charts: [
@@ -48,6 +69,8 @@ export const BUILTIN_PRESET_DEFS = {
       {metric: 'roas_ltv', type: 'bar',  size: 'sub',  color: '#10b981'},
     ],
     metrics: ['ad_cost','impression','clicks','ctr','cpc','cvr','line_reg','cpa_reg','cpa_answer','cpa_booking','deal','cpo','roas_ltv'],
+    thresholdMetrics: ['cpa_reg','cpo','roas_ltv'],
+    thresholds: {...T_CPA_REG,...T_CPO,...T_ROAS_LTV},
   },
   op_dow: {
     charts: [
@@ -56,6 +79,8 @@ export const BUILTIN_PRESET_DEFS = {
       {metric: 'cpa_reg',  type: 'bar', size: 'sub',  color: '#f59e0b'},
     ],
     metrics: ['ad_cost','clicks','ctr','cvr','line_reg','cpa_reg','cpa_answer','deal','cpo'],
+    thresholdMetrics: ['cvr','cpa_reg','cpo'],
+    thresholds: {...T_CVR,...T_CPA_REG,...T_CPO},
   },
   seminar: {
     charts: [
@@ -65,6 +90,8 @@ export const BUILTIN_PRESET_DEFS = {
       {metric: 'cpo',         type: 'bar',  size: 'sub',  color: '#f59e0b'},
     ],
     metrics: ['line_reg','answer','answer_rate','cpa_answer','booking','join','join_rate','cpa_join','deal','deal_rate','cpo'],
+    thresholdMetrics: ['answer_rate','join_rate','deal_rate','cpo'],
+    thresholds: {...T_ANS_RATE,...T_JOIN_RATE,...T_DEAL_RATE,...T_CPO},
   },
   media: {
     charts: [
@@ -74,6 +101,8 @@ export const BUILTIN_PRESET_DEFS = {
       {metric: 'roas_ltv', type: 'bar',  size: 'sub',  color: '#7c3aed'},
     ],
     metrics: ['ad_cost','impression','clicks','ctr','cpc','cvr','line_reg','cpa_reg','cpa_answer','deal','cpo','rev_ltv','roas_ltv'],
+    thresholdMetrics: ['ctr','cvr','cpa_reg','cpo','roas_ltv'],
+    thresholds: {...T_CTR,...T_CVR,...T_CPA_REG,...T_CPO,...T_ROAS_LTV},
   },
   lpcr: {
     charts: [
@@ -83,34 +112,36 @@ export const BUILTIN_PRESET_DEFS = {
       {metric: 'cpa_reg',    type: 'bar',  size: 'sub',  color: '#7c3aed'},
     ],
     metrics: ['clicks','mcv','mcvr','cvr','divergence','line_reg','cpa_reg'],
+    thresholdMetrics: ['cvr','cpa_reg'],
+    thresholds: {...T_CVR,...T_CPA_REG},
   },
 };
 
 export function seedDefaultPresets() {
   const existing = getPresets();
-  const existingBuiltins = new Map(existing.filter(p => p.builtin).map(p => [p.name, p]));
-  const userPresets = existing.filter(p => !p.builtin);
-  const initLabels = new Set(Object.values(DEFAULT_VIEWS_INIT).map(v => v.label));
-  const customBuiltins = existing.filter(p => p.builtin && !initLabels.has(p.name));
-  const newBuiltins = Object.entries(DEFAULT_VIEWS_INIT).map(([k, v]) => {
-    const prev = existingBuiltins.get(v.label);
-    if (prev && (prev.seedVersion || 0) >= BUILTIN_SEED_VERSION) return prev;
-    const def = BUILTIN_PRESET_DEFS[k] || {
+  // If presets already exist for this source, don't re-seed
+  if (existing.length > 0) return;
+  // First time for this source: create builtin presets for current VIEWS
+  const builtins = [];
+  for (const [k, v] of Object.entries(S.VIEWS)) {
+    const initDef = DEFAULT_VIEWS_INIT[k];
+    const presetDef = initDef ? (BUILTIN_PRESET_DEFS[k] || null) : null;
+    const def = presetDef || {
       charts: [{metric: 'ad_cost', type: 'bar', size: 'main', color: '#2563eb'}],
       metrics: S.METRIC_DEFS.map(m => m.key),
     };
-    return {
-      name: v.label,
+    builtins.push({
+      name: v.presetName || v.label,
       builtin: true,
       seedVersion: BUILTIN_SEED_VERSION,
       charts: def.charts.map((c, i) => ({id: i + 1, metric: c.metric, type: c.type, size: c.size, color: c.color, name: '', bucket: 'auto'})),
       dims: [...v.dims],
       metrics: [...def.metrics],
-      thresholds: {},
-      thresholdMetrics: [],
-    };
-  });
-  setPresets([...newBuiltins, ...customBuiltins, ...userPresets]);
+      thresholds: def.thresholds ? JSON.parse(JSON.stringify(def.thresholds)) : {},
+      thresholdMetrics: def.thresholdMetrics ? [...def.thresholdMetrics] : [],
+    });
+  }
+  setPresets(builtins);
 }
 
 export function renderPresets() {

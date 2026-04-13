@@ -600,11 +600,31 @@ export function setupSettingsEvents() {
     if (new Set(keys).size !== keys.length) { await showModal({title: '\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093', body: '\u30ad\u30fc\u304c\u91cd\u8907\u3057\u3066\u3044\u307e\u3059', okText: 'OK', cancelText: ''}); return; }
     const ok = await showModal({title: '\u6a19\u6e96\u5b9a\u7fa9\u3092\u4fdd\u5b58', body: '\u5909\u66f4\u5185\u5bb9\u3092\u4fdd\u5b58\u3057\u307e\u3059\u304b\uff1f', okText: '\u4fdd\u5b58'});
     if (!ok) return;
+    // Build old preset name mapping from current VIEWS
+    const oldPresetNames = {};
+    for (const [k, v] of Object.entries(S.VIEWS)) {
+      oldPresetNames[k] = v.presetName || v.label;
+    }
+
+    // Create presets for new tabs / rename presets for renamed tabs
+    const presetList = getPresets();
     defs.forEach(v => {
       if (!v.presetName) {
+        // New tab: create a builtin preset
         v.presetName = createBuiltinPresetFor(v.label || '\u65b0\u898f\u30bf\u30d6');
+      } else {
+        // Existing tab: if label changed, rename the linked preset too
+        const oldName = oldPresetNames[v.key];
+        if (oldName && oldName !== v.label && v.presetName === oldName) {
+          const preset = presetList.find(p => p.name === oldName && p.builtin);
+          if (preset) {
+            preset.name = v.label;
+            v.presetName = v.label;
+          }
+        }
       }
     });
+
     const next = {};
     defs.forEach(v => {
       next[v.key] = {
@@ -623,11 +643,12 @@ export function setupSettingsEvents() {
     if (!S.VIEWS[S.CURRENT_VIEW] && !S.CUSTOM_TABS.some(t => t.key === S.CURRENT_VIEW)) {
       S.CURRENT_VIEW = S.VIEW_ORDER[0] || 'summary_daily';
     }
+
+    // Delete orphan builtin presets (not referenced by any view)
     const referenced = new Set(Object.values(S.VIEWS).map(v => v.presetName));
-    const initLabels = new Set(Object.values(S.DEFAULT_VIEWS_INIT || {}).map(v => v.label));
-    const cleaned = getPresets().filter(p => {
+    const latestPresets = getPresets();
+    const cleaned = latestPresets.filter(p => {
       if (!p.builtin) return true;
-      if (initLabels.has(p.name)) return true;
       return referenced.has(p.name);
     });
     setPresets(cleaned);
