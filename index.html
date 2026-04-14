@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="styles/modal.css">
 </head>
 <body>
-<div class="login-overlay hidden" id="login-overlay">
+<div class="login-overlay" id="login-overlay">
   <div class="login-card">
     <div class="login-logo">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -25,7 +25,22 @@
       </svg>
     </div>
     <div class="login-title">AdMetrics Dashboard</div>
-    <div class="login-subtitle">Googleアカウントでログイン</div>
+    <div class="login-subtitle hidden" id="login-subtitle">ログインしてください</div>
+    <div class="login-checking hidden" id="login-checking">
+      <div class="login-spinner"></div>
+      <div class="login-checking-text">認証情報を確認しています...</div>
+    </div>
+    <div class="login-body hidden" id="login-body">
+    <form id="login-form" class="login-form">
+      <label>メールアドレス</label>
+      <input type="email" id="login-id" autocomplete="username" required>
+      <label>パスワード</label>
+      <input type="password" id="login-pw" autocomplete="current-password" required>
+      <div class="login-error hidden" id="login-error"></div>
+      <button type="submit" class="login-btn">ログイン</button>
+      <button type="button" class="login-forgot" id="login-forgot-btn">パスワードをお忘れですか？</button>
+    </form>
+    <div class="login-divider"><span>または</span></div>
     <button type="button" class="login-google-btn" id="login-google-btn">
       <svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true">
         <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -35,7 +50,7 @@
       </svg>
       <span>Googleでログイン</span>
     </button>
-    <div class="login-error hidden" id="login-error"></div>
+    </div><!-- /login-body -->
   </div>
 </div>
 <header class="app-header">

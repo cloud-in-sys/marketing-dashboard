@@ -30,6 +30,7 @@ export const api = {
 
   // Users
   listUsers:     () => request('GET', '/api/users'),
+  createUser:    (data) => request('POST', '/api/users', data),
   updateUser:    (uid, patch) => request('PUT', `/api/users/${uid}`, patch),
   deleteUser:    (uid) => request('DELETE', `/api/users/${uid}`),
 

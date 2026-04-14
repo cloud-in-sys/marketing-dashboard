@@ -2,7 +2,7 @@
 // previous localStorage-based auth module where possible.
 
 import { S, VIEWER_PERMS } from './state.js';
-import { signInWithGoogle, signOutUser, onAuthChange } from './firebaseClient.js';
+import { signInWithGoogle, signInWithEmail, sendPasswordReset, signOutUser, onAuthChange } from './firebaseClient.js';
 
 export function getCurrentUser() {
   return S.USERS.find(u => u.uid === S.CURRENT_USER)
@@ -53,6 +53,7 @@ export function applyPermissionUI() {
 export function showLogin() {
   const overlay = document.getElementById('login-overlay');
   if (overlay) overlay.classList.remove('hidden');
+  showLoginForm();
 }
 
 export function hideLogin() {
@@ -60,17 +61,66 @@ export function hideLogin() {
   if (overlay) overlay.classList.add('hidden');
 }
 
+function showLoginForm() {
+  const body = document.getElementById('login-body');
+  const checking = document.getElementById('login-checking');
+  const subtitle = document.getElementById('login-subtitle');
+  if (body) body.classList.remove('hidden');
+  if (checking) checking.classList.add('hidden');
+  if (subtitle) subtitle.classList.remove('hidden');
+}
+
+function showLoginChecking() {
+  const body = document.getElementById('login-body');
+  const checking = document.getElementById('login-checking');
+  const subtitle = document.getElementById('login-subtitle');
+  const errEl = document.getElementById('login-error');
+  if (body) body.classList.add('hidden');
+  if (checking) checking.classList.remove('hidden');
+  if (subtitle) subtitle.classList.add('hidden');
+  if (errEl) errEl.classList.add('hidden');
+}
+
 export async function signIn() {
   try {
     await signInWithGoogle();
-    // Auth state change listener will fire and trigger app init
   } catch (e) {
-    const errEl = document.getElementById('login-error');
-    if (errEl) {
-      errEl.textContent = e.message || 'ログインに失敗しました';
-      errEl.classList.remove('hidden');
-    }
+    showAuthError(e);
   }
+}
+
+export async function signInEmailPassword(email, password) {
+  try {
+    await signInWithEmail(email, password);
+  } catch (e) {
+    showAuthError(e);
+  }
+}
+
+export async function resetPassword(email) {
+  try {
+    await sendPasswordReset(email);
+    return true;
+  } catch (e) {
+    showAuthError(e);
+    return false;
+  }
+}
+
+function showAuthError(e) {
+  const errEl = document.getElementById('login-error');
+  if (!errEl) return;
+  const code = e?.code || '';
+  let msg = e?.message || 'ログインに失敗しました';
+  if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) {
+    msg = 'メールアドレスまたはパスワードが違います';
+  } else if (code.includes('too-many-requests')) {
+    msg = '試行回数が多すぎます。しばらくしてから再度お試しください';
+  } else if (code.includes('network-request-failed')) {
+    msg = 'ネットワークエラー';
+  }
+  errEl.textContent = msg;
+  errEl.classList.remove('hidden');
 }
 
 export async function logout() {
@@ -101,14 +151,21 @@ export function observeAuth({ onReady, onLoggedOut }) {
       onLoggedOut?.();
       return;
     }
-    hideLogin();
+    showLoginChecking();
     try {
       await onReady?.(fbUser);
+      hideLogin();
     } catch (e) {
       console.error('[auth] onReady failed', e);
+      const isForbidden = e?.status === 403;
+      const msg = isForbidden
+        ? (e.message || 'このアカウントはアクセス許可されていません')
+        : 'データの読み込みに失敗しました: ' + (e.message || e);
+      // Sign out so the session doesn't linger
+      try { await signOutUser(); } catch (_) {}
       const errEl = document.getElementById('login-error');
       if (errEl) {
-        errEl.textContent = 'データの読み込みに失敗しました: ' + (e.message || e);
+        errEl.textContent = msg;
         errEl.classList.remove('hidden');
       }
       showLogin();

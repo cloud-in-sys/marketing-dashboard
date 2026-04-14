@@ -12,6 +12,35 @@ app.get('/', adminOnly, async c => {
   return c.json({ users: snap.docs.map(d => d.data()) });
 });
 
+// Create a new email/password user (admin only)
+app.post('/', adminOnly, async c => {
+  const body = await c.req.json();
+  const email = (body.email || '').trim();
+  const password = body.password || '';
+  const name = (body.name || '').trim() || email.split('@')[0] || 'User';
+  const isAdmin = !!body.isAdmin;
+  if (!email || !password) throw httpError(400, 'email and password are required');
+  if (password.length < 6) throw httpError(400, 'password must be at least 6 characters');
+
+  let userRecord;
+  try {
+    userRecord = await auth.createUser({ email, password, displayName: name });
+  } catch (e) {
+    throw httpError(400, e.message || 'Failed to create auth user');
+  }
+  const profile = {
+    uid: userRecord.uid,
+    email,
+    name,
+    photoURL: '',
+    isAdmin,
+    perms: isAdmin ? { ...ADMIN_PERMS } : { ...VIEWER_PERMS },
+    createdAt: new Date().toISOString(),
+  };
+  await db.collection('users').doc(userRecord.uid).set(profile);
+  return c.json(profile);
+});
+
 // Update user's role/perms (admin only)
 app.put('/:uid', adminOnly, async c => {
   const uid = c.req.param('uid');

@@ -5,7 +5,7 @@ import { api } from './api.js';
 import { escapeHtml } from './utils.js';
 import { showModal } from './modal.js';
 import { parseBaseFormula } from './aggregate.js';
-import { hasPerm, getCurrentUser, tryLogin, hideLogin, logout, renderCurrentUserLabel, applyPermissionUI } from './auth.js';
+import { hasPerm, logout, renderCurrentUserLabel, applyPermissionUI } from './auth.js';
 import { renderPresets, renderTabPresetSelect, createBuiltinPresetFor, exitPresetEdit } from './presets.js';
 import { renderViewNav } from './tabs.js';
 import { renderFilters } from './filters.js';
@@ -235,10 +235,10 @@ function renderUserListView(list, src) {
     const role = getUserRole(u);
     return `
       <div class="user-list-row" data-user-open="${i}">
-        <div class="user-avatar">${escapeHtml((u.name || u.id || '?').slice(0, 1).toUpperCase())}</div>
+        <div class="user-avatar">${escapeHtml((u.name || u.email || '?').slice(0, 1).toUpperCase())}</div>
         <div class="user-list-info">
           <div class="user-list-name">${escapeHtml(u.name || '(\u7121\u540d)')}</div>
-          <div class="user-list-id">${escapeHtml(u.id)}</div>
+          <div class="user-list-id">${escapeHtml(u.email || '')}</div>
         </div>
         <span class="user-list-role user-list-role-${role}">${ROLE_LABEL[role]}</span>
         <span class="user-list-caret">›</span>
@@ -253,9 +253,9 @@ function renderUserDetail(list, src, i) {
     <button type="button" class="user-back-btn" data-user-back>\u2190 \u4e00\u89a7\u306b\u623b\u308b</button>
     <div class="user-row" data-user-idx="${i}">
       <div class="user-row-top">
-        <div class="user-avatar">${escapeHtml((u.name || u.id || '?').slice(0, 1).toUpperCase())}</div>
+        <div class="user-avatar">${escapeHtml((u.name || u.email || '?').slice(0, 1).toUpperCase())}</div>
         <div class="user-row-main">
-          <input type="text" class="user-name-input" data-user-name value="${escapeHtml(u.name)}" placeholder="\u8868\u793a\u540d">
+          <input type="text" class="user-name-input" data-user-name value="${escapeHtml(u.name || '')}" placeholder="\u8868\u793a\u540d">
           <select class="user-role-select" data-user-role>
             <option value="admin"${role==='admin'?' selected':''}>\u7ba1\u7406\u8005</option>
             <option value="operator"${role==='operator'?' selected':''}>\u904b\u7528\u8005</option>
@@ -266,12 +266,8 @@ function renderUserDetail(list, src, i) {
       </div>
       <div class="user-field-grid">
         <div class="user-field">
-          <label>\u30ed\u30b0\u30a4\u30f3ID</label>
-          <input type="text" data-user-id value="${escapeHtml(u.id)}" placeholder="user01">
-        </div>
-        <div class="user-field">
-          <label>\u30d1\u30b9\u30ef\u30fc\u30c9</label>
-          <input type="text" data-user-pw value="${escapeHtml(u.password)}" placeholder="\u30d1\u30b9\u30ef\u30fc\u30c9">
+          <label>メールアドレス</label>
+          <input type="text" value="${escapeHtml(u.email || '')}" disabled>
         </div>
       </div>
       <div class="user-perms-section">
@@ -289,17 +285,22 @@ function renderUserDetail(list, src, i) {
 }
 
 async function addUser() {
-  const name = await showModal({title: '\u30e6\u30fc\u30b6\u30fc\u3092\u8ffd\u52a0', body: '\u65b0\u3057\u3044\u30e6\u30fc\u30b6\u30fc\u306e\u8868\u793a\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', input: true, placeholder: '\u4f8b: \u7530\u4e2d', okText: '\u8ffd\u52a0'});
+  const email = await showModal({title: 'ユーザーを追加', body: '新しいユーザーのメールアドレスを入力してください', input: true, placeholder: 'user@example.com', okText: '次へ'});
+  if (!email) return;
+  const password = await showModal({title: 'パスワード', body: '初期パスワード（6文字以上）を入力してください', input: true, placeholder: 'password', okText: '次へ'});
+  if (!password) return;
+  const name = await showModal({title: '表示名', body: '表示名を入力してください', input: true, defaultValue: email.split('@')[0], placeholder: '例: 田中', okText: '作成'});
   if (!name) return;
-  const draft = S.USERS_DRAFT || S.USERS;
-  let baseId = name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'user';
-  let id = baseId;
-  let n = 1;
-  while (draft.some(u => u.id === id)) { id = baseId + n++; }
-  draft.push({id, password: '', name, isAdmin: false, perms: {...VIEWER_PERMS}});
-  markUsersDirty();
-  userDetailIdx = draft.length - 1;
-  renderUsersModal();
+  try {
+    const created = await api.createUser({ email, password, name, isAdmin: false });
+    S.USERS.push(created);
+    S.USERS_DRAFT = JSON.parse(JSON.stringify(S.USERS));
+    userDetailIdx = S.USERS_DRAFT.length - 1;
+    renderUsersModal();
+    await showModal({title: '作成完了', body: `${email} を追加しました。初期パスワードを本人に伝えてください。`, okText: 'OK', cancelText: ''});
+  } catch (e) {
+    await showModal({title: '作成失敗', body: e.message || 'ユーザー作成に失敗しました', okText: 'OK', cancelText: ''});
+  }
 }
 
 async function removeUser(idx) {
@@ -516,17 +517,7 @@ function renderDefaultsDoc() {
 
 // ===== setupSettingsEvents =====
 export function setupSettingsEvents() {
-  // ----- LOGIN -----
-  document.getElementById('login-form').addEventListener('submit', e => {
-    e.preventDefault();
-    const id = document.getElementById('login-id').value.trim();
-    const pw = document.getElementById('login-pw').value;
-    if (tryLogin(id, pw)) {
-      hideLogin();
-    } else {
-      document.getElementById('login-error').classList.remove('hidden');
-    }
-  });
+  // Login is now handled via Firebase Auth (see main.js -> signIn())
   document.getElementById('header-logout').addEventListener('click', async () => {
     const ok = await showModal({title: '\u30ed\u30b0\u30a2\u30a6\u30c8', body: '\u30ed\u30b0\u30a2\u30a6\u30c8\u3057\u307e\u3059\u304b\uff1f', okText: '\u30ed\u30b0\u30a2\u30a6\u30c8'});
     if (!ok) return;
@@ -1023,8 +1014,6 @@ export function setupSettingsEvents() {
     const u = draft[idx];
     if (!u) return;
     if (e.target.matches('[data-user-name]')) u.name = e.target.value;
-    else if (e.target.matches('[data-user-id]')) u.id = e.target.value;
-    else if (e.target.matches('[data-user-pw]')) u.password = e.target.value;
     else if (e.target.matches('[data-perm]')) u.perms[e.target.dataset.perm] = e.target.checked;
     markUsersDirty();
   });

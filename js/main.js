@@ -19,7 +19,7 @@ import { renderChart } from './chart.js';
 import { renderTable } from './table.js';
 import { groupRows } from './dimensions.js';
 import { dimLabel } from './dimensions.js';
-import { getCurrentUser, hasPerm, renderCurrentUserLabel, applyPermissionUI, hideLogin, observeAuth, signIn, logout } from './auth.js';
+import { getCurrentUser, hasPerm, renderCurrentUserLabel, applyPermissionUI, hideLogin, observeAuth, signIn, signInEmailPassword, resetPassword, logout } from './auth.js';
 import { seedDefaultPresets, renderPresets, loadPresetIntoGlobals, renderTabPresetSelect,
   enterPresetEdit, exitPresetEdit, syncPresetEdit, deletePreset, savePresetPrompt,
   loadTabState, initTabStates, setExitSettingsMode as setExitSettingsModePresets } from './presets.js';
@@ -1161,6 +1161,28 @@ applySidebarGroupState();
 
 // Wire login/logout buttons
 document.getElementById('login-google-btn')?.addEventListener('click', () => signIn());
+document.getElementById('login-form')?.addEventListener('submit', e => {
+  e.preventDefault();
+  const id = document.getElementById('login-id').value.trim();
+  const pw = document.getElementById('login-pw').value;
+  if (!id || !pw) return;
+  signInEmailPassword(id, pw);
+});
+document.getElementById('login-forgot-btn')?.addEventListener('click', async () => {
+  const email = await showModal({
+    title: 'パスワードリセット',
+    body: '登録済みのメールアドレスを入力してください。リセット用メールをお送りします。',
+    input: true,
+    defaultValue: document.getElementById('login-id').value.trim(),
+    placeholder: 'user@example.com',
+    okText: '送信',
+  });
+  if (!email) return;
+  const ok = await resetPassword(email);
+  if (ok) {
+    await showModal({title: '送信しました', body: `${email} にリセット用メールを送りました。届かない場合は迷惑メールフォルダも確認してください。`, okText: 'OK', cancelText: ''});
+  }
+});
 document.getElementById('header-logout')?.addEventListener('click', () => logout());
 
 // After user signs in, load data from backend and render.

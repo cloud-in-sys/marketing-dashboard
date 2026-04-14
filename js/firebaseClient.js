@@ -4,6 +4,8 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   signOut as fbSignOut,
   onAuthStateChanged,
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
@@ -16,6 +18,15 @@ export async function signInWithGoogle() {
   const provider = new GoogleAuthProvider();
   const cred = await signInWithPopup(firebaseAuth, provider);
   return cred.user;
+}
+
+export async function signInWithEmail(email, password) {
+  const cred = await signInWithEmailAndPassword(firebaseAuth, email, password);
+  return cred.user;
+}
+
+export async function sendPasswordReset(email) {
+  await sendPasswordResetEmail(firebaseAuth, email);
 }
 
 export async function signOutUser() {

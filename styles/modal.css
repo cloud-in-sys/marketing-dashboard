@@ -90,8 +90,50 @@
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
 }
 .login-btn:hover { filter: brightness(1.08); }
+.login-checking {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 32px 0;
+}
+.login-checking.hidden { display: none; }
+.login-body.hidden { display: none; }
+.login-subtitle.hidden { display: none; }
+.login-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: loginSpin 0.8s linear infinite;
+}
+@keyframes loginSpin {
+  to { transform: rotate(360deg); }
+}
+.login-checking-text {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
 .login-google-btn {
-  margin-top: 20px;
+  margin-top: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
