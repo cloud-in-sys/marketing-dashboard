@@ -4,7 +4,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 
-import { authMiddleware, adminOnly } from './middleware/auth.js';
+import { authMiddleware } from './middleware/auth.js';
 import { errorHandler } from './middleware/error.js';
 
 import meRoutes from './routes/me.js';
@@ -12,7 +12,7 @@ import usersRoutes from './routes/users.js';
 import sourcesRoutes from './routes/sources.js';
 import configRoutes from './routes/config.js';
 import presetsRoutes from './routes/presets.js';
-import googleRoutes from './routes/google.js';
+import googleRoutes, { oauthCallback } from './routes/google.js';
 
 const app = new Hono();
 
@@ -34,6 +34,10 @@ if (allowedOrigins.length) {
 
 // Public
 app.get('/api/health', c => c.json({ ok: true, service: 'dashboard-backend' }));
+
+// OAuth callback must be public (Google redirects the browser here without
+// our auth header). The callback route itself verifies a signed `state`.
+app.get('/api/google/auth/callback', oauthCallback);
 
 // Auth required below
 app.use('/api/*', authMiddleware);

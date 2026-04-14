@@ -1,9 +1,32 @@
 import { Hono } from 'hono';
+import crypto from 'crypto';
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { db } from '../firebase.js';
 import { getSecret } from '../utils/secrets.js';
 import { httpError } from '../middleware/error.js';
+
+// HMAC-sign the state parameter with the OAuth client secret (server-side
+// only) so Google's callback can be trusted without our auth header.
+async function signState(uid) {
+  const secret = await getSecret('google-oauth-client-secret');
+  const ts = Date.now();
+  const payload = `${uid}.${ts}`;
+  const sig = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+  return `${payload}.${sig}`;
+}
+
+async function verifyState(state) {
+  if (!state) return null;
+  const parts = state.split('.');
+  if (parts.length !== 3) return null;
+  const [uid, ts, sig] = parts;
+  const secret = await getSecret('google-oauth-client-secret');
+  const expected = crypto.createHmac('sha256', secret).update(`${uid}.${ts}`).digest('hex');
+  if (sig !== expected) return null;
+  if (Date.now() - Number(ts) > 10 * 60 * 1000) return null; // 10 min expiry
+  return uid;
+}
 
 const app = new Hono();
 
@@ -42,26 +65,24 @@ app.get('/status', async c => {
 app.get('/auth/url', async c => {
   const uid = c.get('uid');
   const oauth = await getOAuthClient();
+  const state = await signState(uid);
   const url = oauth.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
     scope: SCOPES,
-    state: uid, // Firebase UID, used to identify user in callback
+    state,
   });
   return c.json({ url });
 });
 
-// GET /api/google/auth/callback — Google redirects here after consent.
-// Note: this route must also be PUBLIC (no Firebase token), because Google redirects
-// the browser directly. We use `state` (set to uid) to identify the user.
-// For simplicity we keep it under /api (auth middleware) and require the user to be
-// logged in. Alternative: expose as public route and verify state via signed JWT.
-app.get('/auth/callback', async c => {
+// Exported separately so it can be mounted as a PUBLIC route
+// (Google redirects the browser here without our auth header).
+export async function oauthCallback(c) {
   const code = c.req.query('code');
-  const state = c.req.query('state'); // = uid
-  const uid = c.get('uid');
-  if (state && state !== uid) throw httpError(400, 'State mismatch');
-  if (!code) throw httpError(400, 'Missing code');
+  const state = c.req.query('state');
+  const uid = await verifyState(state);
+  if (!uid) return c.html('State の検証に失敗しました。もう一度連携をお試しください。', 400);
+  if (!code) return c.html('認可コードがありません。', 400);
   const oauth = await getOAuthClient();
   const { tokens } = await oauth.getToken(code);
   await tokenDoc(uid).set({
@@ -72,7 +93,7 @@ app.get('/auth/callback', async c => {
     updatedAt: new Date().toISOString(),
   }, { merge: true });
   return c.html('<script>window.close();</script>Google連携が完了しました。このウィンドウを閉じてください。');
-});
+}
 
 // DELETE /api/google/connection — revoke & clear stored tokens
 app.delete('/connection', async c => {
