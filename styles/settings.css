@@ -716,6 +716,91 @@ body.no-manage-users #add-user-btn { display: none; }
   width: 14px;
   height: 14px;
 }
+.user-list-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.user-list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+  box-shadow: var(--shadow-sm);
+}
+.user-list-row:hover {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+}
+.user-list-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.user-list-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-list-id {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.user-list-role {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.user-list-role-admin {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+.user-list-role-operator {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #93c5fd;
+}
+.user-list-role-viewer {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+.user-list-caret {
+  color: var(--muted);
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.user-back-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  margin-bottom: 12px;
+}
+.user-back-btn:hover {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
+}
 
 /* ===== MISC HEADER UI & DIRTY SAVE INDICATORS ===== */
 body:not(.is-admin) .admin-only { display: none !important; }
@@ -741,6 +826,163 @@ body:not(.is-admin) .admin-only { display: none !important; }
 }
 .ref-section-title:first-child { margin-top: 0; }
 
+/* ===== API SETTINGS VIEW ===== */
+.api-settings-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.api-settings-desc {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.api-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.api-input {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--text);
+  background: #ffffff;
+}
+.api-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+.api-status-ok {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.api-status-none {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.api-help {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+.api-help-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+.api-help-steps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 2;
+}
+.api-help-steps a {
+  color: var(--primary);
+  font-weight: 600;
+}
+.api-help-steps code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  background: #ffffff;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--primary-600);
+}
+
+/* ===== SHEETS INTEGRATION ===== */
+.sheets-connect, .sheets-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+.sheets-form { align-items: stretch; }
+.sheets-form .api-input {
+  font-size: 12px;
+  padding: 8px 10px;
+}
+.sheets-sheet-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.sheets-file-select,
+.sheets-sheet-select {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  background: #ffffff;
+  color: var(--text);
+}
+.sheets-file-select:focus,
+.sheets-sheet-select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+.sheets-status { text-align: center; }
+.sheets-input-box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sheets-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sheets-field-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.bq-query-input {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  resize: vertical;
+  min-height: 100px;
+}
+.sheets-noclient {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.sheets-noclient-text {
+  font-size: 11px;
+  color: var(--muted);
+}
+.hidden { display: none !important; }
+
 /* ===== SOURCE VIEW ===== */
 .source-method-grid {
   display: grid;
@@ -752,13 +994,18 @@ body:not(.is-admin) .admin-only { display: none !important; }
   position: relative;
   border: 2px solid var(--border);
   border-radius: 12px;
-  padding: 24px 20px;
+  padding: 20px 16px;
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  gap: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.source-method-card:not(.disabled):hover {
+  border-color: var(--primary-soft);
+  background: #fafbff;
 }
 .source-method-card.active {
   border-color: var(--primary);
@@ -794,6 +1041,36 @@ body:not(.is-admin) .admin-only { display: none !important; }
   border: 1px solid var(--border);
   cursor: not-allowed;
   box-shadow: none;
+}
+.source-method-detail {
+  margin: 0 16px 16px;
+  background: linear-gradient(180deg, #f8faff 0%, #f1f5f9 100%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+.method-detail-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.method-detail-panel > .file-btn,
+.method-detail-panel > .sheets-connect .file-btn {
+  align-self: center;
+  display: inline-flex;
+  width: auto;
+}
+.method-detail-empty {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 20px;
+}
+.sheets-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
 }
 .source-method-badge {
   position: absolute;

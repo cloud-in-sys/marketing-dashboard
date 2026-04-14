@@ -1,6 +1,6 @@
 import { S, PERM_GROUPS, PERM_DEFS, ADMIN_PERMS, VIEWER_PERMS, DEFAULT_BASE_FORMULAS, DEFAULT_FORMULAS,
   saveMetricDefs, saveDimensions, saveViews, saveFilterDefs, saveFormulas, saveBaseFormulas,
-  saveUsers, saveViewOrder, getPresets, setPresets, compileFilter } from './state.js';
+  saveUsers, saveViewOrder, getPresets, setPresets, compileFilter, saveApiSettings } from './state.js';
 import { escapeHtml } from './utils.js';
 import { showModal } from './modal.js';
 import { parseBaseFormula } from './aggregate.js';
@@ -80,14 +80,19 @@ export function enterSettingsMode(target = 'users') {
   document.getElementById('filters-doc-view').classList.toggle('hidden', target !== 'filters');
   document.getElementById('dims-doc-view').classList.toggle('hidden', target !== 'dims');
   document.getElementById('defaults-doc-view').classList.toggle('hidden', target !== 'defaults');
+  document.getElementById('api-settings-view').classList.toggle('hidden', target !== 'api');
+  document.getElementById('presets-settings-view').classList.toggle('hidden', target !== 'presets');
   document.querySelectorAll('#view-nav .nav-item, #custom-nav .nav-item').forEach(b => b.classList.remove('active'));
   document.getElementById('open-settings').classList.toggle('active', target === 'users');
   document.getElementById('open-metrics-doc').classList.toggle('active', target === 'metrics');
   document.getElementById('open-filters-doc').classList.toggle('active', target === 'filters');
   document.getElementById('open-dims-doc').classList.toggle('active', target === 'dims');
   document.getElementById('open-defaults-doc').classList.toggle('active', target === 'defaults');
+  document.getElementById('open-api-settings').classList.toggle('active', target === 'api');
+  document.getElementById('open-presets-settings').classList.toggle('active', target === 'presets');
   exitPresetEdit();
   if (target === 'users') {
+    userDetailIdx = null;
     S.USERS_DRAFT = JSON.parse(JSON.stringify(S.USERS));
     S.METRICS_DRAFT = null;
     S.METRICS_DRAFT_BASE = null;
@@ -149,6 +154,24 @@ export function enterSettingsMode(target = 'users') {
     clearDimsDirty();
     renderCsvColumns();
     renderDimsDoc();
+  } else if (target === 'api') {
+    S.USERS_DRAFT = null;
+    S.METRICS_DRAFT = null;
+    S.METRICS_DRAFT_BASE = null;
+    S.METRIC_DEFS_DRAFT = null;
+    S.FILTER_DEFS_DRAFT = null;
+    S.VIEWS_DRAFT = null;
+    S.DIMENSIONS_DRAFT = null;
+    renderApiSettings();
+  } else if (target === 'presets') {
+    S.USERS_DRAFT = null;
+    S.METRICS_DRAFT = null;
+    S.METRICS_DRAFT_BASE = null;
+    S.METRIC_DEFS_DRAFT = null;
+    S.FILTER_DEFS_DRAFT = null;
+    S.VIEWS_DRAFT = null;
+    S.DIMENSIONS_DRAFT = null;
+    renderPresets();
   }
 }
 
@@ -160,11 +183,15 @@ export function exitSettingsMode() {
   document.getElementById('filters-doc-view').classList.add('hidden');
   document.getElementById('dims-doc-view').classList.add('hidden');
   document.getElementById('defaults-doc-view').classList.add('hidden');
+  document.getElementById('api-settings-view').classList.add('hidden');
+  document.getElementById('presets-settings-view').classList.add('hidden');
   document.getElementById('open-settings').classList.remove('active');
   document.getElementById('open-metrics-doc').classList.remove('active');
   document.getElementById('open-filters-doc').classList.remove('active');
   document.getElementById('open-dims-doc').classList.remove('active');
   document.getElementById('open-defaults-doc').classList.remove('active');
+  document.getElementById('open-api-settings').classList.remove('active');
+  document.getElementById('open-presets-settings').classList.remove('active');
   S.USERS_DRAFT = null;
   S.METRICS_DRAFT = null;
   S.METRICS_DRAFT_BASE = null;
@@ -180,13 +207,43 @@ export function exitSettingsMode() {
 }
 
 // ----- USERS VIEW -----
+let userDetailIdx = null;
+
+const ROLE_LABEL = { admin: '\u7ba1\u7406\u8005', operator: '\u904b\u7528\u8005', viewer: '\u4e00\u822c' };
+
 function renderUsersModal() {
   const list = document.getElementById('users-list');
   if (!list) return;
   const src = S.USERS_DRAFT || S.USERS;
-  list.innerHTML = src.map((u, i) => {
+  if (userDetailIdx != null && !src[userDetailIdx]) userDetailIdx = null;
+  if (userDetailIdx != null) {
+    renderUserDetail(list, src, userDetailIdx);
+  } else {
+    renderUserListView(list, src);
+  }
+}
+
+function renderUserListView(list, src) {
+  list.innerHTML = `<div class="user-list-compact">${src.map((u, i) => {
     const role = getUserRole(u);
     return `
+      <div class="user-list-row" data-user-open="${i}">
+        <div class="user-avatar">${escapeHtml((u.name || u.id || '?').slice(0, 1).toUpperCase())}</div>
+        <div class="user-list-info">
+          <div class="user-list-name">${escapeHtml(u.name || '(\u7121\u540d)')}</div>
+          <div class="user-list-id">${escapeHtml(u.id)}</div>
+        </div>
+        <span class="user-list-role user-list-role-${role}">${ROLE_LABEL[role]}</span>
+        <span class="user-list-caret">›</span>
+      </div>`;
+  }).join('')}</div>`;
+}
+
+function renderUserDetail(list, src, i) {
+  const u = src[i];
+  const role = getUserRole(u);
+  list.innerHTML = `
+    <button type="button" class="user-back-btn" data-user-back>\u2190 \u4e00\u89a7\u306b\u623b\u308b</button>
     <div class="user-row" data-user-idx="${i}">
       <div class="user-row-top">
         <div class="user-avatar">${escapeHtml((u.name || u.id || '?').slice(0, 1).toUpperCase())}</div>
@@ -222,7 +279,6 @@ function renderUsersModal() {
         `).join('')}
       </div>
     </div>`;
-  }).join('');
 }
 
 async function addUser() {
@@ -235,6 +291,7 @@ async function addUser() {
   while (draft.some(u => u.id === id)) { id = baseId + n++; }
   draft.push({id, password: '', name, isAdmin: false, perms: {...VIEWER_PERMS}});
   markUsersDirty();
+  userDetailIdx = draft.length - 1;
   renderUsersModal();
 }
 
@@ -250,10 +307,29 @@ async function removeUser(idx) {
   }
   draft.splice(idx, 1);
   markUsersDirty();
+  userDetailIdx = null;
   renderUsersModal();
 }
 
 // ----- CSV COLUMNS VIEW -----
+// ===== API SETTINGS VIEW =====
+function renderApiSettings() {
+  document.getElementById('api-client-id').value = S.API_SETTINGS.clientId || '';
+  document.getElementById('api-origin').textContent = location.origin;
+  renderApiStatus();
+}
+
+function renderApiStatus() {
+  const el = document.getElementById('api-status');
+  if (!el) return;
+  const hasClientId = !!S.API_SETTINGS.clientId;
+  if (hasClientId) {
+    el.innerHTML = '<div class="api-status-ok">\u2713 \u30af\u30e9\u30a4\u30a2\u30f3\u30c8ID\u304c\u8a2d\u5b9a\u3055\u308c\u3066\u3044\u307e\u3059\u3002Google\u30b9\u30d7\u30ec\u30c3\u30c9\u30b7\u30fc\u30c8\u30fbBigQuery\u9023\u643a\u304c\u5229\u7528\u53ef\u80fd\u3067\u3059\u3002</div>';
+  } else {
+    el.innerHTML = '<div class="api-status-none">\u30af\u30e9\u30a4\u30a2\u30f3\u30c8ID\u304c\u672a\u8a2d\u5b9a\u3067\u3059\u3002\u4e0a\u306e\u624b\u9806\u306b\u5f93\u3063\u3066\u8a2d\u5b9a\u3057\u3066\u304f\u3060\u3055\u3044\u3002</div>';
+  }
+}
+
 export function renderCsvColumns() {
   const targets = [
     {el: document.getElementById('csv-columns'), count: document.getElementById('csv-column-count')},
@@ -457,6 +533,17 @@ export function setupSettingsEvents() {
   document.getElementById('open-filters-doc').addEventListener('click', () => { if (hasPerm('editFilters')) enterSettingsMode('filters'); });
   document.getElementById('open-defaults-doc').addEventListener('click', () => { if (hasPerm('editDefaults')) enterSettingsMode('defaults'); });
   document.getElementById('open-dims-doc').addEventListener('click', () => { if (hasPerm('editDimensions')) enterSettingsMode('dims'); });
+  document.getElementById('open-api-settings').addEventListener('click', () => { if (hasPerm('manageUsers')) enterSettingsMode('api'); });
+  document.getElementById('open-presets-settings').addEventListener('click', () => enterSettingsMode('presets'));
+
+  // ----- API SETTINGS -----
+  document.getElementById('api-save-btn').addEventListener('click', async () => {
+    const clientId = document.getElementById('api-client-id').value.trim();
+    S.API_SETTINGS = { clientId };
+    saveApiSettings();
+    renderApiStatus();
+    await showModal({title: '\u4fdd\u5b58\u5b8c\u4e86', body: 'API\u8a2d\u5b9a\u3092\u4fdd\u5b58\u3057\u307e\u3057\u305f', okText: 'OK', cancelText: ''});
+  });
 
   // ----- DIMS HELP -----
   document.getElementById('dims-help-btn').addEventListener('click', async () => {
@@ -915,7 +1002,11 @@ export function setupSettingsEvents() {
   document.getElementById('add-user-btn').addEventListener('click', addUser);
   document.getElementById('users-list').addEventListener('click', e => {
     const del = e.target.closest('[data-user-del]');
-    if (del) removeUser(+del.dataset.userDel);
+    if (del) { removeUser(+del.dataset.userDel); return; }
+    const back = e.target.closest('[data-user-back]');
+    if (back) { userDetailIdx = null; renderUsersModal(); return; }
+    const open = e.target.closest('[data-user-open]');
+    if (open) { userDetailIdx = +open.dataset.userOpen; renderUsersModal(); return; }
   });
   document.getElementById('users-list').addEventListener('input', e => {
     const row = e.target.closest('[data-user-idx]');

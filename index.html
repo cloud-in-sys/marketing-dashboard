@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>Marketing Metrics Dashboard</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%232563eb'/%3E%3Cstop offset='100%25' stop-color='%230ea5e9'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='24' height='24' rx='5' fill='url(%23g)'/%3E%3Cg fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='13' width='3' height='6' rx='0.5'/%3E%3Crect x='10.5' y='9' width='3' height='10' rx='0.5'/%3E%3Crect x='16' y='5' width='3' height='14' rx='0.5'/%3E%3C/g%3E%3C/svg%3E">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <link rel="stylesheet" href="styles/base.css">
 <link rel="stylesheet" href="styles/header.css">
 <link rel="stylesheet" href="styles/sidebar.css">
@@ -15,7 +16,7 @@
 <link rel="stylesheet" href="styles/modal.css">
 </head>
 <body>
-<div class="login-overlay" id="login-overlay">
+<div class="login-overlay hidden" id="login-overlay">
   <div class="login-card">
     <div class="login-logo">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -55,7 +56,7 @@
     </div>
   </div>
   <div class="header-actions">
-    <div class="meta">対象行数: <span id="row-count">0</span></div>
+    <div class="meta">対象行数: <span id="row-count">0</span><span class="source-method-icon-mini" id="header-source-icon"></span></div>
     <div class="header-user">
       <div class="header-user-avatar" id="header-user-avatar"></div>
       <div class="header-user-info">
@@ -95,16 +96,6 @@
       <nav class="nav" id="custom-nav"></nav>
     </div>
   </div>
-  <div class="sidebar-group" data-group="presets">
-    <div class="nav-title group-title">
-      <span class="group-toggle">プリセット</span>
-      <span class="group-caret">▾</span>
-    </div>
-    <div class="group-body">
-      <button type="button" class="save-btn" id="save-preset">+ 現在の設定を保存</button>
-      <div class="preset-list" id="preset-list"></div>
-    </div>
-  </div>
   <div class="sidebar-group" data-group="settings">
     <div class="nav-title group-title">
       <span class="group-toggle">設定</span>
@@ -112,10 +103,12 @@
     </div>
     <div class="group-body">
       <nav class="nav">
-        <button type="button" class="nav-item settings-item" id="open-dims-doc">ディメンション定義</button>
-        <button type="button" class="nav-item settings-item" id="open-metrics-doc">メトリクス定義</button>
-        <button type="button" class="nav-item settings-item" id="open-filters-doc">フィルタ定義</button>
-        <button type="button" class="nav-item settings-item" id="open-defaults-doc">標準定義</button>
+        <button type="button" class="nav-item settings-item" id="open-dims-doc">ディメンション設定</button>
+        <button type="button" class="nav-item settings-item" id="open-metrics-doc">メトリクス設定</button>
+        <button type="button" class="nav-item settings-item" id="open-filters-doc">フィルタ設定</button>
+        <button type="button" class="nav-item settings-item" id="open-defaults-doc">標準タブ設定</button>
+        <button type="button" class="nav-item settings-item" id="open-presets-settings">プリセット設定</button>
+        <button type="button" class="nav-item settings-item" id="open-api-settings">Google連携</button>
       </nav>
     </div>
   </div>
@@ -245,17 +238,78 @@
           <div class="source-method-icon">📄</div>
           <div class="source-method-name">CSVアップロード</div>
           <div class="source-method-desc">CSVファイルを読み込んで分析</div>
-          <label class="file-btn source-upload-btn" id="source-csv-btn">
-            ファイルを選択
+        </div>
+        <div class="source-method-card" id="source-method-sheets" data-method="sheets">
+          <div class="source-method-icon"><svg viewBox="0 0 48 48" width="36" height="36"><path fill="#43a047" d="M37 45H11c-1.7 0-3-1.3-3-3V6c0-1.7 1.3-3 3-3h19l10 10v29c0 1.7-1.3 3-3 3z"/><path fill="#c8e6c9" d="M40 13H30V3z"/><path fill="#2e7d32" d="M30 13l10 10V13z"/><path fill="#e8f5e9" d="M31 23H17v14h14V23z"/><path fill="#43a047" d="M25 23h-2v14h2V23zm-4 6H17v2h4v-2zm8 0h-4v2h4v-2zm-8 4H17v2h4v-2zm8 0h-4v2h4v-2zm-8-8H17v2h4v-2zm8 0h-4v2h4v-2z"/></svg></div>
+          <div class="source-method-name">Google スプレッドシート</div>
+          <div class="source-method-desc">スプレッドシートからデータを取得</div>
+        </div>
+        <div class="source-method-card" id="source-method-bq" data-method="bq">
+          <div class="source-method-icon"><svg viewBox="0 0 48 48" width="36" height="36"><path fill="#1565c0" d="M24 2C12.95 2 4 10.95 4 22v4c0 11.05 8.95 20 20 20s20-8.95 20-20v-4C44 10.95 35.05 2 24 2z" opacity=".2"/><path fill="#4285f4" d="M24 6c-8.84 0-16 7.16-16 16s7.16 16 16 16 16-7.16 16-16S32.84 6 24 6z"/><path fill="#fff" d="M20 16h8v2h-8zm0 4h8v2h-8zm0 4h5v2h-5z" opacity=".8"/><path fill="#fff" d="M30 28l4 4-1.4 1.4-4-4z"/><circle cx="25" cy="23" r="6" fill="none" stroke="#fff" stroke-width="2"/></svg></div>
+          <div class="source-method-name">BigQuery</div>
+          <div class="source-method-desc">Google BigQueryからデータを取得</div>
+        </div>
+      </div>
+      <!-- Method detail panel -->
+      <div class="source-method-detail" id="source-method-detail">
+        <!-- CSV detail -->
+        <div class="method-detail-panel" id="detail-csv">
+          <label class="file-btn">
+            CSVファイルを選択
             <input type="file" id="source-file" accept=".csv">
           </label>
         </div>
-        <div class="source-method-card disabled" id="source-method-bq" data-method="bq">
-          <div class="source-method-icon">🗄️</div>
-          <div class="source-method-name">BigQuery</div>
-          <div class="source-method-desc">Google BigQueryからデータを取得</div>
-          <button type="button" class="file-btn source-bq-btn" id="source-bq-btn" disabled>準備中</button>
-          <span class="source-method-badge">Coming Soon</span>
+        <!-- Sheets detail -->
+        <div class="method-detail-panel hidden" id="detail-sheets">
+          <div class="sheets-connect" id="sheets-connect">
+            <button type="button" class="file-btn" id="sheets-auth-btn">Googleアカウントで連携</button>
+          </div>
+          <div class="sheets-form hidden" id="sheets-form">
+            <div class="sheets-status" id="sheets-status"></div>
+            <div class="sheets-input-box">
+              <label class="sheets-field">
+                <span class="sheets-field-label">スプレッドシートURL</span>
+                <input type="text" class="api-input" id="sheets-url-input" placeholder="https://docs.google.com/spreadsheets/d/...">
+              </label>
+              <label class="sheets-field">
+                <span class="sheets-field-label">タブ名</span>
+                <input type="text" class="api-input" id="sheets-tab-input" placeholder="例: Sheet1">
+              </label>
+            </div>
+            <div class="sheets-actions">
+              <button type="button" class="file-btn" id="sheets-fetch-btn">データを読み込む</button>
+              <button type="button" class="link-btn" id="sheets-disconnect">連携を解除</button>
+            </div>
+          </div>
+          <div class="sheets-noclient hidden" id="sheets-noclient">
+            <div class="sheets-noclient-text">設定 → Google連携でクライアントIDを設定してください</div>
+          </div>
+        </div>
+        <!-- BQ detail -->
+        <div class="method-detail-panel hidden" id="detail-bq">
+          <div class="sheets-connect" id="bq-connect">
+            <button type="button" class="file-btn" id="bq-auth-btn">Googleアカウントで連携</button>
+          </div>
+          <div class="sheets-form hidden" id="bq-form">
+            <div class="sheets-status" id="bq-status"></div>
+            <div class="sheets-input-box">
+              <label class="sheets-field">
+                <span class="sheets-field-label">プロジェクトID</span>
+                <input type="text" class="api-input" id="bq-project-input" placeholder="my-project-12345">
+              </label>
+              <label class="sheets-field">
+                <span class="sheets-field-label">SQLクエリ</span>
+                <textarea class="api-input bq-query-input" id="bq-query-input" rows="6" placeholder="SELECT * FROM `project.dataset.table` LIMIT 1000"></textarea>
+              </label>
+            </div>
+            <div class="sheets-actions">
+              <button type="button" class="file-btn" id="bq-fetch-btn">クエリを実行</button>
+              <button type="button" class="link-btn" id="bq-disconnect">連携を解除</button>
+            </div>
+          </div>
+          <div class="sheets-noclient hidden" id="bq-noclient">
+            <div class="sheets-noclient-text">設定 → Google連携でクライアントIDを設定してください</div>
+          </div>
         </div>
       </div>
     </div>
@@ -304,13 +358,13 @@
     <div class="view-header">
       <div class="view-title-wrap">
         <div class="view-crumb">設定</div>
-        <h2>標準定義</h2>
+        <h2>標準タブ設定</h2>
       </div>
       <div class="view-actions">
         <button type="button" class="preset-save-btn admin-only" id="defaults-save-btn" style="display:inline-block">変更を保存</button>
       </div>
     </div>
-    <div class="non-admin-note admin-hidden">権限があるユーザーのみが標準定義を変更できます。</div>
+    <div class="non-admin-note admin-hidden">権限があるユーザーのみが標準タブ設定を変更できます。</div>
     <div class="panel">
       <div class="panel-head">
         <div class="panel-title">タブとプリセットの対応</div>
@@ -319,18 +373,74 @@
     </div>
   </section>
 
+  <section class="settings-view hidden" id="presets-settings-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">設定</div>
+        <h2>プリセット設定</h2>
+      </div>
+      <div class="view-actions">
+        <button type="button" class="save-btn" id="save-preset">+ 現在の設定を保存</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">プリセット一覧</div>
+      </div>
+      <div class="preset-list" id="preset-list"></div>
+    </div>
+  </section>
+
+  <section class="settings-view hidden" id="api-settings-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">設定</div>
+        <h2>Google連携</h2>
+      </div>
+      <div class="view-actions">
+        <button type="button" class="preset-save-btn admin-only" id="api-save-btn" style="display:inline-block">変更を保存</button>
+      </div>
+    </div>
+    <div class="non-admin-note admin-hidden">管理者のみがAPI設定を変更できます。</div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">Google Cloud Platform</div>
+      </div>
+      <div class="api-settings-body">
+        <div class="api-settings-desc">
+          Google スプレッドシートやBigQueryと連携するには、GCPプロジェクトの設定が必要です。
+        </div>
+        <div class="api-field">
+          <label class="field-label">OAuth クライアントID</label>
+          <input type="text" class="api-input" id="api-client-id" placeholder="xxxx.apps.googleusercontent.com">
+        </div>
+        <div class="api-status" id="api-status"></div>
+        <div class="api-help">
+          <div class="api-help-title">設定手順</div>
+          <ol class="api-help-steps">
+            <li><a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a> でプロジェクトを作成</li>
+            <li>「APIとサービス」→「ライブラリ」から <strong>Google Sheets API</strong> と <strong>BigQuery API</strong> を有効化</li>
+            <li>「APIとサービス」→「認証情報」→「OAuth 2.0 クライアントID」を作成（種類: ウェブアプリケーション）</li>
+            <li>承認済みJavaScriptオリジンに <code id="api-origin"></code> を追加</li>
+            <li>作成されたクライアントIDを上のフィールドに貼り付けて保存</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="settings-view hidden" id="dims-doc-view">
     <div class="view-header">
       <div class="view-title-wrap">
         <div class="view-crumb">設定</div>
-        <h2>ディメンション定義</h2>
+        <h2>ディメンション設定</h2>
       </div>
       <div class="view-actions">
         <button type="button" class="save-btn" id="dims-help-btn">使い方</button>
         <button type="button" class="preset-save-btn admin-only" id="dims-save-btn" style="display:inline-block">変更を保存</button>
       </div>
     </div>
-    <div class="non-admin-note admin-hidden">権限があるユーザーのみがディメンション定義を変更できます。</div>
+    <div class="non-admin-note admin-hidden">権限があるユーザーのみがディメンション設定を変更できます。</div>
     <div class="panel">
       <div class="panel-head">
         <div class="panel-title">CSVカラム</div>
@@ -350,13 +460,13 @@
     <div class="view-header">
       <div class="view-title-wrap">
         <div class="view-crumb">設定</div>
-        <h2>フィルタ定義</h2>
+        <h2>フィルタ設定</h2>
       </div>
       <div class="view-actions">
         <button type="button" class="preset-save-btn admin-only" id="filters-save-btn" style="display:inline-block">変更を保存</button>
       </div>
     </div>
-    <div class="non-admin-note admin-hidden">管理者のみがフィルタ定義を変更できます。</div>
+    <div class="non-admin-note admin-hidden">管理者のみがフィルタ設定を変更できます。</div>
     <div class="panel">
       <div class="panel-head">
         <div class="panel-title">フィルタ一覧</div>
@@ -369,7 +479,7 @@
     <div class="view-header">
       <div class="view-title-wrap">
         <div class="view-crumb">設定</div>
-        <h2>メトリクス定義</h2>
+        <h2>メトリクス設定</h2>
       </div>
       <div class="view-actions">
         <button type="button" class="save-btn" id="metrics-help-btn">使い方</button>

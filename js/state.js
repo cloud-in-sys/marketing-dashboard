@@ -132,10 +132,10 @@ export const PERM_GROUPS = [
     {key: 'deleteCustom', label: '削除'},
   ]},
   {group: 'settings', label: '設定', perms: [
-    {key: 'editMetrics',    label: 'メトリクス定義'},
-    {key: 'editFilters',    label: 'フィルタ定義'},
-    {key: 'editDimensions', label: 'ディメンション定義'},
-    {key: 'editDefaults',   label: '標準定義'},
+    {key: 'editMetrics',    label: 'メトリクス設定'},
+    {key: 'editFilters',    label: 'フィルタ設定'},
+    {key: 'editDimensions', label: 'ディメンション設定'},
+    {key: 'editDefaults',   label: '標準タブ設定'},
     {key: 'manageUsers',    label: 'ユーザー管理'},
   ]},
 ];
@@ -154,6 +154,7 @@ export const USERS_KEY = 'dashboard.users.v1';
 export const CURRENT_USER_KEY = 'dashboard.currentUser.v1';
 export const DATA_SOURCES_KEY = 'dashboard.dataSources.v1';
 export const CURRENT_SOURCE_KEY = 'dashboard.currentSource.v1';
+export const API_SETTINGS_KEY = 'dashboard.apiSettings.v1';
 
 // ===== PER-SOURCE STORAGE KEY HELPER =====
 function sk(base) { return `${base}.${S.CURRENT_SOURCE}`; }
@@ -168,6 +169,10 @@ const CUSTOM_TABS_BASE   = 'dashboard.customTabs.v1';
 const VIEW_ORDER_BASE    = 'dashboard.viewOrder.v1';
 const FORMULAS_BASE      = 'dashboard.metricFormulas.v1';
 const BASE_FORMULAS_BASE = 'dashboard.baseMetricFormulas.v1';
+const SHEETS_INPUT_BASE  = 'dashboard.sheetsInput.v1';
+const BQ_INPUT_BASE      = 'dashboard.bqInput.v1';
+const SOURCE_METHOD_BASE = 'dashboard.sourceMethod.v1';
+const SOURCE_RAW_BASE    = 'dashboard.sourceRaw.v1';
 
 // Export key bases for migration
 export const STATE_KEY = STATE_BASE;
@@ -209,6 +214,7 @@ export const S = {
   VIEWS_DRAFT: null,
   DIMENSIONS_DRAFT: null,
   DIM_EXPR_CACHE: new Map(),
+  API_SETTINGS: { clientId: '' },
 };
 
 // ===== COMPILE FILTER =====
@@ -246,6 +252,46 @@ export function saveBaseFormulas() {
 export function saveFormulas() {
   try { localStorage.setItem(sk(FORMULAS_BASE), JSON.stringify(S.METRIC_FORMULAS)); } catch (e) {}
 }
+export function saveSourceRaw(sourceId, rows) {
+  try {
+    localStorage.setItem(`${SOURCE_RAW_BASE}.${sourceId}`, JSON.stringify(rows));
+  } catch (e) {
+    console.warn('Source data too large to save to localStorage', e);
+  }
+}
+export function loadSourceRaw(sourceId) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(`${SOURCE_RAW_BASE}.${sourceId}`) || 'null');
+    return Array.isArray(saved) ? saved : [];
+  } catch (e) { return []; }
+}
+export function clearSourceRaw(sourceId) {
+  try { localStorage.removeItem(`${SOURCE_RAW_BASE}.${sourceId}`); } catch (e) {}
+}
+export function saveSheetsInput(url, tab) {
+  try { localStorage.setItem(sk(SHEETS_INPUT_BASE), JSON.stringify({ url, tab })); } catch (e) {}
+}
+export function loadSheetsInput() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(sk(SHEETS_INPUT_BASE)) || 'null');
+    return saved || { url: '', tab: '' };
+  } catch (e) { return { url: '', tab: '' }; }
+}
+export function saveBqInput(project, query) {
+  try { localStorage.setItem(sk(BQ_INPUT_BASE), JSON.stringify({ project, query })); } catch (e) {}
+}
+export function loadBqInput() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(sk(BQ_INPUT_BASE)) || 'null');
+    return saved || { project: '', query: '' };
+  } catch (e) { return { project: '', query: '' }; }
+}
+export function saveSourceMethod(method) {
+  try { localStorage.setItem(sk(SOURCE_METHOD_BASE), method || ''); } catch (e) {}
+}
+export function loadSourceMethod() {
+  try { return localStorage.getItem(sk(SOURCE_METHOD_BASE)) || ''; } catch (e) { return ''; }
+}
 export function getPresets() {
   try {
     const v = JSON.parse(localStorage.getItem(sk(PRESETS_BASE)) || '[]');
@@ -271,6 +317,9 @@ export function saveCurrentSource() {
     if (S.CURRENT_SOURCE) localStorage.setItem(CURRENT_SOURCE_KEY, S.CURRENT_SOURCE);
     else localStorage.removeItem(CURRENT_SOURCE_KEY);
   } catch (e) {}
+}
+export function saveApiSettings() {
+  try { localStorage.setItem(API_SETTINGS_KEY, JSON.stringify(S.API_SETTINGS)); } catch (e) {}
 }
 export function saveUsers() {
   try { localStorage.setItem(USERS_KEY, JSON.stringify(S.USERS)); } catch (e) {}
@@ -306,7 +355,9 @@ export function saveState() {
 // ===== LOAD SOURCE CONFIG (load per-source settings into globals) =====
 function loadSourceConfig() {
   const sid = S.CURRENT_SOURCE;
-  S.RAW = S.SOURCE_DATA[sid] || [];
+  // Data is session-only (not persisted); keep existing in-memory if any
+  if (!S.SOURCE_DATA[sid]) S.SOURCE_DATA[sid] = [];
+  S.RAW = S.SOURCE_DATA[sid];
 
   // METRIC_DEFS
   S.METRIC_DEFS = JSON.parse(JSON.stringify(DEFAULT_METRIC_DEFS));
@@ -435,17 +486,29 @@ export function switchSource(id) {
 // ===== MIGRATE: move old global keys to default source =====
 function migrateToSourceScoped() {
   const migrated = localStorage.getItem('dashboard.migrated.v2');
-  if (migrated) return;
-  const bases = [METRIC_DEFS_BASE, DIMENSIONS_BASE, VIEWS_BASE, FILTER_DEFS_BASE,
-    STATE_BASE, PRESETS_BASE, COL_WIDTHS_BASE, CUSTOM_TABS_BASE, VIEW_ORDER_BASE,
-    FORMULAS_BASE, BASE_FORMULAS_BASE];
-  for (const base of bases) {
-    const old = localStorage.getItem(base);
-    if (old != null && !localStorage.getItem(base + '.default')) {
-      localStorage.setItem(base + '.default', old);
+  if (!migrated) {
+    const bases = [METRIC_DEFS_BASE, DIMENSIONS_BASE, VIEWS_BASE, FILTER_DEFS_BASE,
+      STATE_BASE, PRESETS_BASE, COL_WIDTHS_BASE, CUSTOM_TABS_BASE, VIEW_ORDER_BASE,
+      FORMULAS_BASE, BASE_FORMULAS_BASE];
+    for (const base of bases) {
+      const old = localStorage.getItem(base);
+      if (old != null && !localStorage.getItem(base + '.default')) {
+        localStorage.setItem(base + '.default', old);
+      }
     }
+    try { localStorage.setItem('dashboard.migrated.v2', '1'); } catch (e) {}
   }
-  try { localStorage.setItem('dashboard.migrated.v2', '1'); } catch (e) {}
+  // Clean up previously saved raw data (session-only policy)
+  const cleaned = localStorage.getItem('dashboard.rawCleanup.v1');
+  if (!cleaned) {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(SOURCE_RAW_BASE)) keysToRemove.push(key);
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+    try { localStorage.setItem('dashboard.rawCleanup.v1', '1'); } catch (e) {}
+  }
 }
 
 // ===== INIT (called once at startup) =====
@@ -469,6 +532,12 @@ export function initStateFromStorage() {
     {id: 'admin',  password: 'admin',  name: '管理者', isAdmin: true,  perms: {...ADMIN_PERMS}},
     {id: 'viewer', password: 'viewer', name: '閲覧者', isAdmin: false, perms: {...VIEWER_PERMS}},
   ];
+
+  // API SETTINGS (global)
+  try {
+    const saved = JSON.parse(localStorage.getItem(API_SETTINGS_KEY) || 'null');
+    if (saved) S.API_SETTINGS = { clientId: saved.clientId || '' };
+  } catch (e) {}
 
   // Load current source config
   loadSourceConfig();

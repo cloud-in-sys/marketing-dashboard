@@ -3,12 +3,17 @@ import { on, emit } from './events.js';
 import { S, PALETTE, SIDEBAR_KEY, PANELS_KEY, GROUPS_KEY,
   initStateFromStorage, saveState, saveColWidths, saveCustomTabs, saveViewOrder,
   syncCurrentTabState, getPresets, setPresets,
-  saveDataSources, switchSource } from './state.js';
+  saveDataSources, switchSource, saveSheetsInput, loadSheetsInput,
+  saveBqInput, loadBqInput,
+  saveSourceMethod, loadSourceMethod,
+  clearSourceRaw } from './state.js';
 import { escapeHtml, hexToSoft } from './utils.js';
 import { parseCSV } from './csv.js';
 import { showModal } from './modal.js';
 import { makeSortable } from './sortable.js';
 import { applyFilters, renderFilters, populateFilters } from './filters.js';
+import * as sheets from './sheets.js';
+import * as bq from './bq.js';
 import { renderChart } from './chart.js';
 import { renderTable } from './table.js';
 import { groupRows } from './dimensions.js';
@@ -138,7 +143,23 @@ function render() {
     headerEl.style.setProperty('--tab-accent-soft', hexToSoft(accent));
   }
   document.getElementById('row-count').textContent = rows.length.toLocaleString();
+  renderHeaderSourceIcon();
   saveState();
+}
+
+function renderHeaderSourceIcon() {
+  const el = document.getElementById('header-source-icon');
+  if (!el) return;
+  const rows = S.SOURCE_DATA[S.CURRENT_SOURCE] || [];
+  if (rows.length === 0) { el.innerHTML = ''; return; }
+  const method = loadSourceMethod();
+  const icons = {
+    csv: {label: 'CSV', html: '\u{1F4C4}'},
+    sheets: {label: 'Sheets', html: '<svg viewBox="0 0 48 48" width="14" height="14"><path fill="#43a047" d="M37 45H11c-1.7 0-3-1.3-3-3V6c0-1.7 1.3-3 3-3h19l10 10v29c0 1.7-1.3 3-3 3z"/><path fill="#c8e6c9" d="M40 13H30V3z"/><path fill="#e8f5e9" d="M31 23H17v14h14V23z"/></svg>'},
+    bq: {label: 'BQ', html: '<svg viewBox="0 0 48 48" width="14" height="14"><circle cx="24" cy="22" r="16" fill="#4285f4"/><circle cx="25" cy="23" r="6" fill="none" stroke="#fff" stroke-width="2"/><path fill="#fff" d="M30 28l4 4-1.4 1.4-4-4z"/></svg>'},
+  };
+  const cfg = icons[method] || icons.csv;
+  el.innerHTML = `<span class="src-icon" title="${cfg.label}">${cfg.html}</span>`;
 }
 
 // ===== STATE LOADING =====
@@ -517,6 +538,7 @@ document.getElementById('source-nav').addEventListener('click', e => {
       if (typed !== '\u524a\u9664') return;
       S.DATA_SOURCES = S.DATA_SOURCES.filter(d => d.id !== id);
       delete S.SOURCE_DATA[id];
+      clearSourceRaw(id);
       saveDataSources();
       if (S.CURRENT_SOURCE === id) {
         switchSource(S.DATA_SOURCES[0].id);
@@ -560,6 +582,72 @@ function enterSourceView() {
   document.querySelectorAll('#view-nav .nav-item, #custom-nav .nav-item').forEach(b => b.classList.remove('active'));
   renderSourceView();
   renderSourceNav();
+  // Auto-refresh sheets/bq data if configured
+  autoRefreshSheetsIfNeeded();
+  autoRefreshBqIfNeeded();
+}
+
+async function autoRefreshBqIfNeeded() {
+  if (!bq.isAuthenticated()) return;
+  const saved = loadBqInput();
+  if (!saved.project || !saved.query) return;
+  const currentRows = S.SOURCE_DATA[S.CURRENT_SOURCE] || [];
+  if (currentRows.length > 0) return;
+  const rowCountEl = document.getElementById('row-count');
+  try {
+    const status = document.getElementById('bq-status');
+    if (status) status.innerHTML = '<span class="api-status-ok" style="font-size:11px">\u2b6f \u30af\u30a8\u30ea\u5b9f\u884c\u4e2d...</span>';
+    if (rowCountEl) rowCountEl.textContent = '\u5b9f\u884c\u4e2d...';
+    document.querySelector('.meta')?.classList.add('meta-loading');
+    const rows = await bq.runQuery(saved.project, saved.query);
+    S.SOURCE_DATA[S.CURRENT_SOURCE] = rows;
+    S.RAW = rows;
+    saveSourceMethod('bq');
+    populateFilters();
+    renderSourceView();
+    renderSourceNav();
+    renderCsvColumns();
+    render();
+  } catch (e) {
+    console.warn('BQ auto-refresh failed:', e.message);
+    if (rowCountEl) rowCountEl.textContent = '0';
+    renderSourceView();
+  } finally {
+    document.querySelector('.meta')?.classList.remove('meta-loading');
+  }
+}
+
+async function autoRefreshSheetsIfNeeded() {
+  if (!sheets.isAuthenticated()) return;
+  const saved = loadSheetsInput();
+  if (!saved.url || !saved.tab) return;
+  // Already has fresh data? Skip
+  const currentRows = S.SOURCE_DATA[S.CURRENT_SOURCE] || [];
+  if (currentRows.length > 0) return;
+  const fileId = sheets.extractSpreadsheetId(saved.url);
+  if (!fileId) return;
+  const rowCountEl = document.getElementById('row-count');
+  try {
+    const status = document.getElementById('sheets-status');
+    if (status) status.innerHTML = '<span class="api-status-ok" style="font-size:11px">\u2b6f \u30c7\u30fc\u30bf\u3092\u53d6\u5f97\u4e2d...</span>';
+    if (rowCountEl) rowCountEl.textContent = '\u8aad\u307f\u8fbc\u307f\u4e2d...';
+    document.querySelector('.meta')?.classList.add('meta-loading');
+    const rows = await sheets.fetchSheetData(fileId, saved.tab);
+    S.SOURCE_DATA[S.CURRENT_SOURCE] = rows;
+    S.RAW = rows;
+    saveSourceMethod('sheets');
+    populateFilters();
+    renderSourceView();
+    renderSourceNav();
+    renderCsvColumns();
+    render();
+  } catch (e) {
+    console.warn('Auto-refresh failed:', e.message);
+    if (rowCountEl) rowCountEl.textContent = '0';
+    renderSourceView();
+  } finally {
+    document.querySelector('.meta')?.classList.remove('meta-loading');
+  }
 }
 
 function renderSourceView() {
@@ -570,7 +658,7 @@ function renderSourceView() {
   const rows = S.SOURCE_DATA[S.CURRENT_SOURCE] || [];
   const info = document.getElementById('source-info');
   if (rows.length === 0) {
-    info.innerHTML = '<div class="source-info-empty"><div class="source-info-icon">\u{1F4C1}</div><div class="source-info-text">CSV\u304C\u8AAD\u307F\u8FBC\u307E\u308C\u3066\u3044\u307E\u305B\u3093</div><div class="source-info-hint">\u53F3\u4E0A\u306E\u300CCSV\u3092\u30A2\u30C3\u30D7\u30ED\u30FC\u30C9\u300D\u304B\u3089\u30D5\u30A1\u30A4\u30EB\u3092\u9078\u629E\u3057\u3066\u304F\u3060\u3055\u3044</div></div>';
+    info.innerHTML = '<div class="source-info-empty"><div class="source-info-icon">\u{1F4C1}</div><div class="source-info-text">\u30C7\u30FC\u30BF\u304C\u8AAD\u307F\u8FBC\u307E\u308C\u3066\u3044\u307E\u305B\u3093</div><div class="source-info-hint">\u4E0A\u306E\u300CCSV\u30A2\u30C3\u30D7\u30ED\u30FC\u30C9\u300D\u307E\u305F\u306F\u300CGoogle\u30B9\u30D7\u30EC\u30C3\u30C9\u30B7\u30FC\u30C8\u300D\u304B\u3089\u30C7\u30FC\u30BF\u3092\u53D6\u5F97\u3057\u3066\u304F\u3060\u3055\u3044</div></div>';
   } else {
     const cols = Object.keys(rows[0]);
     info.innerHTML = `<div class="source-info-grid">
@@ -622,22 +710,204 @@ function renderSourceView() {
       <tbody>${previewRows.map(r => `<tr>${cols.map(c => `<td>${escapeHtml(String(r[c] ?? ''))}</td>`).join('')}</tr>`).join('')}</tbody>
     </table></div>`;
   }
+
+  // Sheets UI state
+  const sheetsConnect = document.getElementById('sheets-connect');
+  const sheetsForm = document.getElementById('sheets-form');
+  const sheetsNoclient = document.getElementById('sheets-noclient');
+  if (sheets.isConfigured()) {
+    sheetsNoclient.classList.add('hidden');
+    if (sheets.isAuthenticated()) {
+      sheetsConnect.classList.add('hidden');
+      sheetsForm.classList.remove('hidden');
+      document.getElementById('sheets-status').innerHTML = '<span class="api-status-ok" style="font-size:11px">\u2713 Google\u30a2\u30ab\u30a6\u30f3\u30c8\u9023\u643a\u6e08\u307f</span>';
+      const savedInput = loadSheetsInput();
+      document.getElementById('sheets-url-input').value = savedInput.url || '';
+      document.getElementById('sheets-tab-input').value = savedInput.tab || '';
+    } else {
+      sheetsConnect.classList.remove('hidden');
+      sheetsForm.classList.add('hidden');
+    }
+  } else {
+    sheetsConnect.classList.add('hidden');
+    sheetsForm.classList.add('hidden');
+    sheetsNoclient.classList.remove('hidden');
+  }
+
+  // BQ UI state
+  const bqConnect = document.getElementById('bq-connect');
+  const bqForm = document.getElementById('bq-form');
+  const bqNoclient = document.getElementById('bq-noclient');
+  if (bq.isConfigured()) {
+    bqNoclient.classList.add('hidden');
+    if (bq.isAuthenticated()) {
+      bqConnect.classList.add('hidden');
+      bqForm.classList.remove('hidden');
+      document.getElementById('bq-status').innerHTML = '<span class="api-status-ok" style="font-size:11px">\u2713 Google\u30a2\u30ab\u30a6\u30f3\u30c8\u9023\u643a\u6e08\u307f</span>';
+      const savedBq = loadBqInput();
+      document.getElementById('bq-project-input').value = savedBq.project || '';
+      document.getElementById('bq-query-input').value = savedBq.query || '';
+    } else {
+      bqConnect.classList.remove('hidden');
+      bqForm.classList.add('hidden');
+    }
+  } else {
+    bqConnect.classList.add('hidden');
+    bqForm.classList.add('hidden');
+    bqNoclient.classList.remove('hidden');
+  }
+}
+
+// Save input on change
+['sheets-url-input', 'sheets-tab-input'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', () => {
+    const url = document.getElementById('sheets-url-input').value;
+    const tab = document.getElementById('sheets-tab-input').value;
+    saveSheetsInput(url, tab);
+  });
+});
+['bq-project-input', 'bq-query-input'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', () => {
+    const project = document.getElementById('bq-project-input').value;
+    const query = document.getElementById('bq-query-input').value;
+    saveBqInput(project, query);
+  });
+});
+
+// Confirm overwrite when data already loaded from another method
+async function confirmOverwriteData(newMethod) {
+  const existing = S.SOURCE_DATA[S.CURRENT_SOURCE] || [];
+  if (existing.length === 0) return true;
+  const methodLabel = { csv: 'CSV', sheets: 'Google\u30b9\u30d7\u30ec\u30c3\u30c9\u30b7\u30fc\u30c8', bq: 'BigQuery' }[newMethod] || newMethod;
+  const ok1 = await showModal({
+    title: '\u30c7\u30fc\u30bf\u3092\u4e0a\u66f8\u304d\u3057\u307e\u3059\u304b\uff1f',
+    body: `\u73fe\u5728\u306e\u30c7\u30fc\u30bf\u30bd\u30fc\u30b9\u306b\u306f\u65e2\u306b${existing.length.toLocaleString()}\u884c\u306e\u30c7\u30fc\u30bf\u304c\u5165\u3063\u3066\u3044\u307e\u3059\u3002${methodLabel}\u3067\u4e0a\u66f8\u304d\u3057\u307e\u3059\u304b\uff1f`,
+    okText: '\u6b21\u3078', danger: true,
+  });
+  if (!ok1) return false;
+  const ok2 = await showModal({
+    title: '\u6700\u7d42\u78ba\u8a8d',
+    body: `\u73fe\u5728\u306e\u30c7\u30fc\u30bf\u306f\u5931\u308f\u308c\u307e\u3059\u3002${methodLabel}\u3067\u4e0a\u66f8\u304d\u3057\u307e\u3059\u304b\uff1f`,
+    okText: '\u4e0a\u66f8\u304d', danger: true,
+  });
+  return !!ok2;
 }
 
 // Source file upload
 document.getElementById('source-file').addEventListener('change', async e => {
   const f = e.target.files[0];
   if (!f) return;
+  if (!(await confirmOverwriteData('csv'))) { e.target.value = ''; return; }
   const text = await f.text();
   const rows = parseCSV(text);
   S.SOURCE_DATA[S.CURRENT_SOURCE] = rows;
   S.RAW = rows;
+  saveSourceMethod('csv');
   populateFilters();
   renderSourceView();
   renderSourceNav();
   renderCsvColumns();
 });
 
+// ----- METHOD CARD SELECTION -----
+document.querySelectorAll('.source-method-card').forEach(card => {
+  card.addEventListener('click', e => {
+    if (card.classList.contains('disabled')) return;
+    if (e.target.closest('input,button,label.file-btn')) return;
+    const method = card.dataset.method;
+    document.querySelectorAll('.source-method-card').forEach(c => c.classList.toggle('active', c === card));
+    document.querySelectorAll('.method-detail-panel').forEach(p => p.classList.add('hidden'));
+    const panel = document.getElementById('detail-' + method);
+    if (panel) panel.classList.remove('hidden');
+  });
+});
+
+// ----- SHEETS: AUTH -----
+document.getElementById('sheets-auth-btn').addEventListener('click', async () => {
+  try {
+    await sheets.authenticate();
+    renderSourceView();
+  } catch (e) {
+    await showModal({title: '\u8a8d\u8a3c\u30a8\u30e9\u30fc', body: e.message, okText: 'OK', cancelText: ''});
+  }
+});
+
+// ----- SHEETS: fetch data -----
+document.getElementById('sheets-fetch-btn').addEventListener('click', async () => {
+  const urlOrId = document.getElementById('sheets-url-input').value.trim();
+  const fileId = sheets.extractSpreadsheetId(urlOrId);
+  const sheet = document.getElementById('sheets-tab-input').value.trim();
+  if (!fileId) { await showModal({title: '\u30a8\u30e9\u30fc', body: '\u30b9\u30d7\u30ec\u30c3\u30c9\u30b7\u30fc\u30c8\u306eURL\u307e\u305f\u306fID\u304c\u6b63\u3057\u304f\u3042\u308a\u307e\u305b\u3093', okText: 'OK', cancelText: ''}); return; }
+  if (!sheet) { await showModal({title: '\u30a8\u30e9\u30fc', body: '\u30bf\u30d6\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', okText: 'OK', cancelText: ''}); return; }
+  if (!(await confirmOverwriteData('sheets'))) return;
+  try {
+    const rows = await sheets.fetchSheetData(fileId, sheet);
+    S.SOURCE_DATA[S.CURRENT_SOURCE] = rows;
+    S.RAW = rows;
+    saveSourceMethod('sheets');
+    populateFilters();
+    renderSourceView();
+    renderSourceNav();
+    renderCsvColumns();
+    await showModal({title: '\u53d6\u5f97\u5b8c\u4e86', body: `${rows.length.toLocaleString()}\u884c\u306e\u30c7\u30fc\u30bf\u3092\u8aad\u307f\u8fbc\u307f\u307e\u3057\u305f`, okText: 'OK', cancelText: ''});
+  } catch (e) {
+    await showModal({title: '\u53d6\u5f97\u30a8\u30e9\u30fc', body: e.message, okText: 'OK', cancelText: ''});
+  }
+});
+
+// ----- SHEETS: disconnect -----
+document.getElementById('sheets-disconnect').addEventListener('click', async () => {
+  const ok = await showModal({title: '\u9023\u643a\u89e3\u9664', body: 'Google\u30a2\u30ab\u30a6\u30f3\u30c8\u306e\u9023\u643a\u3092\u89e3\u9664\u3057\u307e\u3059\u304b\uff1f', okText: '\u89e3\u9664', danger: true});
+  if (!ok) return;
+  sheets.disconnect();
+  renderSourceView();
+});
+
+// ----- BQ: AUTH -----
+document.getElementById('bq-auth-btn').addEventListener('click', async () => {
+  try {
+    await bq.authenticate();
+    renderSourceView();
+  } catch (e) {
+    await showModal({title: '\u8a8d\u8a3c\u30a8\u30e9\u30fc', body: e.message, okText: 'OK', cancelText: ''});
+  }
+});
+
+// ----- BQ: RUN QUERY -----
+document.getElementById('bq-fetch-btn').addEventListener('click', async () => {
+  const project = document.getElementById('bq-project-input').value.trim();
+  const query = document.getElementById('bq-query-input').value.trim();
+  if (!project) { await showModal({title: '\u30a8\u30e9\u30fc', body: '\u30d7\u30ed\u30b8\u30a7\u30af\u30c8ID\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', okText: 'OK', cancelText: ''}); return; }
+  if (!query) { await showModal({title: '\u30a8\u30e9\u30fc', body: 'SQL\u30af\u30a8\u30ea\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', okText: 'OK', cancelText: ''}); return; }
+  if (!(await confirmOverwriteData('bq'))) return;
+  const rowCountEl = document.getElementById('row-count');
+  try {
+    if (rowCountEl) rowCountEl.textContent = '\u5b9f\u884c\u4e2d...';
+    document.querySelector('.meta')?.classList.add('meta-loading');
+    const rows = await bq.runQuery(project, query);
+    S.SOURCE_DATA[S.CURRENT_SOURCE] = rows;
+    S.RAW = rows;
+    saveSourceMethod('bq');
+    populateFilters();
+    renderSourceView();
+    renderSourceNav();
+    renderCsvColumns();
+    render();
+    await showModal({title: '\u53d6\u5f97\u5b8c\u4e86', body: `${rows.length.toLocaleString()}\u884c\u306e\u30c7\u30fc\u30bf\u3092\u53d6\u5f97\u3057\u307e\u3057\u305f`, okText: 'OK', cancelText: ''});
+  } catch (e) {
+    await showModal({title: '\u30af\u30a8\u30ea\u30a8\u30e9\u30fc', body: e.message, okText: 'OK', cancelText: ''});
+  } finally {
+    document.querySelector('.meta')?.classList.remove('meta-loading');
+  }
+});
+
+// ----- BQ: DISCONNECT -----
+document.getElementById('bq-disconnect').addEventListener('click', async () => {
+  const ok = await showModal({title: '\u9023\u643a\u89e3\u9664', body: 'Google\u30a2\u30ab\u30a6\u30f3\u30c8\u306e\u9023\u643a\u3092\u89e3\u9664\u3057\u307e\u3059\u304b\uff1f', okText: '\u89e3\u9664', danger: true});
+  if (!ok) return;
+  bq.disconnect();
+  renderSourceView();
+});
 
 document.getElementById('add-source').addEventListener('click', async () => {
   const name = await showModal({title: '\u30c7\u30fc\u30bf\u30bd\u30fc\u30b9\u3092\u8ffd\u52a0', body: '\u30c7\u30fc\u30bf\u30bd\u30fc\u30b9\u306e\u540d\u524d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', input: true, placeholder: '\u4f8b: CRM\u30c7\u30fc\u30bf', okText: '\u6b21\u3078'});
@@ -898,3 +1168,5 @@ renderThresholds();
 renderPresets();
 renderTabPresetSelect();
 render();
+// Auto-refresh Sheets/BQ data on startup if configured
+setTimeout(() => { autoRefreshSheetsIfNeeded(); autoRefreshBqIfNeeded(); }, 500);
