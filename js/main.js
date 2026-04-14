@@ -1,9 +1,9 @@
 // ===== Dashboard - ES Module Entry Point =====
 import { on, emit } from './events.js';
 import { S, PALETTE, SIDEBAR_KEY, PANELS_KEY, GROUPS_KEY,
-  initStateFromStorage, saveState, saveColWidths, saveCustomTabs, saveViewOrder,
+  initStateFromServer, saveState, saveColWidths, saveCustomTabs, saveViewOrder,
   syncCurrentTabState, getPresets, setPresets,
-  saveDataSources, switchSource, saveSheetsInput, loadSheetsInput,
+  switchSource, saveSheetsInput, loadSheetsInput,
   saveBqInput, loadBqInput,
   saveSourceMethod, loadSourceMethod,
   clearSourceRaw } from './state.js';
@@ -14,11 +14,12 @@ import { makeSortable } from './sortable.js';
 import { applyFilters, renderFilters, populateFilters } from './filters.js';
 import * as sheets from './sheets.js';
 import * as bq from './bq.js';
+import { api } from './api.js';
 import { renderChart } from './chart.js';
 import { renderTable } from './table.js';
 import { groupRows } from './dimensions.js';
 import { dimLabel } from './dimensions.js';
-import { loadUsers, getCurrentUser, hasPerm, renderCurrentUserLabel, applyPermissionUI, showLogin, hideLogin } from './auth.js';
+import { getCurrentUser, hasPerm, renderCurrentUserLabel, applyPermissionUI, hideLogin, observeAuth, signIn, logout } from './auth.js';
 import { seedDefaultPresets, renderPresets, loadPresetIntoGlobals, renderTabPresetSelect,
   enterPresetEdit, exitPresetEdit, syncPresetEdit, deletePreset, savePresetPrompt,
   loadTabState, initTabStates, setExitSettingsMode as setExitSettingsModePresets } from './presets.js';
@@ -210,7 +211,6 @@ on('renderChips', renderChips);
 on('renderThresholds', renderThresholds);
 
 // ===== INITIALIZATION =====
-initStateFromStorage();
 setupSettingsEvents();
 
 // ===== EVENT HANDLERS: TABS & NAVIGATION =====
@@ -536,14 +536,18 @@ document.getElementById('source-nav').addEventListener('click', e => {
       if (!ok) return;
       const typed = await showModal({title: '\u672c\u5f53\u306b\u524a\u9664\u3057\u307e\u3059\u304b\uff1f', body: `\u300c${dsName}\u300d\u306e\u524a\u9664\u306f\u53d6\u308a\u6d88\u305b\u307e\u305b\u3093\u3002\u78ba\u8a8d\u306e\u305f\u3081\u300c\u524a\u9664\u300d\u3068\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002`, input: true, placeholder: '\u524a\u9664', okText: '\u524a\u9664\u3059\u308b', danger: true, noEnter: true});
       if (typed !== '\u524a\u9664') return;
-      S.DATA_SOURCES = S.DATA_SOURCES.filter(d => d.id !== id);
-      delete S.SOURCE_DATA[id];
-      clearSourceRaw(id);
-      saveDataSources();
-      if (S.CURRENT_SOURCE === id) {
-        switchSource(S.DATA_SOURCES[0].id);
+      try {
+        await api.deleteSource(id);
+        S.DATA_SOURCES = S.DATA_SOURCES.filter(d => d.id !== id);
+        delete S.SOURCE_DATA[id];
+        clearSourceRaw(id);
+        if (S.CURRENT_SOURCE === id) {
+          await switchSource(S.DATA_SOURCES[0].id);
+        }
+        reloadFullUI();
+      } catch (err) {
+        showModal({title: '\u524a\u9664\u306b\u5931\u6557', body: err.message || '削除に失敗しました', okText: 'OK', cancelText: ''});
       }
-      reloadFullUI();
     });
     return;
   }
@@ -557,9 +561,13 @@ document.getElementById('source-nav').addEventListener('click', e => {
       if (!newName || newName === ds.name) return;
       const ok = await showModal({title: '\u540d\u524d\u5909\u66f4\u306e\u78ba\u8a8d', body: `\u300c${ds.name}\u300d\u3092\u300c${newName}\u300d\u306b\u5909\u66f4\u3057\u307e\u3059\u304b\uff1f`, okText: '\u5909\u66f4'});
       if (!ok) return;
-      ds.name = newName;
-      saveDataSources();
-      renderSourceNav();
+      try {
+        await api.updateSource(id, { name: newName });
+        ds.name = newName;
+        renderSourceNav();
+      } catch (err) {
+        showModal({title: '\u540d\u524d\u5909\u66f4\u306b\u5931\u6557', body: err.message || '名前変更に失敗しました', okText: 'OK', cancelText: ''});
+      }
     })();
     return;
   }
@@ -914,13 +922,16 @@ document.getElementById('add-source').addEventListener('click', async () => {
   if (!name) return;
   const confirm = await showModal({title: '\u4f5c\u6210\u306e\u78ba\u8a8d', body: `\u30c7\u30fc\u30bf\u30bd\u30fc\u30b9\u300c${name}\u300d\u3092\u4f5c\u6210\u3057\u307e\u3059\u304b\uff1f`, okText: '\u4f5c\u6210'});
   if (!confirm) return;
-  const id = 'src_' + Date.now();
-  S.DATA_SOURCES.push({id, name});
-  S.SOURCE_DATA[id] = [];
-  saveDataSources();
-  switchSource(id);
-  seedDefaultPresets();
-  reloadFullUI();
+  try {
+    const created = await api.createSource({ name });
+    S.DATA_SOURCES.push(created);
+    S.SOURCE_DATA[created.id] = [];
+    await switchSource(created.id);
+    seedDefaultPresets();
+    reloadFullUI();
+  } catch (e) {
+    await showModal({title: '\u4f5c\u6210\u306b\u5931\u6557', body: e.message || 'データソースの作成に失敗しました', okText: 'OK', cancelText: ''});
+  }
 });
 
 // ===== FILTERS TOGGLE =====
@@ -1143,30 +1154,45 @@ document.getElementById('toggle-sidebar').addEventListener('click', () => {
 });
 
 // ===== INITIALIZATION SEQUENCE =====
+// UI-only init runs immediately (doesn't need user data).
 initSidebar();
 initPanelCollapse();
 applySidebarGroupState();
-renderFilters();
-loadUsers();
-renderCurrentUserLabel();
-applyPermissionUI();
-if (!S.CURRENT_USER) showLogin();
-else hideLogin();
 
-renderSourceNav();
-loadViewOrder();
-renderViewNav();
-loadCustomTabs();
-loadState();
-seedDefaultPresets();
-initTabStates();
-loadTabState(S.CURRENT_VIEW);
-highlightActiveView();
-renderCustomTabs();
-renderChips();
-renderThresholds();
-renderPresets();
-renderTabPresetSelect();
-render();
-// Auto-refresh Sheets/BQ data on startup if configured
-setTimeout(() => { autoRefreshSheetsIfNeeded(); autoRefreshBqIfNeeded(); }, 500);
+// Wire login/logout buttons
+document.getElementById('login-google-btn')?.addEventListener('click', () => signIn());
+document.getElementById('header-logout')?.addEventListener('click', () => logout());
+
+// After user signs in, load data from backend and render.
+observeAuth({
+  onReady: async () => {
+    await initStateFromServer();
+    renderFilters();
+    renderCurrentUserLabel();
+    applyPermissionUI();
+    hideLogin();
+
+    renderSourceNav();
+    loadViewOrder();
+    renderViewNav();
+    loadCustomTabs();
+    loadState();
+    seedDefaultPresets();
+    initTabStates();
+    loadTabState(S.CURRENT_VIEW);
+    highlightActiveView();
+    renderCustomTabs();
+    renderChips();
+    renderThresholds();
+    renderPresets();
+    renderTabPresetSelect();
+    render();
+    // Auto-refresh Sheets/BQ data on startup if configured
+    setTimeout(() => { autoRefreshSheetsIfNeeded(); autoRefreshBqIfNeeded(); }, 500);
+  },
+  onLoggedOut: () => {
+    // Clear everything; user sees login overlay
+    S.RAW = [];
+    S.SOURCE_DATA = {};
+  },
+});

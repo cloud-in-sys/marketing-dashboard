@@ -1,6 +1,7 @@
 import { S, PERM_GROUPS, PERM_DEFS, ADMIN_PERMS, VIEWER_PERMS, DEFAULT_BASE_FORMULAS, DEFAULT_FORMULAS,
   saveMetricDefs, saveDimensions, saveViews, saveFilterDefs, saveFormulas, saveBaseFormulas,
-  saveUsers, saveViewOrder, getPresets, setPresets, compileFilter, saveApiSettings } from './state.js';
+  saveViewOrder, getPresets, setPresets, compileFilter, saveApiSettings } from './state.js';
+import { api } from './api.js';
 import { escapeHtml } from './utils.js';
 import { showModal } from './modal.js';
 import { parseBaseFormula } from './aggregate.js';
@@ -93,6 +94,12 @@ export function enterSettingsMode(target = 'users') {
   exitPresetEdit();
   if (target === 'users') {
     userDetailIdx = null;
+    // Load users from backend
+    api.listUsers().then(res => {
+      S.USERS = res.users || [];
+      S.USERS_DRAFT = JSON.parse(JSON.stringify(S.USERS));
+      renderUsersModal();
+    }).catch(e => console.warn('[users] load failed', e));
     S.USERS_DRAFT = JSON.parse(JSON.stringify(S.USERS));
     S.METRICS_DRAFT = null;
     S.METRICS_DRAFT_BASE = null;
@@ -1041,32 +1048,31 @@ export function setupSettingsEvents() {
       await showModal({title: '\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093', body: '\u5c11\u306a\u304f\u3068\u30821\u4eba\u306e\u7ba1\u7406\u8005\u304c\u5fc5\u8981\u3067\u3059', okText: 'OK', cancelText: ''});
       return;
     }
-    const ids = S.USERS_DRAFT.map(u => u.id);
-    if (new Set(ids).size !== ids.length) {
-      await showModal({title: '\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093', body: '\u30ed\u30b0\u30a4\u30f3ID\u304c\u91cd\u8907\u3057\u3066\u3044\u307e\u3059', okText: 'OK', cancelText: ''});
-      return;
-    }
-    if (ids.some(id => !id)) {
-      await showModal({title: '\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093', body: '\u30ed\u30b0\u30a4\u30f3ID\u304c\u7a7a\u306e\u30e6\u30fc\u30b6\u30fc\u304c\u3044\u307e\u3059', okText: 'OK', cancelText: ''});
-      return;
-    }
-    const noPw = S.USERS_DRAFT.find(u => !u.password);
-    if (noPw) {
-      await showModal({title: '\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093', body: `\u300c${noPw.name || noPw.id}\u300d\u306e\u30d1\u30b9\u30ef\u30fc\u30c9\u304c\u5165\u529b\u3055\u308c\u3066\u3044\u307e\u305b\u3093`, okText: 'OK', cancelText: ''});
-      return;
-    }
     const ok = await showModal({title: '\u30e6\u30fc\u30b6\u30fc\u60c5\u5831\u3092\u4fdd\u5b58', body: '\u5909\u66f4\u5185\u5bb9\u3092\u4fdd\u5b58\u3057\u307e\u3059\u304b\uff1f', okText: '\u4fdd\u5b58'});
     if (!ok) return;
-    S.USERS = JSON.parse(JSON.stringify(S.USERS_DRAFT));
-    saveUsers();
-    if (!S.USERS.some(u => u.id === S.CURRENT_USER)) {
-      logout();
-      return;
+    try {
+      // Diff against original and save changed ones
+      const originalMap = Object.fromEntries(S.USERS.map(u => [u.uid, u]));
+      for (const u of S.USERS_DRAFT) {
+        const orig = originalMap[u.uid];
+        if (!orig) continue;
+        if (JSON.stringify(orig) !== JSON.stringify(u)) {
+          await api.updateUser(u.uid, { name: u.name, isAdmin: u.isAdmin, perms: u.perms });
+        }
+      }
+      // Deletions
+      for (const orig of S.USERS) {
+        if (!S.USERS_DRAFT.some(u => u.uid === orig.uid)) {
+          await api.deleteUser(orig.uid);
+        }
+      }
+      S.USERS = JSON.parse(JSON.stringify(S.USERS_DRAFT));
+      renderCurrentUserLabel();
+      applyPermissionUI();
+      clearUsersDirty();
+      await showModal({title: '\u4fdd\u5b58\u5b8c\u4e86', body: '\u30e6\u30fc\u30b6\u30fc\u60c5\u5831\u3092\u4fdd\u5b58\u3057\u307e\u3057\u305f', okText: 'OK', cancelText: ''});
+    } catch (err) {
+      await showModal({title: '\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093', body: err.message || '保存に失敗しました', okText: 'OK', cancelText: ''});
     }
-    renderCurrentUserLabel();
-    applyPermissionUI();
-    S.USERS_DRAFT = JSON.parse(JSON.stringify(S.USERS));
-    clearUsersDirty();
-    await showModal({title: '\u4fdd\u5b58\u5b8c\u4e86', body: '\u30e6\u30fc\u30b6\u30fc\u60c5\u5831\u3092\u4fdd\u5b58\u3057\u307e\u3057\u305f', okText: 'OK', cancelText: ''});
   });
 }

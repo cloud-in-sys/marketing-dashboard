@@ -1,4 +1,7 @@
 // ===== CONSTANTS & DEFAULTS =====
+import { api } from './api.js';
+import { setCurrentSourceId, queueConfigPatch, flushConfigNow } from './persistence.js';
+
 export const DEFAULT_METRIC_DEFS = [
   {key:'ad_cost',        label:'広告費',                      fmt:'yen', type:'base'},
   {key:'ad_cost_fee',    label:'広告費(手数料含む)',          fmt:'yen', type:'base'},
@@ -140,42 +143,15 @@ export const PERM_GROUPS = [
   ]},
 ];
 export const PERM_DEFS = PERM_GROUPS.flatMap(g => g.perms);
-
 export const ADMIN_PERMS = Object.fromEntries(PERM_DEFS.map(p => [p.key, true]));
 export const VIEWER_PERMS = Object.fromEntries(PERM_DEFS.map(p => [p.key, false]));
 export const PALETTE = ['#2563eb', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#7c3aed', '#ec4899', '#14b8a6'];
 export const BUILTIN_SEED_VERSION = 3;
 
-// ===== GLOBAL STORAGE KEYS (not per-source) =====
+// ===== UI-ONLY local storage keys (NOT synced to server) =====
 export const SIDEBAR_KEY = 'dashboard.sidebar.collapsed';
 export const PANELS_KEY = 'dashboard.panels.collapsed';
 export const GROUPS_KEY = 'dashboard.sidebarGroups.v1';
-export const USERS_KEY = 'dashboard.users.v1';
-export const CURRENT_USER_KEY = 'dashboard.currentUser.v1';
-export const DATA_SOURCES_KEY = 'dashboard.dataSources.v1';
-export const CURRENT_SOURCE_KEY = 'dashboard.currentSource.v1';
-export const API_SETTINGS_KEY = 'dashboard.apiSettings.v1';
-
-// ===== PER-SOURCE STORAGE KEY HELPER =====
-function sk(base) { return `${base}.${S.CURRENT_SOURCE}`; }
-const METRIC_DEFS_BASE   = 'dashboard.metricDefs.v1';
-const DIMENSIONS_BASE    = 'dashboard.dimensions.v1';
-const VIEWS_BASE         = 'dashboard.views.v1';
-const FILTER_DEFS_BASE   = 'dashboard.filterDefs.v1';
-const STATE_BASE         = 'dashboard.state.v1';
-const PRESETS_BASE       = 'dashboard.presets.all.v1';
-const COL_WIDTHS_BASE    = 'dashboard.colWidths.v1';
-const CUSTOM_TABS_BASE   = 'dashboard.customTabs.v1';
-const VIEW_ORDER_BASE    = 'dashboard.viewOrder.v1';
-const FORMULAS_BASE      = 'dashboard.metricFormulas.v1';
-const BASE_FORMULAS_BASE = 'dashboard.baseMetricFormulas.v1';
-const SHEETS_INPUT_BASE  = 'dashboard.sheetsInput.v1';
-const BQ_INPUT_BASE      = 'dashboard.bqInput.v1';
-const SOURCE_METHOD_BASE = 'dashboard.sourceMethod.v1';
-const SOURCE_RAW_BASE    = 'dashboard.sourceRaw.v1';
-
-// Export key bases for migration
-export const STATE_KEY = STATE_BASE;
 
 // ===== SHARED MUTABLE STATE =====
 export const S = {
@@ -214,7 +190,12 @@ export const S = {
   VIEWS_DRAFT: null,
   DIMENSIONS_DRAFT: null,
   DIM_EXPR_CACHE: new Map(),
-  API_SETTINGS: { clientId: '' },
+  // Per-source inputs (persisted to source doc, not to config)
+  SHEETS_INPUT: { url: '', tab: '' },
+  BQ_INPUT: { project: '', query: '' },
+  SOURCE_METHOD: '',
+  // Cached presets (loaded separately from config)
+  PRESETS_CACHE: [],
 };
 
 // ===== COMPILE FILTER =====
@@ -224,112 +205,25 @@ export function compileFilter(expr) {
   catch (e) { return null; }
 }
 
-// ===== PER-SOURCE STORAGE HELPERS =====
-export function saveMetricDefs() {
-  try { localStorage.setItem(sk(METRIC_DEFS_BASE), JSON.stringify(S.METRIC_DEFS)); } catch (e) {}
-}
-export function saveDimensions() {
-  try { localStorage.setItem(sk(DIMENSIONS_BASE), JSON.stringify(S.DIMENSIONS)); } catch (e) {}
-}
-export function saveViews() {
-  try {
-    const serialize = {};
-    for (const [k, v] of Object.entries(S.VIEWS)) {
-      serialize[k] = {label: v.label, dims: v.dims, filterExpr: v.filterExpr || null, presetName: v.presetName || v.label};
-    }
-    localStorage.setItem(sk(VIEWS_BASE), JSON.stringify(serialize));
-  } catch (e) {}
-}
-export function saveFilterDefs() {
-  try { localStorage.setItem(sk(FILTER_DEFS_BASE), JSON.stringify(S.FILTER_DEFS)); } catch (e) {}
-}
-export function saveColWidths() {
-  try { localStorage.setItem(sk(COL_WIDTHS_BASE), JSON.stringify(S.COL_WIDTHS)); } catch (e) {}
-}
-export function saveBaseFormulas() {
-  try { localStorage.setItem(sk(BASE_FORMULAS_BASE), JSON.stringify(S.BASE_FORMULAS)); } catch (e) {}
-}
-export function saveFormulas() {
-  try { localStorage.setItem(sk(FORMULAS_BASE), JSON.stringify(S.METRIC_FORMULAS)); } catch (e) {}
-}
-export function saveSourceRaw(sourceId, rows) {
-  try {
-    localStorage.setItem(`${SOURCE_RAW_BASE}.${sourceId}`, JSON.stringify(rows));
-  } catch (e) {
-    console.warn('Source data too large to save to localStorage', e);
+// ===== SAVE HELPERS (queue patches to backend config doc) =====
+function serializeViews() {
+  const out = {};
+  for (const [k, v] of Object.entries(S.VIEWS)) {
+    out[k] = { label: v.label, dims: v.dims, filterExpr: v.filterExpr || null, presetName: v.presetName || v.label };
   }
-}
-export function loadSourceRaw(sourceId) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(`${SOURCE_RAW_BASE}.${sourceId}`) || 'null');
-    return Array.isArray(saved) ? saved : [];
-  } catch (e) { return []; }
-}
-export function clearSourceRaw(sourceId) {
-  try { localStorage.removeItem(`${SOURCE_RAW_BASE}.${sourceId}`); } catch (e) {}
-}
-export function saveSheetsInput(url, tab) {
-  try { localStorage.setItem(sk(SHEETS_INPUT_BASE), JSON.stringify({ url, tab })); } catch (e) {}
-}
-export function loadSheetsInput() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(sk(SHEETS_INPUT_BASE)) || 'null');
-    return saved || { url: '', tab: '' };
-  } catch (e) { return { url: '', tab: '' }; }
-}
-export function saveBqInput(project, query) {
-  try { localStorage.setItem(sk(BQ_INPUT_BASE), JSON.stringify({ project, query })); } catch (e) {}
-}
-export function loadBqInput() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(sk(BQ_INPUT_BASE)) || 'null');
-    return saved || { project: '', query: '' };
-  } catch (e) { return { project: '', query: '' }; }
-}
-export function saveSourceMethod(method) {
-  try { localStorage.setItem(sk(SOURCE_METHOD_BASE), method || ''); } catch (e) {}
-}
-export function loadSourceMethod() {
-  try { return localStorage.getItem(sk(SOURCE_METHOD_BASE)) || ''; } catch (e) { return ''; }
-}
-export function getPresets() {
-  try {
-    const v = JSON.parse(localStorage.getItem(sk(PRESETS_BASE)) || '[]');
-    return Array.isArray(v) ? v : [];
-  } catch (e) { return []; }
-}
-export function setPresets(list) {
-  try { localStorage.setItem(sk(PRESETS_BASE), JSON.stringify(list)); } catch (e) {}
-}
-export function saveCustomTabs() {
-  try { localStorage.setItem(sk(CUSTOM_TABS_BASE), JSON.stringify(S.CUSTOM_TABS)); } catch (e) {}
-}
-export function saveViewOrder() {
-  try { localStorage.setItem(sk(VIEW_ORDER_BASE), JSON.stringify(S.VIEW_ORDER)); } catch (e) {}
+  return out;
 }
 
-// ===== GLOBAL STORAGE HELPERS =====
-export function saveDataSources() {
-  try { localStorage.setItem(DATA_SOURCES_KEY, JSON.stringify(S.DATA_SOURCES)); } catch (e) {}
-}
-export function saveCurrentSource() {
-  try {
-    if (S.CURRENT_SOURCE) localStorage.setItem(CURRENT_SOURCE_KEY, S.CURRENT_SOURCE);
-    else localStorage.removeItem(CURRENT_SOURCE_KEY);
-  } catch (e) {}
-}
-export function saveApiSettings() {
-  try { localStorage.setItem(API_SETTINGS_KEY, JSON.stringify(S.API_SETTINGS)); } catch (e) {}
-}
-export function saveUsers() {
-  try { localStorage.setItem(USERS_KEY, JSON.stringify(S.USERS)); } catch (e) {}
-}
-export function saveCurrentUser() {
-  try {
-    if (S.CURRENT_USER) localStorage.setItem(CURRENT_USER_KEY, S.CURRENT_USER);
-    else localStorage.removeItem(CURRENT_USER_KEY);
-  } catch (e) {}
-}
+export function saveMetricDefs()  { queueConfigPatch({ metricDefs: S.METRIC_DEFS }); }
+export function saveDimensions()  { queueConfigPatch({ dimensions: S.DIMENSIONS }); }
+export function saveViews()       { queueConfigPatch({ views: serializeViews() }); }
+export function saveFilterDefs()  { queueConfigPatch({ filterDefs: S.FILTER_DEFS }); }
+export function saveColWidths()   { queueConfigPatch({ colWidths: S.COL_WIDTHS }); }
+export function saveBaseFormulas(){ queueConfigPatch({ baseFormulas: S.BASE_FORMULAS }); }
+export function saveFormulas()    { queueConfigPatch({ formulas: S.METRIC_FORMULAS }); }
+export function saveCustomTabs()  { queueConfigPatch({ customTabs: S.CUSTOM_TABS }); }
+export function saveViewOrder()   { queueConfigPatch({ viewOrder: S.VIEW_ORDER }); }
+
 export function syncCurrentTabState() {
   if (S.PRESET_EDIT_IDX != null) return;
   if (!S.CURRENT_VIEW) return;
@@ -341,107 +235,133 @@ export function syncCurrentTabState() {
     thresholdMetrics: [...S.THRESHOLD_METRICS],
   };
 }
+
 export function saveState() {
   syncCurrentTabState();
-  try {
-    localStorage.setItem(sk(STATE_BASE), JSON.stringify({
+  queueConfigPatch({
+    state: {
       charts: S.CHARTS,
       currentView: S.CURRENT_VIEW,
       tabStates: S.TAB_STATES,
-    }));
+    }
+  });
+}
+
+// Source-level inputs (saved on the source doc, not on config)
+export async function saveSheetsInput(url, tab) {
+  S.SHEETS_INPUT = { url, tab };
+  if (S.CURRENT_SOURCE) {
+    try { await api.updateSource(S.CURRENT_SOURCE, { sheetsInput: { url, tab } }); } catch (e) { console.warn(e); }
+  }
+}
+export function loadSheetsInput() { return S.SHEETS_INPUT; }
+
+export async function saveBqInput(project, query) {
+  S.BQ_INPUT = { project, query };
+  if (S.CURRENT_SOURCE) {
+    try { await api.updateSource(S.CURRENT_SOURCE, { bqInput: { project, query } }); } catch (e) { console.warn(e); }
+  }
+}
+export function loadBqInput() { return S.BQ_INPUT; }
+
+export async function saveSourceMethod(method) {
+  S.SOURCE_METHOD = method || '';
+  if (S.CURRENT_SOURCE) {
+    try { await api.updateSource(S.CURRENT_SOURCE, { method: S.SOURCE_METHOD }); } catch (e) { console.warn(e); }
+  }
+}
+export function loadSourceMethod() { return S.SOURCE_METHOD; }
+
+// Session-only CSV (not persisted)
+export function saveSourceRaw(sid, rows) {
+  S.SOURCE_DATA[sid] = rows;
+}
+export function loadSourceRaw(sid) {
+  return S.SOURCE_DATA[sid] || [];
+}
+export function clearSourceRaw(sid) {
+  S.SOURCE_DATA[sid] = [];
+}
+
+// Presets: list replace semantics (matches frontend preset editor)
+export function getPresets() { return S.PRESETS_CACHE; }
+export function setPresets(list) {
+  S.PRESETS_CACHE = list;
+  if (S.CURRENT_SOURCE) {
+    api.putPresets(S.CURRENT_SOURCE, list).catch(e => console.warn('[presets] save failed', e));
+  }
+}
+
+// Data sources
+export async function saveDataSources() {
+  // Source list is CRUD'd individually; this is a no-op in the new model.
+}
+
+export function saveCurrentSource() {
+  try {
+    if (S.CURRENT_SOURCE) localStorage.setItem('dashboard.lastSource', S.CURRENT_SOURCE);
   } catch (e) {}
 }
 
-// ===== LOAD SOURCE CONFIG (load per-source settings into globals) =====
-function loadSourceConfig() {
-  const sid = S.CURRENT_SOURCE;
-  // Data is session-only (not persisted); keep existing in-memory if any
-  if (!S.SOURCE_DATA[sid]) S.SOURCE_DATA[sid] = [];
-  S.RAW = S.SOURCE_DATA[sid];
+export function saveUsers() {
+  // Users are saved explicitly via api.updateUser in settings.js
+}
+export function saveCurrentUser() {
+  // Firebase Auth manages current user; no-op
+}
+export function saveApiSettings() {
+  // OAuth is now backend-managed; no-op
+}
 
-  // METRIC_DEFS
-  S.METRIC_DEFS = JSON.parse(JSON.stringify(DEFAULT_METRIC_DEFS));
-  try {
-    const saved = JSON.parse(localStorage.getItem(sk(METRIC_DEFS_BASE)) || 'null');
-    if (Array.isArray(saved) && saved.length) S.METRIC_DEFS = saved.map(m => ({key: m.key, label: m.label, fmt: m.fmt || 'int', type: m.type || 'derived'}));
-  } catch (e) {}
+// ===== LOAD SOURCE CONFIG FROM SERVER =====
+async function applyConfig(cfg) {
+  cfg = cfg || {};
+  S.METRIC_DEFS = Array.isArray(cfg.metricDefs) && cfg.metricDefs.length
+    ? cfg.metricDefs.map(m => ({key: m.key, label: m.label, fmt: m.fmt || 'int', type: m.type || 'derived'}))
+    : JSON.parse(JSON.stringify(DEFAULT_METRIC_DEFS));
   S.SELECTED_METRICS = S.METRIC_DEFS.map(m => m.key);
 
-  // DIMENSIONS
-  S.DIMENSIONS = JSON.parse(JSON.stringify(DEFAULT_DIMENSIONS));
-  try {
-    const saved = JSON.parse(localStorage.getItem(sk(DIMENSIONS_BASE)) || 'null');
-    if (Array.isArray(saved) && saved.length) S.DIMENSIONS = saved.map(d => ({key: d.key, label: d.label, field: d.field || d.key, type: d.type || 'value'}));
-  } catch (e) {}
+  S.DIMENSIONS = Array.isArray(cfg.dimensions) && cfg.dimensions.length
+    ? cfg.dimensions.map(d => ({key: d.key, label: d.label, field: d.field || d.key, type: d.type || 'value'}))
+    : JSON.parse(JSON.stringify(DEFAULT_DIMENSIONS));
 
-  // VIEWS
   S.VIEWS = {};
-  for (const [k, v] of Object.entries(DEFAULT_VIEWS_INIT)) {
-    S.VIEWS[k] = {label: v.label, dims: [...v.dims], filterExpr: v.filter, filter: compileFilter(v.filter), presetName: v.label};
+  const savedViews = cfg.views;
+  if (savedViews && typeof savedViews === 'object' && Object.keys(savedViews).length) {
+    for (const [k, v] of Object.entries(savedViews)) {
+      S.VIEWS[k] = {label: v.label, dims: Array.isArray(v.dims) ? v.dims : [], filterExpr: v.filterExpr || null, filter: compileFilter(v.filterExpr), presetName: v.presetName || v.label};
+    }
+  } else {
+    for (const [k, v] of Object.entries(DEFAULT_VIEWS_INIT)) {
+      S.VIEWS[k] = {label: v.label, dims: [...v.dims], filterExpr: v.filter, filter: compileFilter(v.filter), presetName: v.label};
+    }
   }
-  try {
-    const saved = JSON.parse(localStorage.getItem(sk(VIEWS_BASE)) || 'null');
-    if (saved && typeof saved === 'object') {
-      S.VIEWS = {};
-      for (const [k, v] of Object.entries(saved)) {
-        S.VIEWS[k] = {label: v.label, dims: Array.isArray(v.dims) ? v.dims : [], filterExpr: v.filterExpr || null, filter: compileFilter(v.filterExpr), presetName: v.presetName || v.label};
-      }
-    }
-  } catch (e) {}
-  S.VIEW_ORDER = Object.keys(S.VIEWS);
-  try {
-    const saved = JSON.parse(localStorage.getItem(sk(VIEW_ORDER_BASE)) || 'null');
-    if (Array.isArray(saved)) {
-      const valid = saved.filter(k => S.VIEWS[k]);
-      const missing = Object.keys(S.VIEWS).filter(k => !valid.includes(k));
-      S.VIEW_ORDER = [...valid, ...missing];
-    }
-  } catch (e) {}
 
-  // FILTER_DEFS
-  S.FILTER_DEFS = JSON.parse(JSON.stringify(DEFAULT_FILTER_DEFS));
-  try {
-    const saved = JSON.parse(localStorage.getItem(sk(FILTER_DEFS_BASE)) || 'null');
-    if (Array.isArray(saved) && saved.length) S.FILTER_DEFS = saved;
-  } catch (e) {}
+  S.VIEW_ORDER = Array.isArray(cfg.viewOrder)
+    ? [...cfg.viewOrder.filter(k => S.VIEWS[k]), ...Object.keys(S.VIEWS).filter(k => !cfg.viewOrder.includes(k))]
+    : Object.keys(S.VIEWS);
 
-  // COL_WIDTHS
-  try { S.COL_WIDTHS = JSON.parse(localStorage.getItem(sk(COL_WIDTHS_BASE)) || '{}'); } catch (e) { S.COL_WIDTHS = {}; }
+  S.FILTER_DEFS = Array.isArray(cfg.filterDefs) && cfg.filterDefs.length
+    ? cfg.filterDefs
+    : JSON.parse(JSON.stringify(DEFAULT_FILTER_DEFS));
 
-  // FORMULAS
-  S.BASE_FORMULAS = {...DEFAULT_BASE_FORMULAS};
-  try {
-    const saved = JSON.parse(localStorage.getItem(sk(BASE_FORMULAS_BASE)) || '{}');
-    if (saved && typeof saved === 'object') S.BASE_FORMULAS = {...DEFAULT_BASE_FORMULAS, ...saved};
-  } catch (e) {}
-  S.METRIC_FORMULAS = {...DEFAULT_FORMULAS};
-  try {
-    const saved = JSON.parse(localStorage.getItem(sk(FORMULAS_BASE)) || '{}');
-    if (saved && typeof saved === 'object') S.METRIC_FORMULAS = {...DEFAULT_FORMULAS, ...saved};
-  } catch (e) {}
+  S.COL_WIDTHS = cfg.colWidths && typeof cfg.colWidths === 'object' ? cfg.colWidths : {};
 
-  // CUSTOM_TABS
-  try { S.CUSTOM_TABS = JSON.parse(localStorage.getItem(sk(CUSTOM_TABS_BASE)) || '[]'); }
-  catch (e) { S.CUSTOM_TABS = []; }
+  S.BASE_FORMULAS = { ...DEFAULT_BASE_FORMULAS, ...(cfg.baseFormulas || {}) };
+  S.METRIC_FORMULAS = { ...DEFAULT_FORMULAS, ...(cfg.formulas || {}) };
 
-  // STATE (charts, currentView, tabStates)
-  S.CURRENT_VIEW = 'summary_daily';
-  S.CHARTS = [{id: 1, metric: 'ad_cost', type: 'bar', size: 'main', color: '#2563eb', bucket: 'auto'}];
-  S.CHART_ID_SEQ = 2;
-  S.TAB_STATES = {};
-  try {
-    const s = JSON.parse(localStorage.getItem(sk(STATE_BASE)) || 'null');
-    if (s) {
-      if (s.tabStates && typeof s.tabStates === 'object') S.TAB_STATES = s.tabStates;
-      if (s.currentView && (S.VIEWS[s.currentView] || S.CUSTOM_TABS.some(t => t.key === s.currentView))) S.CURRENT_VIEW = s.currentView;
-      if (Array.isArray(s.charts) && s.charts.length) {
-        S.CHARTS = s.charts.map(c => ({id: c.id, metric: c.metric, type: c.type, size: c.size, color: c.color || '#2563eb', name: c.name || '', bucket: c.bucket || 'auto'}));
-        S.CHART_ID_SEQ = Math.max(...S.CHARTS.map(c => c.id)) + 1;
-      }
-    }
-  } catch (e) {}
+  S.CUSTOM_TABS = Array.isArray(cfg.customTabs) ? cfg.customTabs : [];
 
-  // Reset filter values & drafts
+  // Restore charts/view/tab state
+  const st = cfg.state || {};
+  S.CURRENT_VIEW = (st.currentView && (S.VIEWS[st.currentView] || S.CUSTOM_TABS.some(t => t.key === st.currentView))) ? st.currentView : 'summary_daily';
+  S.TAB_STATES = st.tabStates && typeof st.tabStates === 'object' ? st.tabStates : {};
+  S.CHARTS = Array.isArray(st.charts) && st.charts.length
+    ? st.charts.map(c => ({id: c.id, metric: c.metric, type: c.type, size: c.size, color: c.color || '#2563eb', name: c.name || '', bucket: c.bucket || 'auto'}))
+    : [{id: 1, metric: 'ad_cost', type: 'bar', size: 'main', color: '#2563eb', bucket: 'auto'}];
+  S.CHART_ID_SEQ = Math.max(0, ...S.CHARTS.map(c => c.id)) + 1;
+
+  // Resets
   S.FILTER_VALUES = {};
   S.SELECTED_DIMS = ['action_date'];
   S.THRESHOLDS = {};
@@ -458,87 +378,64 @@ function loadSourceConfig() {
   S.DIM_EXPR_CACHE.clear();
 }
 
+async function loadSourceConfigFromServer(sid) {
+  const source = S.DATA_SOURCES.find(s => s.id === sid);
+  S.SHEETS_INPUT = source?.sheetsInput || { url: '', tab: '' };
+  S.BQ_INPUT = source?.bqInput || { project: '', query: '' };
+  S.SOURCE_METHOD = source?.method || '';
+
+  if (!S.SOURCE_DATA[sid]) S.SOURCE_DATA[sid] = [];
+  S.RAW = S.SOURCE_DATA[sid];
+
+  const [{ config }, { presets }] = await Promise.all([
+    api.getConfig(sid),
+    api.listPresets(sid),
+  ]);
+  await applyConfig(config);
+  S.PRESETS_CACHE = presets || [];
+}
+
 // ===== SWITCH SOURCE =====
-// Save ALL per-source settings for current source
-function saveAllSourceConfig() {
-  saveState();
-  saveMetricDefs();
-  saveDimensions();
-  saveViews();
-  saveFilterDefs();
-  saveColWidths();
-  saveBaseFormulas();
-  saveFormulas();
-  saveCustomTabs();
-  saveViewOrder();
-}
-
-export function switchSource(id) {
-  // Save current source settings before switching
-  if (S.CURRENT_SOURCE) saveAllSourceConfig();
-  // Switch
+export async function switchSource(id) {
+  if (S.CURRENT_SOURCE) await flushConfigNow();
   S.CURRENT_SOURCE = id;
+  setCurrentSourceId(id);
   saveCurrentSource();
-  // Load new source config
-  loadSourceConfig();
+  await loadSourceConfigFromServer(id);
 }
 
-// ===== MIGRATE: move old global keys to default source =====
-function migrateToSourceScoped() {
-  const migrated = localStorage.getItem('dashboard.migrated.v2');
-  if (!migrated) {
-    const bases = [METRIC_DEFS_BASE, DIMENSIONS_BASE, VIEWS_BASE, FILTER_DEFS_BASE,
-      STATE_BASE, PRESETS_BASE, COL_WIDTHS_BASE, CUSTOM_TABS_BASE, VIEW_ORDER_BASE,
-      FORMULAS_BASE, BASE_FORMULAS_BASE];
-    for (const base of bases) {
-      const old = localStorage.getItem(base);
-      if (old != null && !localStorage.getItem(base + '.default')) {
-        localStorage.setItem(base + '.default', old);
-      }
-    }
-    try { localStorage.setItem('dashboard.migrated.v2', '1'); } catch (e) {}
-  }
-  // Clean up previously saved raw data (session-only policy)
-  const cleaned = localStorage.getItem('dashboard.rawCleanup.v1');
-  if (!cleaned) {
-    const keysToRemove = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(SOURCE_RAW_BASE)) keysToRemove.push(key);
-    }
-    keysToRemove.forEach(k => localStorage.removeItem(k));
-    try { localStorage.setItem('dashboard.rawCleanup.v1', '1'); } catch (e) {}
-  }
-}
+// ===== INIT (called once after login) =====
+export async function initStateFromServer() {
+  // Load user + sources
+  const [{ user }, { sources }] = await Promise.all([
+    api.me(),
+    api.listSources(),
+  ]);
 
-// ===== INIT (called once at startup) =====
-export function initStateFromStorage() {
-  // DATA SOURCES (global)
-  S.DATA_SOURCES = [{id: 'default', name: 'デフォルト'}];
-  try {
-    const saved = JSON.parse(localStorage.getItem(DATA_SOURCES_KEY) || 'null');
-    if (Array.isArray(saved) && saved.length) S.DATA_SOURCES = saved;
-  } catch (e) {}
+  S.USERS = [user];
+  S.CURRENT_USER = user.uid;
+
+  S.DATA_SOURCES = sources;
   S.SOURCE_DATA = {};
-  S.DATA_SOURCES.forEach(ds => { S.SOURCE_DATA[ds.id] = []; });
-  const savedSource = localStorage.getItem(CURRENT_SOURCE_KEY);
-  S.CURRENT_SOURCE = (savedSource && S.DATA_SOURCES.some(ds => ds.id === savedSource)) ? savedSource : S.DATA_SOURCES[0]?.id || 'default';
+  sources.forEach(s => { S.SOURCE_DATA[s.id] = []; });
 
-  // Migrate old keys to default source
-  migrateToSourceScoped();
-
-  // USERS (global, not per-source)
-  S.USERS = [
-    {id: 'admin',  password: 'admin',  name: '管理者', isAdmin: true,  perms: {...ADMIN_PERMS}},
-    {id: 'viewer', password: 'viewer', name: '閲覧者', isAdmin: false, perms: {...VIEWER_PERMS}},
-  ];
-
-  // API SETTINGS (global)
+  // Restore last selected source if valid
+  let initial = null;
   try {
-    const saved = JSON.parse(localStorage.getItem(API_SETTINGS_KEY) || 'null');
-    if (saved) S.API_SETTINGS = { clientId: saved.clientId || '' };
+    const last = localStorage.getItem('dashboard.lastSource');
+    if (last && sources.some(s => s.id === last)) initial = last;
   } catch (e) {}
+  if (!initial) initial = sources[0]?.id || null;
 
-  // Load current source config
-  loadSourceConfig();
+  if (initial) {
+    S.CURRENT_SOURCE = initial;
+    setCurrentSourceId(initial);
+    saveCurrentSource();
+    await loadSourceConfigFromServer(initial);
+  }
+}
+
+// Backwards-compat stub (some call sites still invoke this; make it a no-op)
+export function initStateFromStorage() {
+  console.warn('initStateFromStorage() is deprecated; use initStateFromServer()');
 }

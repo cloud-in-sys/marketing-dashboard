@@ -1,125 +1,50 @@
-// ===== Google Sheets Integration =====
-import { S } from './state.js';
+// Google Sheets integration — now proxied through the backend.
+// The backend holds the refresh token and makes authenticated Google API calls.
 
-const TOKEN_KEY = 'dashboard.googleToken.v1';
-let accessToken = null;
-let tokenExpiry = 0;
-let tokenClient = null;
+import { api } from './api.js';
 
-const SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/drive.readonly';
+let connectedState = null; // null = unknown, true/false = known
 
-// Load token from localStorage on module init
-try {
-  const saved = JSON.parse(localStorage.getItem(TOKEN_KEY) || 'null');
-  if (saved && saved.token && saved.expiry > Date.now()) {
-    accessToken = saved.token;
-    tokenExpiry = saved.expiry;
+export async function refreshConnectionState() {
+  try {
+    const s = await api.googleStatus();
+    connectedState = !!s.connected;
+    return connectedState;
+  } catch (e) {
+    connectedState = false;
+    return false;
   }
-} catch (e) {}
-
-function saveToken(token, expiresIn) {
-  accessToken = token;
-  tokenExpiry = Date.now() + (expiresIn * 1000) - 60000; // 1min buffer
-  try { localStorage.setItem(TOKEN_KEY, JSON.stringify({ token, expiry: tokenExpiry })); } catch (e) {}
-}
-
-function clearToken() {
-  accessToken = null;
-  tokenExpiry = 0;
-  try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
 }
 
 export function isConfigured() {
-  return !!S.API_SETTINGS.clientId;
+  // OAuth client ID lives on the backend; the frontend doesn't need to know it.
+  return true;
 }
 
 export function isAuthenticated() {
-  return !!accessToken && tokenExpiry > Date.now();
+  return connectedState === true;
 }
 
-// Initialize token client
-function ensureTokenClient() {
-  if (tokenClient) return;
-  if (!window.google?.accounts?.oauth2) return;
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: S.API_SETTINGS.clientId,
-    scope: SCOPES,
-    callback: () => {},
+export async function authenticate() {
+  const { url } = await api.googleAuthUrl();
+  // Open Google consent in a popup; server saves the refresh token.
+  const popup = window.open(url, 'google-auth', 'width=500,height=650');
+  if (!popup) throw new Error('ポップアップがブロックされました。許可してください。');
+  // Poll until popup closes, then refresh state.
+  await new Promise(resolve => {
+    const t = setInterval(() => {
+      if (popup.closed) { clearInterval(t); resolve(); }
+    }, 500);
   });
+  await refreshConnectionState();
+  if (!connectedState) throw new Error('Google連携に失敗しました');
 }
 
-// Request OAuth access token
-export function authenticate() {
-  return new Promise((resolve, reject) => {
-    if (!S.API_SETTINGS.clientId) {
-      reject(new Error('\u30af\u30e9\u30a4\u30a2\u30f3\u30c8ID\u304c\u8a2d\u5b9a\u3055\u308c\u3066\u3044\u307e\u305b\u3093'));
-      return;
-    }
-    if (!window.google?.accounts?.oauth2) {
-      reject(new Error('Google\u8a8d\u8a3c\u30e9\u30a4\u30d6\u30e9\u30ea\u304c\u8aad\u307f\u8fbc\u307e\u308c\u3066\u3044\u307e\u305b\u3093\u3002\u30da\u30fc\u30b8\u3092\u30ea\u30ed\u30fc\u30c9\u3057\u3066\u304f\u3060\u3055\u3044'));
-      return;
-    }
-    ensureTokenClient();
-    tokenClient.callback = (response) => {
-      if (response.error) {
-        reject(new Error(response.error));
-        return;
-      }
-      saveToken(response.access_token, response.expires_in || 3600);
-      resolve(accessToken);
-    };
-    tokenClient.requestAccessToken({ prompt: accessToken ? '' : 'consent' });
-  });
+export async function disconnect() {
+  await api.googleDisconnect();
+  connectedState = false;
 }
 
-// Disconnect
-export function disconnect() {
-  if (accessToken && window.google?.accounts?.oauth2) {
-    google.accounts.oauth2.revoke(accessToken);
-  }
-  clearToken();
-  tokenClient = null;
-}
-
-// Fetch user's spreadsheets from Google Drive
-export async function fetchSpreadsheetList() {
-  const res = await fetch(
-    "https://www.googleapis.com/drive/v3/files?q=mimeType%3D'application%2Fvnd.google-apps.spreadsheet'&orderBy=modifiedTime+desc&pageSize=50&fields=files(id%2Cname%2CmodifiedTime)",
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  if (!res.ok) {
-    if (res.status === 401 || res.status === 403) {
-      clearToken();
-      throw new Error('\u8a8d\u8a3c\u306e\u6709\u52b9\u671f\u9650\u304c\u5207\u308c\u307e\u3057\u305f\u3002\u518d\u5ea6\u9023\u643a\u3057\u3066\u304f\u3060\u3055\u3044');
-    }
-    throw new Error(`\u30b9\u30d7\u30ec\u30c3\u30c9\u30b7\u30fc\u30c8\u4e00\u89a7\u306e\u53d6\u5f97\u306b\u5931\u6557\u3057\u307e\u3057\u305f (${res.status})`);
-  }
-  const data = await res.json();
-  return (data.files || []).map(f => ({
-    id: f.id,
-    name: f.name,
-    modified: f.modifiedTime,
-  }));
-}
-
-// Fetch sheet names in a spreadsheet
-export async function fetchSheetNames(spreadsheetId) {
-  const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  if (!res.ok) {
-    if (res.status === 401 || res.status === 403) {
-      clearToken();
-      throw new Error('\u8a8d\u8a3c\u306e\u6709\u52b9\u671f\u9650\u304c\u5207\u308c\u307e\u3057\u305f');
-    }
-    throw new Error(`\u30b7\u30fc\u30c8\u4e00\u89a7\u306e\u53d6\u5f97\u306b\u5931\u6557 (${res.status})`);
-  }
-  const data = await res.json();
-  return (data.sheets || []).map(s => s.properties.title);
-}
-
-// Extract spreadsheet ID from URL or raw ID
 export function extractSpreadsheetId(input) {
   const urlMatch = /\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/.exec(input);
   if (urlMatch) return urlMatch[1];
@@ -127,31 +52,12 @@ export function extractSpreadsheetId(input) {
   return null;
 }
 
-// Fetch sheet data as row objects
-export async function fetchSheetData(spreadsheetId, sheetName) {
-  const range = encodeURIComponent(sheetName);
-  const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  if (!res.ok) {
-    if (res.status === 401 || res.status === 403) {
-      clearToken();
-      throw new Error('\u8a8d\u8a3c\u306e\u6709\u52b9\u671f\u9650\u304c\u5207\u308c\u307e\u3057\u305f');
-    }
-    throw new Error(`\u30c7\u30fc\u30bf\u306e\u53d6\u5f97\u306b\u5931\u6557 (${res.status})`);
-  }
-  const data = await res.json();
-  const values = data.values || [];
-  if (values.length < 2) throw new Error('\u30c7\u30fc\u30bf\u304c\u7a7a\u307e\u305f\u306f\u30d8\u30c3\u30c0\u30fc\u306e\u307f\u3067\u3059');
-  const header = values[0].map(h => String(h).trim());
-  const rows = [];
-  for (let i = 1; i < values.length; i++) {
-    const row = values[i];
-    if (!row || row.every(v => v === '' || v == null)) continue;
-    const obj = {};
-    header.forEach((h, j) => { obj[h] = row[j] != null ? String(row[j]) : ''; });
-    rows.push(obj);
-  }
+export async function fetchSheetData(urlOrId, sheetName) {
+  const { rows } = await api.fetchSheets(urlOrId, sheetName);
   return rows;
 }
+
+// Listing spreadsheets/sheet names is no longer exposed by the frontend
+// (user types URL + tab directly). Kept as stubs for compatibility.
+export async function fetchSpreadsheetList() { return []; }
+export async function fetchSheetNames() { return []; }

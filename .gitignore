@@ -1,2 +1,13 @@
 .DS_Store
 .claude/
+
+# Per-company deployment config (contains Firebase keys)
+app-config.js
+.firebaserc
+
+# Backend
+backend/node_modules
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/sa-key.json

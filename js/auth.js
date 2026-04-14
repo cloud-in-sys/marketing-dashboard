@@ -1,30 +1,17 @@
-import { S, ADMIN_PERMS, VIEWER_PERMS, PERM_DEFS, USERS_KEY, CURRENT_USER_KEY } from './state.js';
-import { saveCurrentUser } from './state.js';
+// Firebase Auth (Google SSO) wrapper. Keeps same exported surface as the
+// previous localStorage-based auth module where possible.
 
-// ===== Authentication / Users / Permissions =====
-export function loadUsers() {
-  try {
-    const list = JSON.parse(localStorage.getItem(USERS_KEY) || 'null');
-    if (Array.isArray(list) && list.length) S.USERS = list.map(u => ({
-      id: u.id || u.name,
-      password: u.password || '',
-      name: u.name || u.id,
-      isAdmin: !!u.isAdmin,
-      perms: {...VIEWER_PERMS, ...(u.perms || {})},
-    }));
-  } catch (e) {}
-  S.USERS.forEach(u => { if (u.isAdmin) u.perms = {...ADMIN_PERMS, ...u.perms, ...Object.fromEntries(PERM_DEFS.map(p => [p.key, true]))}; });
-  if (!S.USERS.some(u => u.isAdmin)) S.USERS[0].isAdmin = true;
-  const cu = localStorage.getItem(CURRENT_USER_KEY);
-  if (cu && S.USERS.some(u => u.id === cu)) S.CURRENT_USER = cu;
-}
+import { S, VIEWER_PERMS } from './state.js';
+import { signInWithGoogle, signOutUser, onAuthChange } from './firebaseClient.js';
 
 export function getCurrentUser() {
-  return S.USERS.find(u => u.id === S.CURRENT_USER) || {name: '', perms: VIEWER_PERMS, isAdmin: false};
+  return S.USERS.find(u => u.uid === S.CURRENT_USER)
+    || { uid: null, name: '', email: '', photoURL: '', perms: { ...VIEWER_PERMS }, isAdmin: false };
 }
 
 export function hasPerm(key) {
-  return !!getCurrentUser().perms?.[key];
+  const u = getCurrentUser();
+  return !!(u.isAdmin || u.perms?.[key]);
 }
 
 export function renderCurrentUserLabel() {
@@ -32,58 +19,99 @@ export function renderCurrentUserLabel() {
   const nameEl = document.getElementById('header-user-name');
   const roleEl = document.getElementById('header-user-role');
   const avatarEl = document.getElementById('header-user-avatar');
-  if (nameEl) nameEl.textContent = u.name || '-';
-  if (roleEl) roleEl.textContent = u.id ? `@${u.id}${u.isAdmin ? ' \u00b7 \u7ba1\u7406\u8005' : ''}` : '';
-  if (avatarEl) avatarEl.textContent = (u.name || u.id || '?').slice(0, 1).toUpperCase();
+  if (nameEl) nameEl.textContent = u.name || u.email || '-';
+  if (roleEl) roleEl.textContent = u.email ? `${u.email}${u.isAdmin ? ' \u00b7 \u7ba1\u7406\u8005' : ''}` : '';
+  if (avatarEl) {
+    if (u.photoURL) {
+      avatarEl.style.backgroundImage = `url(${u.photoURL})`;
+      avatarEl.style.backgroundSize = 'cover';
+      avatarEl.textContent = '';
+    } else {
+      avatarEl.style.backgroundImage = '';
+      avatarEl.textContent = (u.name || u.email || '?').slice(0, 1).toUpperCase();
+    }
+  }
 }
 
 export function applyPermissionUI() {
   const u = getCurrentUser();
   document.body.classList.toggle('is-admin', !!u.isAdmin);
-  document.body.classList.toggle('no-view-sources', !u.perms.viewSources);
-  document.body.classList.toggle('no-add-source', !u.perms.addSource);
-  document.body.classList.toggle('no-delete-source', !u.perms.deleteSource);
-  document.body.classList.toggle('no-view-presets', !u.perms.viewPresets);
-  document.body.classList.toggle('no-view-custom', !u.perms.viewCustom);
-  document.body.classList.toggle('no-add-custom', !u.perms.addCustom);
-  document.body.classList.toggle('no-save-preset', !u.perms.savePreset);
-  document.body.classList.toggle('no-edit-custom', !u.perms.editCustom);
-  document.body.classList.toggle('no-edit-preset', !u.perms.editPreset);
-  document.body.classList.toggle('no-delete-custom', !u.perms.deleteCustom);
-  document.body.classList.toggle('no-delete-preset', !u.perms.deletePreset);
-  document.body.classList.toggle('no-edit-metrics', !u.perms.editMetrics);
-  document.body.classList.toggle('no-edit-filters', !u.perms.editFilters);
-  document.body.classList.toggle('no-edit-defaults', !u.perms.editDefaults);
-  document.body.classList.toggle('no-edit-dimensions', !u.perms.editDimensions);
-  document.body.classList.toggle('no-manage-users', !u.perms.manageUsers);
+  const keys = [
+    'viewSources','addSource','deleteSource',
+    'viewPresets','viewCustom','addCustom','savePreset',
+    'editCustom','editPreset','deleteCustom','deletePreset',
+    'editMetrics','editFilters','editDefaults','editDimensions','manageUsers',
+  ];
+  const camelToKebab = s => s.replace(/([A-Z])/g, '-$1').toLowerCase();
+  for (const k of keys) {
+    const cls = 'no-' + camelToKebab(k);
+    const ok = u.isAdmin || u.perms?.[k];
+    document.body.classList.toggle(cls, !ok);
+  }
 }
 
 export function showLogin() {
-  document.getElementById('login-overlay').classList.remove('hidden');
-  document.getElementById('login-id').value = '';
-  document.getElementById('login-pw').value = '';
-  document.getElementById('login-error').classList.add('hidden');
-  setTimeout(() => document.getElementById('login-id').focus(), 50);
+  const overlay = document.getElementById('login-overlay');
+  if (overlay) overlay.classList.remove('hidden');
 }
 
 export function hideLogin() {
-  document.getElementById('login-overlay').classList.add('hidden');
+  const overlay = document.getElementById('login-overlay');
+  if (overlay) overlay.classList.add('hidden');
 }
 
-export function tryLogin(id, password) {
-  const u = S.USERS.find(u => u.id === id && u.password === password);
-  if (!u) return false;
-  S.CURRENT_USER = u.id;
-  saveCurrentUser();
-  applyPermissionUI();
-  renderCurrentUserLabel();
-  return true;
+export async function signIn() {
+  try {
+    await signInWithGoogle();
+    // Auth state change listener will fire and trigger app init
+  } catch (e) {
+    const errEl = document.getElementById('login-error');
+    if (errEl) {
+      errEl.textContent = e.message || 'ログインに失敗しました';
+      errEl.classList.remove('hidden');
+    }
+  }
 }
 
-export function logout() {
+export async function logout() {
+  await signOutUser();
   S.CURRENT_USER = null;
-  saveCurrentUser();
   applyPermissionUI();
   renderCurrentUserLabel();
   showLogin();
+}
+
+// Legacy API compatibility (old login form). Always returns false — password login removed.
+export function tryLogin() {
+  console.warn('tryLogin() is deprecated — use signIn() (Google SSO)');
+  return false;
+}
+export function loadUsers() { /* no-op; users loaded from server */ }
+
+// Register the auth state change handler. Called once by main.js during bootstrap.
+// onReady callback fires when user is authenticated AND profile is loaded.
+// onLoggedOut fires when user signs out.
+export function observeAuth({ onReady, onLoggedOut }) {
+  return onAuthChange(async fbUser => {
+    if (!fbUser) {
+      S.CURRENT_USER = null;
+      applyPermissionUI();
+      renderCurrentUserLabel();
+      showLogin();
+      onLoggedOut?.();
+      return;
+    }
+    hideLogin();
+    try {
+      await onReady?.(fbUser);
+    } catch (e) {
+      console.error('[auth] onReady failed', e);
+      const errEl = document.getElementById('login-error');
+      if (errEl) {
+        errEl.textContent = 'データの読み込みに失敗しました: ' + (e.message || e);
+        errEl.classList.remove('hidden');
+      }
+      showLogin();
+    }
+  });
 }
