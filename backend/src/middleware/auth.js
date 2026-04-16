@@ -71,10 +71,9 @@ export async function authMiddleware(c, next) {
     }
   } else {
     user = snap.data();
-    // Always refresh email/name/photo from token (source of truth: Google)
+    // Refresh email/photo from token, but keep manually-set name
     const patch = {};
     if (decoded.email && decoded.email !== user.email) patch.email = decoded.email;
-    if (decoded.name && decoded.name !== user.name) patch.name = decoded.name;
     if (decoded.picture && decoded.picture !== user.photoURL) patch.photoURL = decoded.picture;
     if (Object.keys(patch).length) {
       await userRef.update(patch);
