@@ -532,6 +532,49 @@ chartsGrid.addEventListener('drop', e => {
   render();
 });
 
+// ===== CARD DRAG REORDER =====
+let CARD_DRAG_ID = null;
+const cardsGrid = document.getElementById('cards-grid');
+cardsGrid.addEventListener('dragstart', e => {
+  if (e.target.closest('input, textarea, button')) { e.preventDefault(); return; }
+  const card = e.target.closest('.kpi-card');
+  if (!card) return;
+  CARD_DRAG_ID = +card.dataset.cardId;
+  card.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', String(CARD_DRAG_ID)); } catch (_) {}
+});
+cardsGrid.addEventListener('dragend', () => {
+  cardsGrid.querySelectorAll('.kpi-card').forEach(c => {
+    c.classList.remove('dragging');
+    c.classList.remove('drop-target');
+  });
+  CARD_DRAG_ID = null;
+});
+cardsGrid.addEventListener('dragover', e => {
+  if (CARD_DRAG_ID == null) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const card = e.target.closest('.kpi-card');
+  cardsGrid.querySelectorAll('.kpi-card').forEach(c => c.classList.remove('drop-target'));
+  if (card && +card.dataset.cardId !== CARD_DRAG_ID) card.classList.add('drop-target');
+});
+cardsGrid.addEventListener('drop', e => {
+  if (CARD_DRAG_ID == null) return;
+  e.preventDefault();
+  const card = e.target.closest('.kpi-card');
+  if (!card) return;
+  const targetId = +card.dataset.cardId;
+  if (targetId === CARD_DRAG_ID) return;
+  const from = S.CARDS.findIndex(c => c.id === CARD_DRAG_ID);
+  const to = S.CARDS.findIndex(c => c.id === targetId);
+  if (from < 0 || to < 0) return;
+  const [moved] = S.CARDS.splice(from, 1);
+  S.CARDS.splice(to, 0, moved);
+  CARD_DRAG_ID = null;
+  render();
+});
+
 // ===== TABLE COLUMN RESIZE =====
 let resizingCol = null;
 document.getElementById('data-table').addEventListener('mousedown', e => {

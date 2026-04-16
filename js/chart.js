@@ -530,7 +530,7 @@ export function renderCards(rows) {
     const ss = subColor   ? `color:${subColor};`   : '';
     const sizeCls = card.size || 'small';
     return `
-      <div class="kpi-card kpi-card-${sizeCls}" data-card-id="${card.id}" style="${cardStyle}">
+      <div class="kpi-card kpi-card-${sizeCls}" data-card-id="${card.id}" draggable="true" style="${cardStyle}">
         <div class="kpi-card-head">
           <input type="text" class="kpi-card-label" data-card-role="label" value="${label}" placeholder="名称" style="${ls}">
           <div class="kpi-card-actions">

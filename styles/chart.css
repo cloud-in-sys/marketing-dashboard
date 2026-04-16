@@ -355,8 +355,13 @@
 .chart-tooltip .tt-m { font-size: 10px; opacity: 0.6; }
 .chart-tooltip .tt-y { font-weight: 700; font-size: 13px; margin-top: 2px; }
 .chart-card[draggable="true"] .chart-head { cursor: grab; }
-.chart-card.dragging { opacity: 0.4; }
-.chart-card.drop-target { outline: 2px dashed var(--primary); outline-offset: -2px; }
+.chart-card.dragging,
+.kpi-card.dragging { opacity: 0.4; }
+.chart-card.drop-target,
+.kpi-card.drop-target { outline: 2px dashed var(--primary); outline-offset: -2px; }
+.kpi-card[draggable="true"] { cursor: grab; }
+.kpi-card[draggable="true"] input,
+.kpi-card[draggable="true"] button { cursor: auto; }
 .drag-handle {
   color: var(--muted);
   font-size: 14px;
