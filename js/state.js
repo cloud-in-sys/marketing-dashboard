@@ -178,6 +178,7 @@ export const S = {
   PRESET_EDIT_IDX: null,
   VIEW_ORDER: [],
   FILTER_VALUES: {},
+  FILTER_CONDITIONS: {},
   COL_WIDTHS: {},
   METRIC_DEFS: [],
   DIMENSIONS: [],
@@ -322,22 +323,22 @@ export function saveApiSettings() {
 // ===== LOAD SOURCE CONFIG FROM SERVER =====
 async function applyConfig(cfg) {
   cfg = cfg || {};
-  S.METRIC_DEFS = Array.isArray(cfg.metricDefs) && cfg.metricDefs.length
+  S.METRIC_DEFS = Array.isArray(cfg.metricDefs)
     ? cfg.metricDefs.map(m => ({key: m.key, label: m.label, fmt: m.fmt || 'int', type: m.type || 'derived'}))
-    : JSON.parse(JSON.stringify(DEFAULT_METRIC_DEFS));
+    : ('metricDefs' in cfg ? [] : JSON.parse(JSON.stringify(DEFAULT_METRIC_DEFS)));
   S.SELECTED_METRICS = S.METRIC_DEFS.map(m => m.key);
 
-  S.DIMENSIONS = Array.isArray(cfg.dimensions) && cfg.dimensions.length
+  S.DIMENSIONS = Array.isArray(cfg.dimensions)
     ? cfg.dimensions.map(d => ({key: d.key, label: d.label, field: d.field || d.key, type: d.type || 'value'}))
-    : JSON.parse(JSON.stringify(DEFAULT_DIMENSIONS));
+    : ('dimensions' in cfg ? [] : JSON.parse(JSON.stringify(DEFAULT_DIMENSIONS)));
 
   S.VIEWS = {};
   const savedViews = cfg.views;
-  if (savedViews && typeof savedViews === 'object' && Object.keys(savedViews).length) {
+  if (savedViews && typeof savedViews === 'object') {
     for (const [k, v] of Object.entries(savedViews)) {
       S.VIEWS[k] = {label: v.label, dims: Array.isArray(v.dims) ? v.dims : [], filterExpr: v.filterExpr || null, filter: compileFilter(v.filterExpr), presetName: v.presetName || v.label};
     }
-  } else {
+  } else if (!('views' in cfg)) {
     for (const [k, v] of Object.entries(DEFAULT_VIEWS_INIT)) {
       S.VIEWS[k] = {label: v.label, dims: [...v.dims], filterExpr: v.filter, filter: compileFilter(v.filter), presetName: v.label};
     }
@@ -347,14 +348,14 @@ async function applyConfig(cfg) {
     ? [...cfg.viewOrder.filter(k => S.VIEWS[k]), ...Object.keys(S.VIEWS).filter(k => !cfg.viewOrder.includes(k))]
     : Object.keys(S.VIEWS);
 
-  S.FILTER_DEFS = Array.isArray(cfg.filterDefs) && cfg.filterDefs.length
+  S.FILTER_DEFS = Array.isArray(cfg.filterDefs)
     ? cfg.filterDefs
-    : JSON.parse(JSON.stringify(DEFAULT_FILTER_DEFS));
+    : ('filterDefs' in cfg ? [] : JSON.parse(JSON.stringify(DEFAULT_FILTER_DEFS)));
 
   S.COL_WIDTHS = cfg.colWidths && typeof cfg.colWidths === 'object' ? cfg.colWidths : {};
 
-  S.BASE_FORMULAS = { ...DEFAULT_BASE_FORMULAS, ...(cfg.baseFormulas || {}) };
-  S.METRIC_FORMULAS = { ...DEFAULT_FORMULAS, ...(cfg.formulas || {}) };
+  S.BASE_FORMULAS = 'baseFormulas' in cfg ? (cfg.baseFormulas || {}) : { ...DEFAULT_BASE_FORMULAS };
+  S.METRIC_FORMULAS = 'formulas' in cfg ? (cfg.formulas || {}) : { ...DEFAULT_FORMULAS };
 
   S.CUSTOM_TABS = Array.isArray(cfg.customTabs) ? cfg.customTabs : [];
 
@@ -362,9 +363,9 @@ async function applyConfig(cfg) {
   const st = cfg.state || {};
   S.CURRENT_VIEW = (st.currentView && (S.VIEWS[st.currentView] || S.CUSTOM_TABS.some(t => t.key === st.currentView))) ? st.currentView : 'summary_daily';
   S.TAB_STATES = st.tabStates && typeof st.tabStates === 'object' ? st.tabStates : {};
-  S.CHARTS = Array.isArray(st.charts) && st.charts.length
+  S.CHARTS = Array.isArray(st.charts)
     ? st.charts.map(c => ({...c, color: c.color || '#2563eb', name: c.name || '', bucket: c.bucket || 'auto'}))
-    : [{id: 1, metric: 'ad_cost', type: 'bar', size: 'main', color: '#2563eb', bucket: 'auto'}];
+    : ('charts' in st ? [] : [{id: 1, metric: 'ad_cost', type: 'bar', size: 'main', color: '#2563eb', bucket: 'auto'}]);
   S.CHART_ID_SEQ = Math.max(0, ...S.CHARTS.map(c => c.id)) + 1;
   S.CARDS = Array.isArray(st.cards) ? st.cards.map(c => ({...c})) : [];
   S.CARD_ID_SEQ = S.CARDS.length ? Math.max(0, ...S.CARDS.map(c => c.id)) + 1 : 1;

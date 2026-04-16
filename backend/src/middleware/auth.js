@@ -123,8 +123,10 @@ export async function canAccessSource(user, sid) {
   if (user.isAdmin) return true;
   const snap = await db.collection('sources').doc(sid).get();
   if (!snap.exists) return false;
-  const allowed = snap.data().allowedGroupIds || [];
-  if (allowed.length === 0) return true;
+  const source = snap.data();
+  const allowed = source.allowedGroupIds || [];
+  if (allowed.length === 0 && source.isPublic !== false) return true;
+  if (allowed.length === 0) return false;
   return !!(user.groupId && allowed.includes(user.groupId));
 }
 

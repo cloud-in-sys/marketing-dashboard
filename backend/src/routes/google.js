@@ -129,6 +129,17 @@ async function getAuthorizedClient(uid) {
     if (tokens.refresh_token) patch.refreshToken = tokens.refresh_token;
     await tokenDoc(uid).set(patch, { merge: true });
   });
+  // トークンの有効性を事前チェック — invalid_grant なら自動削除して再連携を促す
+  try {
+    await oauth.getAccessToken();
+  } catch (e) {
+    const msg = e.response?.data?.error || e.message || '';
+    if (msg === 'invalid_grant' || /invalid_grant|invalid_rapt/.test(String(e))) {
+      await tokenDoc(uid).delete();
+      throw httpError(401, 'Google連携の有効期限が切れました。再度連携してください。');
+    }
+    throw e;
+  }
   return oauth;
 }
 

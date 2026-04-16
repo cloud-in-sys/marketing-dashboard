@@ -147,8 +147,21 @@
 .chart-settings-body input[type="color"] { padding: 2px; height: 36px; width: 64px; cursor: pointer; }
 .chart-settings-body input[type="range"] { accent-color: var(--primary); }
 .chart-settings-row { display: flex; gap: 10px; }
-.chart-settings-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
-.chart-settings-check input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--primary); }
+.chart-settings-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; margin-top: 2px; }
+.chart-settings-check input[type="checkbox"] {
+  width: 16px; height: 16px; accent-color: var(--primary);
+  margin: 0; flex-shrink: 0; vertical-align: middle;
+  -webkit-appearance: none; appearance: none;
+  border: 1.5px solid var(--border); border-radius: 4px; background: #fff;
+  display: grid; place-content: center;
+}
+.chart-settings-check input[type="checkbox"]::before {
+  content: ''; width: 9px; height: 9px; border-radius: 2px;
+  transform: scale(0); transition: transform 0.1s ease;
+  background: var(--primary);
+}
+.chart-settings-check input[type="checkbox"]:checked { border-color: var(--primary); background: var(--primary-soft); }
+.chart-settings-check input[type="checkbox"]:checked::before { transform: scale(1); }
 .combo-lines { display: flex; flex-direction: column; gap: 6px; }
 .combo-line { display: flex; gap: 6px; align-items: center; }
 .combo-line select { flex: 1; min-width: 0; }

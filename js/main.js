@@ -439,6 +439,13 @@ function onPanelChange(e) {
   if (!role) return;
   const chart = S.CHARTS.find(c => c.id === S.CHART_SETTINGS_ID);
   if (!chart) return;
+  if (role === 'name') {
+    chart.name = el.value;
+    const header = document.querySelector(`.chart-card[data-id="${chart.id}"] .chart-name-label`);
+    if (header) header.textContent = el.value || (S.METRIC_DEFS.find(m => m.key === chart.metric)?.label || 'グラフ');
+    saveState();
+    return;
+  }
   if (role === 'metric') chart.metric = el.value;
   if (role === 'bucket') chart.bucket = el.value;
   if (role === 'type') chart.type = el.value;
@@ -575,6 +582,40 @@ cardsGrid.addEventListener('drop', e => {
   render();
 });
 
+// ===== CSV DOWNLOAD =====
+document.addEventListener('click', e => {
+  const btn = e.target.closest('#csv-download-btn');
+  if (!btn) return;
+  const table = document.getElementById('data-table');
+  if (!table) return;
+  const rows = [];
+  table.querySelectorAll('tr').forEach(tr => {
+    const cells = [];
+    tr.querySelectorAll('th, td').forEach(cell => {
+      // 展開/折りたたみボタンやリサイズハンドルを除外
+      const clone = cell.cloneNode(true);
+      clone.querySelectorAll('button, .col-resizer, .toggle-btn').forEach(el => el.remove());
+      let text = clone.textContent.trim();
+      if (text.includes(',') || text.includes('"') || text.includes('\n')) {
+        text = '"' + text.replace(/"/g, '""') + '"';
+      }
+      cells.push(text);
+    });
+    rows.push(cells.join(','));
+  });
+  const csv = '\uFEFF' + rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ds = S.DATA_SOURCES.find(d => d.id === S.CURRENT_SOURCE);
+  a.download = `${ds?.name || 'data'}_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
 // ===== TABLE COLUMN RESIZE =====
 let resizingCol = null;
 document.getElementById('data-table').addEventListener('mousedown', e => {
@@ -686,6 +727,7 @@ function reloadFullUI() {
   renderTabPresetSelect();
   renderCsvColumns();
   renderSourceNav();
+  loadSnapshotIfNeeded();
   render();
 }
 
@@ -739,42 +781,7 @@ document.getElementById('open-source-settings')?.addEventListener('click', () =>
   enterSourceView();
 });
 
-// アクセス権 UI (グループ別可視性) の描画・保存
-async function renderSourceVisibilityUI() {
-  const ds = S.DATA_SOURCES.find(d => d.id === S.CURRENT_SOURCE);
-  if (!ds) return;
-  const groupsList = document.getElementById('source-visibility-groups-list');
-  if (!groupsList) return;
-
-  try {
-    const res = await api.listGroups();
-    const groups = res.groups || [];
-    const allowed = new Set(ds.allowedGroupIds || []);
-    if (groups.length === 0) {
-      groupsList.innerHTML = '<div class="preset-empty" style="padding:12px 0">まだグループがありません。設定→グループ管理で作成してください。</div>';
-    } else {
-      groupsList.innerHTML = groups.map(g => `<label>
-        <input type="checkbox" data-vis-group="${escapeHtml(g.id)}"${allowed.has(g.id) ? ' checked' : ''}>
-        <span>${escapeHtml(g.name)}</span>
-      </label>`).join('');
-    }
-  } catch (e) {
-    groupsList.innerHTML = `<div class="preset-empty">読み込みに失敗しました: ${escapeHtml(e.message || '')}</div>`;
-  }
-}
-
-document.getElementById('source-visibility-save')?.addEventListener('click', async () => {
-  const ds = S.DATA_SOURCES.find(d => d.id === S.CURRENT_SOURCE);
-  if (!ds) return;
-  const allowedGroupIds = [...document.querySelectorAll('[data-vis-group]')].filter(cb => cb.checked).map(cb => cb.dataset.visGroup);
-  try {
-    await api.updateSource(ds.id, { allowedGroupIds });
-    ds.allowedGroupIds = allowedGroupIds;
-    await showModal({title: '保存完了', body: 'アクセス権を保存しました', okText: 'OK', cancelText: ''});
-  } catch (e) {
-    await showModal({title: '保存失敗', body: e.message || '保存に失敗しました', okText: 'OK', cancelText: ''});
-  }
-});
+// アクセス権はグループ管理側に統合済み
 
 // 現在のソースの名前変更 (source-view 内のボタン)
 document.getElementById('source-rename-btn')?.addEventListener('click', async () => {
@@ -990,16 +997,29 @@ async function disconnectCurrentSource() {
 async function refreshSnapshotNow(method) {
   const sid = S.CURRENT_SOURCE;
   if (!sid) return;
+  const fetchBtn = document.getElementById(method === 'sheets' ? 'sheets-fetch-btn' : 'bq-fetch-btn');
   const metaEl = document.getElementById(method === 'sheets' ? 'sheets-snapshot-meta' : 'bq-snapshot-meta');
-  if (metaEl) { metaEl.textContent = '更新中...'; metaEl.classList.add('updating'); }
+  const origLabel = fetchBtn ? fetchBtn.textContent : '';
+  if (fetchBtn) { fetchBtn.textContent = '更新中...'; fetchBtn.disabled = true; }
+  if (metaEl) { metaEl.textContent = 'データを取得しています（大量データの場合は数分かかります）...'; metaEl.classList.add('updating'); }
   try {
     await api.refreshSnapshot(sid);
     S.SOURCE_DATA[sid] = []; // invalidate cache
     await loadSnapshotIfNeeded();
+    if (metaEl) metaEl.classList.add('update-success');
+    await showModal({title: '更新完了', body: 'スナップショットを更新しました。', okText: 'OK', cancelText: ''});
   } catch (e) {
-    await showModal({title: '更新失敗', body: e.message || '更新に失敗しました', okText: 'OK', cancelText: ''});
+    const msg = e.message || '更新に失敗しました';
+    if (/再度連携|not connected/i.test(msg)) {
+      await sheets.refreshConnectionState();
+      renderSourceView();
+      await showModal({title: 'Google連携の期限切れ', body: 'Google連携の有効期限が切れました。「Googleアカウント連携」ボタンから再度連携してください。', okText: 'OK', cancelText: ''});
+    } else {
+      await showModal({title: '更新失敗', body: msg, okText: 'OK', cancelText: ''});
+    }
   } finally {
-    if (metaEl) metaEl.classList.remove('updating');
+    if (fetchBtn) { fetchBtn.textContent = origLabel; fetchBtn.disabled = false; }
+    if (metaEl) { metaEl.classList.remove('updating'); setTimeout(() => metaEl.classList.remove('update-success'), 2000); }
   }
 }
 
@@ -1026,8 +1046,7 @@ function renderSourceView() {
     document.getElementById('detail-' + currentMethod)?.classList.remove('hidden');
   }
 
-  // 可視性設定 (admin のみ、非同期でグループ一覧を取得)
-  renderSourceVisibilityUI();
+  // アクセス権はグループ管理側に統合済み
 
   const rows = S.SOURCE_DATA[S.CURRENT_SOURCE] || [];
   const info = document.getElementById('source-info');
@@ -1219,8 +1238,9 @@ document.getElementById('sheets-auth-btn').addEventListener('click', async () =>
   try {
     await sheets.authenticate();
     renderSourceView();
+    await showModal({title: '連携完了', body: 'Googleアカウントの連携が完了しました。', okText: 'OK', cancelText: ''});
   } catch (e) {
-    await showModal({title: '\u8a8d\u8a3c\u30a8\u30e9\u30fc', body: e.message, okText: 'OK', cancelText: ''});
+    await showModal({title: '認証エラー', body: e.message, okText: 'OK', cancelText: ''});
   }
 });
 
@@ -1254,8 +1274,9 @@ document.getElementById('bq-auth-btn').addEventListener('click', async () => {
   try {
     await bq.authenticate();
     renderSourceView();
+    await showModal({title: '連携完了', body: 'Googleアカウントの連携が完了しました。', okText: 'OK', cancelText: ''});
   } catch (e) {
-    await showModal({title: '\u8a8d\u8a3c\u30a8\u30e9\u30fc', body: e.message, okText: 'OK', cancelText: ''});
+    await showModal({title: '認証エラー', body: e.message, okText: 'OK', cancelText: ''});
   }
 });
 
@@ -1283,19 +1304,52 @@ document.getElementById('bq-disconnect').addEventListener('click', async () => {
 });
 
 document.getElementById('add-source').addEventListener('click', async () => {
-  const name = await showModal({title: '\u30c7\u30fc\u30bf\u30bd\u30fc\u30b9\u3092\u8ffd\u52a0', body: '\u30c7\u30fc\u30bf\u30bd\u30fc\u30b9\u306e\u540d\u524d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', input: true, placeholder: '\u4f8b: CRM\u30c7\u30fc\u30bf', okText: '\u6b21\u3078'});
+  const name = await showModal({title: 'データソースを追加', body: 'データソースの名前を入力してください', input: true, placeholder: '例: CRMデータ', okText: '次へ'});
   if (!name) return;
-  const confirm = await showModal({title: '\u4f5c\u6210\u306e\u78ba\u8a8d', body: `\u30c7\u30fc\u30bf\u30bd\u30fc\u30b9\u300c${name}\u300d\u3092\u4f5c\u6210\u3057\u307e\u3059\u304b\uff1f`, okText: '\u4f5c\u6210'});
-  if (!confirm) return;
+  // コピー元選択
+  const copyOpts = S.DATA_SOURCES.map(d => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('');
+  const copyHtml = `<p>設定をコピーするデータソースを選択してください。</p>
+    <select id="copy-source-select" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;margin-top:8px;">
+      <option value="">白紙で作成（設定なし）</option>
+      ${copyOpts}
+    </select>`;
+  const copyConfirm = await showModal({title: `「${name}」を作成`, html: true, body: copyHtml, okText: '作成'});
+  if (!copyConfirm) return;
+  const copyFromId = document.getElementById('copy-source-select')?.value || '';
   try {
     const created = await api.createSource({ name });
     S.DATA_SOURCES.push(created);
     S.SOURCE_DATA[created.id] = [];
+    if (copyFromId) {
+      // 既存ソースの設定とプリセットをコピー
+      const [srcConfig, srcPresets] = await Promise.all([
+        api.getConfig(copyFromId),
+        api.listPresets(copyFromId),
+      ]);
+      await api.putConfig(created.id, srcConfig);
+      if (srcPresets.presets?.length) {
+        await api.putPresets(created.id, srcPresets.presets.map(p => {
+          const { id, ...rest } = p;
+          return rest;
+        }));
+      }
+    } else {
+      // 白紙の設定を保存
+      await api.putConfig(created.id, {
+        metricDefs: [],
+        dimensions: [],
+        filterDefs: [],
+        views: {},
+        formulas: {},
+        baseFormulas: {},
+        defaults: {},
+        presets: [],
+      });
+    }
     await switchSource(created.id);
-    seedDefaultPresets();
     reloadFullUI();
   } catch (e) {
-    await showModal({title: '\u4f5c\u6210\u306b\u5931\u6557', body: e.message || 'データソースの作成に失敗しました', okText: 'OK', cancelText: ''});
+    await showModal({title: '作成に失敗', body: e.message || 'データソースの作成に失敗しました', okText: 'OK', cancelText: ''});
   }
 });
 

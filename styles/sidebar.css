@@ -109,6 +109,7 @@ body.no-edit-custom.tab-custom .panel[data-panel="dim"] .panel-body,
 body.no-edit-custom.tab-custom .panel[data-panel="metric"] .panel-body,
 body.no-edit-custom.tab-custom .panel[data-panel="thresholds"] .panel-body,
 body.no-edit-custom.tab-custom .view-preset-wrap { pointer-events: none; opacity: 0.55; }
+body.no-edit-custom .custom-tab-color { display: none; }
 /* ===== SIDEBAR GROUP STATES ===== */
 .sidebar-group.collapsed .group-caret { transform: rotate(-90deg); }
 .sidebar-group.collapsed .group-body { display: none; }

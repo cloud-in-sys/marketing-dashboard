@@ -71,6 +71,30 @@
   box-shadow: 0 0 0 2px var(--primary-soft);
 }
 
+/* ===== CSV DOWNLOAD ===== */
+.toolbar-spacer { flex: 1; }
+.csv-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.12s, background 0.12s;
+}
+.csv-download-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+.csv-download-btn svg { display: block; }
+
 /* ===== TABLE ===== */
 .table-wrap {
   background: #ffffff;

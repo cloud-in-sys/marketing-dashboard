@@ -571,10 +571,12 @@ function renderGroupDetail(list, gid) {
   // ソースの可視性は source.allowedGroupIds が source-of-truth なので、ここでは
   // group.id がそのソースの allowedGroupIds に含まれているかをチェックしてレンダ。
   const sourcesHtml = sourcesCache.map(src => {
-    const isVisible = (src.allowedGroupIds || []).length === 0
-      ? null  // 全員公開（このグループも見える）
-      : (src.allowedGroupIds || []).includes(group.id);
-    const visState = isVisible === null ? 'public' : (isVisible ? 'allowed' : 'blocked');
+    const allowed = src.allowedGroupIds || [];
+    const isPublicSource = allowed.length === 0 && src.isPublic !== false;
+    const isVisible = isPublicSource
+      ? true
+      : allowed.includes(group.id);
+    const visState = isPublicSource ? 'public' : (isVisible ? 'allowed' : 'blocked');
     const f = sourceFilters[src.id] || { field: '', op: 'equals', value: '' };
     const fieldVal = f.field || '';
     const op = f.op || 'equals';
@@ -584,7 +586,7 @@ function renderGroupDetail(list, gid) {
         <div class="group-source-name">${escapeHtml(src.name)}</div>
         <label class="group-source-vis-toggle" title="このソースをこのグループに見せるか">
           <input type="checkbox" data-group-source-visible${isVisible !== false ? ' checked' : ''}>
-          <span>${visState === 'public' ? '全員公開中' : '見せる'}</span>
+          <span>${visState === 'public' ? '公開中' : isVisible ? '公開中' : '非公開中'}</span>
         </label>
       </div>
       <div class="group-source-filter">
@@ -685,40 +687,35 @@ async function saveGroup() {
     }
 
     // (2) ソース側 allowedGroupIds の更新 (可視性)
-    // 各ソースについて、現在の allowedGroupIds と希望状態を比較して差分を適用
     for (const src of sourcesCache) {
       const allowed = src.allowedGroupIds || [];
-      const isPublic = allowed.length === 0;
+      const isPublic = allowed.length === 0 && src.isPublic !== false;
       const want = data.visibility[src.id];
-      // 変更が必要なケース:
-      //   - public のままで want=true: 操作不要 (全員見える)
-      //   - public のままで want=false: 該当グループを「除外」する手段がない (制限ON状態にする必要)
-      //     → restricted モードに切り替える: 全グループのうち want=true のグループを allowedGroupIds に
-      //   - restricted で want=true: gid を allowed に追加 (含まれてなければ)
-      //   - restricted で want=false: gid を allowed から除外
-      if (isPublic) {
-        if (want === false) {
-          // 「自分だけ見せない」設定はサポートしない (他のグループの状態を破壊するため)
-          // → 他グループの設定を変えないかぎり実現できないので警告
-          console.warn(`Source ${src.id} is currently public; cannot hide from a single group from group-side UI.`);
-        }
+      if (isPublic && want === false) {
+        // 全員公開 → 制限モードに切替
+        const allGids = groupsCache.map(g => g.id).filter(g => g !== gid);
+        await api.updateSource(src.id, { allowedGroupIds: allGids, isPublic: false });
+        src.allowedGroupIds = allGids;
+        src.isPublic = false;
+      } else if (isPublic) {
         continue;
-      }
-      const has = allowed.includes(gid);
-      if (want && !has) {
-        const next = [...allowed, gid];
-        await api.updateSource(src.id, { allowedGroupIds: next });
-        src.allowedGroupIds = next;
-      } else if (!want && has) {
-        const next = allowed.filter(g => g !== gid);
-        await api.updateSource(src.id, { allowedGroupIds: next });
-        src.allowedGroupIds = next;
+      } else {
+        const has = allowed.includes(gid);
+        if (want && !has) {
+          const next = [...allowed, gid];
+          await api.updateSource(src.id, { allowedGroupIds: next });
+          src.allowedGroupIds = next;
+        } else if (!want && has) {
+          const next = allowed.filter(g => g !== gid);
+          await api.updateSource(src.id, { allowedGroupIds: next });
+          src.allowedGroupIds = next;
+        }
       }
     }
 
     await showModal({title: '保存完了', body: 'グループを保存しました', okText: 'OK', cancelText: ''});
     groupDetailId = null;
-    renderGroupsView();
+    await loadGroupsAndRender();
   } catch (e) {
     await showModal({title: '保存失敗', body: e.message || '保存に失敗しました', okText: 'OK', cancelText: ''});
   }

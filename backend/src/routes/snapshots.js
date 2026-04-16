@@ -188,8 +188,9 @@ async function getOAuthClient() {
 }
 
 async function getAuthorizedClientFor(uid) {
-  const snap = await db.collection('users').doc(uid).collection('tokens').doc('google').get();
-  if (!snap.exists) throw new Error(`User ${uid} has no Google connection`);
+  const tokenRef = db.collection('users').doc(uid).collection('tokens').doc('google');
+  const snap = await tokenRef.get();
+  if (!snap.exists) throw new Error('Google連携されていません。連携ボタンから接続してください。');
   const { refreshToken, accessToken, expiryDate } = snap.data();
   const oauth = await getOAuthClient();
   oauth.setCredentials({
@@ -202,8 +203,19 @@ async function getAuthorizedClientFor(uid) {
     if (tokens.access_token) patch.accessToken = tokens.access_token;
     if (tokens.expiry_date) patch.expiryDate = tokens.expiry_date;
     if (tokens.refresh_token) patch.refreshToken = tokens.refresh_token;
-    await db.collection('users').doc(uid).collection('tokens').doc('google').set(patch, { merge: true });
+    await tokenRef.set(patch, { merge: true });
   });
+  // トークン有効性チェック — invalid_grant なら自動削除して再連携を促す
+  try {
+    await oauth.getAccessToken();
+  } catch (e) {
+    const msg = String(e?.response?.data?.error || e.message || e);
+    if (/invalid_grant|invalid_rapt/.test(msg)) {
+      await tokenRef.delete();
+      throw new Error('Google連携の有効期限が切れました。再度連携してください。');
+    }
+    throw e;
+  }
   return oauth;
 }
 

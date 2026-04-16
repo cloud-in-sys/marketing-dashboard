@@ -166,7 +166,7 @@ export function loadPresetIntoGlobals(p) {
   if (Array.isArray(p.charts) && p.charts.length) {
     // 全フィールド保持(lines, smoothLine, dotSize, lineWidth, showDataLabels 等)
     S.CHARTS = p.charts.map(c => ({...c, color: c.color || '#2563eb', name: c.name || '', bucket: c.bucket || 'auto'}));
-    S.CHART_ID_SEQ = Math.max(...S.CHARTS.map(c => c.id)) + 1;
+    S.CHART_ID_SEQ = S.CHARTS.length ? Math.max(0, ...S.CHARTS.map(c => c.id)) + 1 : 1;
   }
   S.CARDS = Array.isArray(p.cards) ? p.cards.map(c => ({...c})) : [];
   S.CARD_ID_SEQ = S.CARDS.length ? Math.max(0, ...S.CARDS.map(c => c.id)) + 1 : 1;

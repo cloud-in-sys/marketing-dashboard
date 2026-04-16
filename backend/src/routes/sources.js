@@ -17,7 +17,9 @@ const sourcesCol = () => db.collection('sources');
 // List all sources
 // 可視性ルール:
 //   - admin: 全件
-//   - 非admin: allowedGroupIds が空 (全員公開) OR 自分の groupId が含まれる
+//   - 非admin: isPublic !== false かつ allowedGroupIds が空 → 全員公開
+//              isPublic === false かつ allowedGroupIds が空 → 非公開
+//              allowedGroupIds に自分の groupId が含まれる → 見える
 app.get('/', async c => {
   const snap = await sourcesCol().orderBy('createdAt').get();
   let sources = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -25,6 +27,7 @@ app.get('/', async c => {
     const doc = {
       name: 'デフォルト',
       method: '',
+      isPublic: true,
       allowedGroupIds: [],
       createdAt: new Date().toISOString(),
       createdBy: c.get('uid'),
@@ -37,7 +40,8 @@ app.get('/', async c => {
   if (!user.isAdmin) {
     sources = sources.filter(s => {
       const allowed = s.allowedGroupIds || [];
-      if (allowed.length === 0) return true; // 全員公開
+      if (allowed.length === 0 && s.isPublic !== false) return true; // 全員公開 (既存互換)
+      if (allowed.length === 0) return false; // 非公開
       return user.groupId && allowed.includes(user.groupId);
     });
   }
@@ -53,6 +57,8 @@ app.post('/', requirePerm('manageSources'), async c => {
   const doc = {
     name,
     method: body.method || '',
+    isPublic: false,
+    allowedGroupIds: [],
     createdAt: new Date().toISOString(),
     createdBy: c.get('uid'),
   };
@@ -82,6 +88,10 @@ app.put('/:id', async c => {
   if (Array.isArray(body.allowedGroupIds)) {
     if (!user.isAdmin && !user.perms?.manageGroups) throw httpError(403, 'manageGroups required');
     patch.allowedGroupIds = [...new Set(body.allowedGroupIds.filter(g => typeof g === 'string'))];
+  }
+  if (typeof body.isPublic === 'boolean') {
+    if (!user.isAdmin && !user.perms?.manageGroups) throw httpError(403, 'manageGroups required');
+    patch.isPublic = body.isPublic;
   }
 
   if (!Object.keys(patch).length) return c.json({ ok: true });

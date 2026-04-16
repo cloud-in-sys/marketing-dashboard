@@ -422,7 +422,9 @@ body.no-edit-metrics #metrics-save-btn { display: none; }
 }
 body.is-admin .admin-hidden { display: none; }
 body:not(.is-admin) .admin-only { display: none !important; }
-body.no-manage-users .sidebar-group[data-group="users"] { display: none; }
+body.no-manage-users.no-manage-groups .sidebar-group[data-group="users"] { display: none; }
+body.no-manage-users #open-settings { display: none; }
+body.no-manage-groups #open-groups { display: none; }
 body.no-edit-metrics #open-metrics-doc { display: none; }
 body.no-edit-filters #open-filters-doc { display: none; }
 body.no-edit-defaults #open-defaults-doc { display: none; }
@@ -892,11 +894,24 @@ body.no-manage-users #add-user-btn { display: none; }
 .group-source-vis-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 12px;
   cursor: pointer;
+  color: var(--text);
 }
-.group-source-vis-toggle input { accent-color: var(--primary); }
+.group-source-vis-toggle input[type="checkbox"] {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; margin: 0; flex-shrink: 0;
+  border: 1.5px solid var(--border); border-radius: 4px;
+  background: #fff; display: grid; place-content: center; cursor: pointer;
+}
+.group-source-vis-toggle input[type="checkbox"]::before {
+  content: ''; width: 9px; height: 9px; border-radius: 2px;
+  transform: scale(0); transition: transform 0.1s ease;
+  background: var(--primary);
+}
+.group-source-vis-toggle input[type="checkbox"]:checked { border-color: var(--primary); background: var(--primary-soft); }
+.group-source-vis-toggle input[type="checkbox"]:checked::before { transform: scale(1); }
 .group-source-filter {
   display: grid;
   grid-template-columns: auto 1fr 120px 1.5fr;
@@ -952,54 +967,7 @@ body.no-manage-users #add-user-btn { display: none; }
 }
 
 /* ===== SOURCE VISIBILITY ===== */
-.source-visibility {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.source-visibility-desc {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.5;
-}
-.source-visibility-mode {
-  display: flex;
-  gap: 20px;
-}
-.source-visibility-mode label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.source-visibility-groups.hidden { display: none; }
-.source-visibility-groups-label {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-  margin-bottom: 6px;
-}
-.source-visibility-groups-list {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 16px;
-  margin-bottom: 10px;
-}
-.source-visibility-groups-list label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.source-visibility-actions {
-  display: flex;
-  justify-content: flex-end;
-}
+/* source-visibility: グループ管理側に統合済み */
 
 /* ===== MISC HEADER UI & DIRTY SAVE INDICATORS ===== */
 body:not(.is-admin) .admin-only { display: none !important; }
@@ -1009,7 +977,9 @@ body.no-refresh-snapshot .admin-refresh { display: none !important; }
   color: var(--muted);
   padding: 6px 0;
 }
-.snapshot-meta.updating { color: var(--primary); font-weight: 600; }
+.snapshot-meta.updating { color: var(--primary); font-weight: 600; animation: pulse 1.5s ease-in-out infinite; }
+.snapshot-meta.update-success { color: var(--success, #10b981); font-weight: 600; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 #users-save-btn.dirty,
 #metrics-save-btn.dirty,
 #filters-save-btn.dirty,

@@ -705,6 +705,11 @@ export function renderChartSettingsPanel() {
 
   body.innerHTML = `
     <label class="chart-settings-field">
+      <span class="chart-settings-label">グラフ名</span>
+      <input type="text" data-panel-role="name" value="${escapeHtml(c.name || '')}" placeholder="グラフ名">
+    </label>
+
+    <label class="chart-settings-field">
       <span class="chart-settings-label">\u7a2e\u985e</span>
       <select data-panel-role="type">${typeOpts}</select>
     </label>
