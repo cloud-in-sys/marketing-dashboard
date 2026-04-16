@@ -653,7 +653,8 @@ body.no-manage-users #add-user-btn { display: none; }
   letter-spacing: 0.05em;
   color: var(--muted);
 }
-.user-field input {
+.user-field input,
+.user-field select {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px 10px;
@@ -661,12 +662,30 @@ body.no-manage-users #add-user-btn { display: none; }
   font-family: inherit;
   background: var(--panel);
   color: var(--text);
+  width: 100%;
 }
-.user-field input:focus {
+.user-field select {
+  /* ブラウザ標準のシェブロンを消して独自のを重ねる */
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='4 6 8 10 12 6'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px;
+  cursor: pointer;
+}
+.user-field input:focus,
+.user-field select:focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-soft);
-  background: #ffffff;
+  background-color: #ffffff;
+}
+.user-field input:disabled {
+  background: #f1f5f9;
+  color: var(--muted);
+  cursor: not-allowed;
 }
 .user-perms-section {
   border-top: 1px solid var(--border);
@@ -802,8 +821,172 @@ body.no-manage-users #add-user-btn { display: none; }
   color: var(--primary);
 }
 
+/* ===== GROUP MANAGEMENT ===== */
+.groups-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.group-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.group-filter-row {
+  display: grid;
+  grid-template-columns: 1fr 140px 1.5fr 32px;
+  gap: 8px;
+  align-items: center;
+}
+.group-filter-row select,
+.group-filter-row .api-input {
+  width: 100%;
+}
+.group-filters-desc {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+.group-members {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 16px;
+}
+.group-members label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px 0;
+}
+.group-members input[type=checkbox] {
+  accent-color: var(--primary);
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+}
+
+/* ===== GROUP DETAIL: SOURCE-LEVEL ACCESS ===== */
+.group-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.group-source-row {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #ffffff;
+}
+.group-source-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.group-source-name { font-size: 13px; font-weight: 700; color: var(--text); }
+.group-source-vis-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.group-source-vis-toggle input { accent-color: var(--primary); }
+.group-source-filter {
+  display: grid;
+  grid-template-columns: auto 1fr 120px 1.5fr;
+  gap: 6px;
+  align-items: center;
+}
+.group-source-filter-label {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.group-source-filter input,
+.group-source-filter select {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+.group-member-list {
+  list-style: disc inside;
+  font-size: 12px;
+  color: var(--text);
+  padding: 0;
+  margin: 4px 0 0;
+}
+.group-member-list li { padding: 2px 0; }
+.user-row-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+/* ===== SOURCE VISIBILITY ===== */
+.source-visibility {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.source-visibility-desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.source-visibility-mode {
+  display: flex;
+  gap: 20px;
+}
+.source-visibility-mode label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.source-visibility-groups.hidden { display: none; }
+.source-visibility-groups-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.source-visibility-groups-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 16px;
+  margin-bottom: 10px;
+}
+.source-visibility-groups-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.source-visibility-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 /* ===== MISC HEADER UI & DIRTY SAVE INDICATORS ===== */
 body:not(.is-admin) .admin-only { display: none !important; }
+body.no-refresh-snapshot .admin-refresh { display: none !important; }
+.snapshot-meta {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 6px 0;
+}
+.snapshot-meta.updating { color: var(--primary); font-weight: 600; }
 #users-save-btn.dirty,
 #metrics-save-btn.dirty,
 #filters-save-btn.dirty,
@@ -1014,6 +1197,23 @@ body:not(.is-admin) .admin-only { display: none !important; }
 .source-method-card.disabled {
   opacity: 0.55;
   pointer-events: none;
+}
+/* 他メソッドに既に連携済みのとき、非アクティブなカードは薄く・カーソルも警告系に */
+.source-method-card.locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.source-method-card.locked:hover {
+  border-color: var(--border);
+  background: transparent;
+}
+.source-method-card.locked::after {
+  content: '🔒';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 14px;
+  opacity: 0.8;
 }
 .source-method-icon {
   font-size: 32px;

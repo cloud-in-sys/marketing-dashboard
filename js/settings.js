@@ -1,6 +1,6 @@
 import { S, PERM_GROUPS, PERM_DEFS, ADMIN_PERMS, VIEWER_PERMS, DEFAULT_BASE_FORMULAS, DEFAULT_FORMULAS,
   saveMetricDefs, saveDimensions, saveViews, saveFilterDefs, saveFormulas, saveBaseFormulas,
-  saveViewOrder, getPresets, setPresets, compileFilter, saveApiSettings } from './state.js';
+  saveViewOrder, getPresets, setPresets, compileFilter } from './state.js';
 import { api } from './api.js';
 import { escapeHtml } from './utils.js';
 import { showModal } from './modal.js';
@@ -81,22 +81,25 @@ export function enterSettingsMode(target = 'users') {
   document.getElementById('filters-doc-view').classList.toggle('hidden', target !== 'filters');
   document.getElementById('dims-doc-view').classList.toggle('hidden', target !== 'dims');
   document.getElementById('defaults-doc-view').classList.toggle('hidden', target !== 'defaults');
-  document.getElementById('api-settings-view').classList.toggle('hidden', target !== 'api');
   document.getElementById('presets-settings-view').classList.toggle('hidden', target !== 'presets');
+  document.getElementById('groups-view').classList.toggle('hidden', target !== 'groups');
+  // source-view（データソース画面）も設定系メニューに入った時は必ず隠す
+  document.getElementById('source-view').classList.add('hidden');
   document.querySelectorAll('#view-nav .nav-item, #custom-nav .nav-item').forEach(b => b.classList.remove('active'));
   document.getElementById('open-settings').classList.toggle('active', target === 'users');
   document.getElementById('open-metrics-doc').classList.toggle('active', target === 'metrics');
   document.getElementById('open-filters-doc').classList.toggle('active', target === 'filters');
   document.getElementById('open-dims-doc').classList.toggle('active', target === 'dims');
   document.getElementById('open-defaults-doc').classList.toggle('active', target === 'defaults');
-  document.getElementById('open-api-settings').classList.toggle('active', target === 'api');
   document.getElementById('open-presets-settings').classList.toggle('active', target === 'presets');
+  document.getElementById('open-groups').classList.toggle('active', target === 'groups');
   exitPresetEdit();
   if (target === 'users') {
     userDetailIdx = null;
-    // Load users from backend
-    api.listUsers().then(res => {
-      S.USERS = res.users || [];
+    // Load users + groups concurrently (グループはプルダウン選択肢として必要)
+    Promise.all([api.listUsers(), api.listGroups()]).then(([uRes, gRes]) => {
+      S.USERS = uRes.users || [];
+      groupsCache = gRes.groups || [];
       S.USERS_DRAFT = JSON.parse(JSON.stringify(S.USERS));
       renderUsersModal();
     }).catch(e => console.warn('[users] load failed', e));
@@ -161,15 +164,6 @@ export function enterSettingsMode(target = 'users') {
     clearDimsDirty();
     renderCsvColumns();
     renderDimsDoc();
-  } else if (target === 'api') {
-    S.USERS_DRAFT = null;
-    S.METRICS_DRAFT = null;
-    S.METRICS_DRAFT_BASE = null;
-    S.METRIC_DEFS_DRAFT = null;
-    S.FILTER_DEFS_DRAFT = null;
-    S.VIEWS_DRAFT = null;
-    S.DIMENSIONS_DRAFT = null;
-    renderApiSettings();
   } else if (target === 'presets') {
     S.USERS_DRAFT = null;
     S.METRICS_DRAFT = null;
@@ -179,6 +173,15 @@ export function enterSettingsMode(target = 'users') {
     S.VIEWS_DRAFT = null;
     S.DIMENSIONS_DRAFT = null;
     renderPresets();
+  } else if (target === 'groups') {
+    S.USERS_DRAFT = null;
+    S.METRICS_DRAFT = null;
+    S.METRICS_DRAFT_BASE = null;
+    S.METRIC_DEFS_DRAFT = null;
+    S.FILTER_DEFS_DRAFT = null;
+    S.VIEWS_DRAFT = null;
+    S.DIMENSIONS_DRAFT = null;
+    loadGroupsAndRender();
   }
 }
 
@@ -190,14 +193,13 @@ export function exitSettingsMode() {
   document.getElementById('filters-doc-view').classList.add('hidden');
   document.getElementById('dims-doc-view').classList.add('hidden');
   document.getElementById('defaults-doc-view').classList.add('hidden');
-  document.getElementById('api-settings-view').classList.add('hidden');
   document.getElementById('presets-settings-view').classList.add('hidden');
+  document.getElementById('groups-view').classList.add('hidden');
   document.getElementById('open-settings').classList.remove('active');
   document.getElementById('open-metrics-doc').classList.remove('active');
   document.getElementById('open-filters-doc').classList.remove('active');
   document.getElementById('open-dims-doc').classList.remove('active');
   document.getElementById('open-defaults-doc').classList.remove('active');
-  document.getElementById('open-api-settings').classList.remove('active');
   document.getElementById('open-presets-settings').classList.remove('active');
   S.USERS_DRAFT = null;
   S.METRICS_DRAFT = null;
@@ -269,6 +271,13 @@ function renderUserDetail(list, src, i) {
           <label>メールアドレス</label>
           <input type="text" value="${escapeHtml(u.email || '')}" disabled>
         </div>
+        <div class="user-field">
+          <label>所属グループ</label>
+          <select data-user-group>
+            <option value=""${!u.groupId ? ' selected' : ''}>未分類</option>
+            ${groupsCache.map(g => `<option value="${escapeHtml(g.id)}"${u.groupId === g.id ? ' selected' : ''}>${escapeHtml(g.name)}</option>`).join('')}
+          </select>
+        </div>
       </div>
       <div class="user-perms-section">
         <div class="user-perms-title">\u64cd\u4f5c\u6a29\u9650</div>
@@ -287,9 +296,9 @@ function renderUserDetail(list, src, i) {
 async function addUser() {
   const email = await showModal({title: 'ユーザーを追加', body: '新しいユーザーのメールアドレスを入力してください', input: true, placeholder: 'user@example.com', okText: '次へ'});
   if (!email) return;
-  const password = await showModal({title: 'パスワード', body: '初期パスワード（6文字以上）を入力してください', input: true, placeholder: 'password', okText: '次へ'});
+  const password = await showModal({title: 'パスワード', body: '初期パスワード（8文字以上、英字と数字を両方含む）を入力してください', input: true, placeholder: 'password', okText: '次へ'});
   if (!password) return;
-  const name = await showModal({title: '表示名', body: '表示名を入力してください', input: true, defaultValue: email.split('@')[0], placeholder: '例: 田中', okText: '作成'});
+  const name = await showModal({title: '表示名', body: '表示名を入力してください', input: true, defaultValue: email.split('@')[0], placeholder: '例: 田中', okText: '作成', noEnter: true});
   if (!name) return;
   try {
     const created = await api.createUser({ email, password, name, isAdmin: false });
@@ -320,28 +329,11 @@ async function removeUser(idx) {
 }
 
 // ----- CSV COLUMNS VIEW -----
-// ===== API SETTINGS VIEW =====
-function renderApiSettings() {
-  document.getElementById('api-client-id').value = S.API_SETTINGS.clientId || '';
-  document.getElementById('api-origin').textContent = location.origin;
-  renderApiStatus();
-}
-
-function renderApiStatus() {
-  const el = document.getElementById('api-status');
-  if (!el) return;
-  const hasClientId = !!S.API_SETTINGS.clientId;
-  if (hasClientId) {
-    el.innerHTML = '<div class="api-status-ok">\u2713 \u30af\u30e9\u30a4\u30a2\u30f3\u30c8ID\u304c\u8a2d\u5b9a\u3055\u308c\u3066\u3044\u307e\u3059\u3002Google\u30b9\u30d7\u30ec\u30c3\u30c9\u30b7\u30fc\u30c8\u30fbBigQuery\u9023\u643a\u304c\u5229\u7528\u53ef\u80fd\u3067\u3059\u3002</div>';
-  } else {
-    el.innerHTML = '<div class="api-status-none">\u30af\u30e9\u30a4\u30a2\u30f3\u30c8ID\u304c\u672a\u8a2d\u5b9a\u3067\u3059\u3002\u4e0a\u306e\u624b\u9806\u306b\u5f93\u3063\u3066\u8a2d\u5b9a\u3057\u3066\u304f\u3060\u3055\u3044\u3002</div>';
-  }
-}
-
 export function renderCsvColumns() {
   const targets = [
     {el: document.getElementById('csv-columns'), count: document.getElementById('csv-column-count')},
     {el: document.getElementById('dims-csv-columns'), count: document.getElementById('dims-csv-column-count')},
+    {el: document.getElementById('filters-csv-columns'), count: document.getElementById('filters-csv-column-count')},
   ].filter(t => t.el);
   if (!targets.length) return;
   if (!S.RAW.length) {
@@ -431,7 +423,7 @@ function renderFiltersDoc() {
         <div class="metrics-doc-row" data-filter-idx="${i}">
           <div class="metrics-doc-row-head">
             <div class="field-col"><label class="field-label">\u540d\u79f0</label><input type="text" class="metric-label-input" data-filter-label value="${escapeHtml(f.label)}" placeholder="\u8868\u793a\u540d"></div>
-            <div class="field-col"><label class="field-label">CSV\u30ab\u30e9\u30e0</label><input type="text" class="metric-key-input" data-filter-field value="${escapeHtml(f.field)}" placeholder="CSV\u30ab\u30e9\u30e0\u540d"></div>
+            <div class="field-col"><label class="field-label">\u30c7\u30fc\u30bf\u30ab\u30e9\u30e0</label><input type="text" class="metric-key-input" data-filter-field value="${escapeHtml(f.field)}" placeholder="\u30c7\u30fc\u30bf\u30ab\u30e9\u30e0\u540d"></div>
             <div class="field-col"><label class="field-label">\u7a2e\u985e</label><select class="metric-fmt-select" data-filter-type>
               ${typeOpts.map(o => `<option value="${o.v}"${f.type===o.v?' selected':''}>${o.l}</option>`).join('')}
             </select></div>
@@ -474,10 +466,10 @@ function renderDimsDoc() {
               </select>
             </div>
             <div class="dim-field dim-field-source">
-              <label>${isExpr ? '\u8a08\u7b97\u5f0f' : 'CSV\u30ab\u30e9\u30e0'}</label>
+              <label>${isExpr ? '\u8a08\u7b97\u5f0f' : '\u30c7\u30fc\u30bf\u30ab\u30e9\u30e0'}</label>
               ${isExpr
                 ? `<input type="text" class="metric-formula-input" data-dim-expr value="${escapeHtml(d.expression || '')}" placeholder="\u4f8b: r.operator + ' / ' + r.media">`
-                : `<input type="text" class="metric-key-input wide" data-dim-field value="${escapeHtml(d.field || '')}" placeholder="CSV\u30ab\u30e9\u30e0\u540d">`}
+                : `<input type="text" class="metric-key-input wide" data-dim-field value="${escapeHtml(d.field || '')}" placeholder="\u30c7\u30fc\u30bf\u30ab\u30e9\u30e0\u540d">`}
             </div>
           </div>
         </div>`;
@@ -515,6 +507,246 @@ function renderDefaultsDoc() {
   `;
 }
 
+// ===== GROUPS MANAGEMENT =====
+let groupsCache = [];
+let sourcesCache = [];   // ソース別アクセス権 UI に使う
+let groupDetailId = null; // null = list view, id = detail view, '__new__' = new group
+
+function markGroupsDirty() { document.getElementById('groups-list')?.classList.add('has-dirty'); }
+
+async function loadGroupsAndRender() {
+  try {
+    const [gRes, uRes, sRes] = await Promise.all([api.listGroups(), api.listUsers(), api.listSources()]);
+    groupsCache = gRes.groups || [];
+    S.USERS = uRes.users || [];
+    sourcesCache = sRes.sources || [];
+    renderGroupsView();
+  } catch (e) {
+    console.warn('[groups] load failed', e);
+    const list = document.getElementById('groups-list');
+    if (list) list.innerHTML = `<div class="preset-empty">読み込みに失敗しました: ${escapeHtml(e.message || String(e))}</div>`;
+  }
+}
+
+function renderGroupsView() {
+  const list = document.getElementById('groups-list');
+  if (!list) return;
+  if (groupDetailId == null) {
+    renderGroupsListView(list);
+  } else {
+    renderGroupDetail(list, groupDetailId);
+  }
+}
+
+function renderGroupsListView(list) {
+  if (groupsCache.length === 0) {
+    list.innerHTML = '<div class="preset-empty">まだグループがありません。「+ グループを追加」で作成できます。</div>';
+    return;
+  }
+  list.innerHTML = `<div class="user-list-compact">${groupsCache.map(g => {
+    const memberCount = S.USERS.filter(u => u.groupId === g.id).length;
+    return `
+      <div class="user-list-row" data-group-open="${g.id}">
+        <div class="user-avatar">${escapeHtml((g.name || '?').slice(0, 1).toUpperCase())}</div>
+        <div class="user-list-info">
+          <div class="user-list-name">${escapeHtml(g.name)}</div>
+          <div class="user-list-id">メンバー ${memberCount}人</div>
+        </div>
+        <span class="user-list-caret">›</span>
+      </div>`;
+  }).join('')}</div>`;
+}
+
+function renderGroupDetail(list, gid) {
+  const isNew = gid === '__new__';
+  const group = isNew
+    ? { id: '__new__', name: '', sourceFilters: {} }
+    : groupsCache.find(g => g.id === gid);
+  if (!group) { groupDetailId = null; renderGroupsView(); return; }
+
+  const members = S.USERS.filter(u => u.groupId === group.id);
+  const sourceFilters = group.sourceFilters || {};
+
+  // ソース一覧を表示。各ソース行に「見せる/見せない」と行フィルタ設定。
+  // ソースの可視性は source.allowedGroupIds が source-of-truth なので、ここでは
+  // group.id がそのソースの allowedGroupIds に含まれているかをチェックしてレンダ。
+  const sourcesHtml = sourcesCache.map(src => {
+    const isVisible = (src.allowedGroupIds || []).length === 0
+      ? null  // 全員公開（このグループも見える）
+      : (src.allowedGroupIds || []).includes(group.id);
+    const visState = isVisible === null ? 'public' : (isVisible ? 'allowed' : 'blocked');
+    const f = sourceFilters[src.id] || { field: '', op: 'equals', value: '' };
+    const fieldVal = f.field || '';
+    const op = f.op || 'equals';
+    const valStr = op === 'equals' ? (f.value || '') : (Array.isArray(f.values) ? f.values.join(',') : '');
+    return `<div class="group-source-row" data-source-id="${escapeHtml(src.id)}">
+      <div class="group-source-head">
+        <div class="group-source-name">${escapeHtml(src.name)}</div>
+        <label class="group-source-vis-toggle" title="このソースをこのグループに見せるか">
+          <input type="checkbox" data-group-source-visible${isVisible !== false ? ' checked' : ''}>
+          <span>${visState === 'public' ? '全員公開中' : '見せる'}</span>
+        </label>
+      </div>
+      <div class="group-source-filter">
+        <span class="group-source-filter-label">行絞り込み:</span>
+        <input type="text" class="api-input" data-group-filter-field value="${escapeHtml(fieldVal)}" placeholder="フィールド名 (例: operator)">
+        <select data-group-filter-op>
+          <option value="equals"${op === 'equals' ? ' selected' : ''}>等しい</option>
+          <option value="in"${op === 'in' ? ' selected' : ''}>いずれか</option>
+          <option value="notIn"${op === 'notIn' ? ' selected' : ''}>いずれでもない</option>
+        </select>
+        <input type="text" class="api-input" data-group-filter-values value="${escapeHtml(valStr)}" placeholder="値（複数はカンマ区切り）">
+      </div>
+    </div>`;
+  }).join('');
+
+  list.innerHTML = `
+    <button type="button" class="user-back-btn" data-group-back>← 一覧に戻る</button>
+    <div class="user-row" data-group-id="${escapeHtml(group.id)}">
+      <div class="user-row-top">
+        <div class="user-avatar">${escapeHtml((group.name || '?').slice(0, 1).toUpperCase())}</div>
+        <div class="user-row-main">
+          <input type="text" class="user-name-input" data-group-name value="${escapeHtml(group.name)}" placeholder="グループ名（例: 代理店A）">
+        </div>
+      </div>
+
+      <div class="user-perms-section">
+        <div class="user-perms-title">所属メンバー</div>
+        <div class="group-filters-desc">メンバーの変更は「ユーザー一覧」→ 各ユーザーの詳細画面から行ってください。</div>
+        ${members.length === 0
+          ? '<div class="preset-empty" style="padding:8px 0">まだ所属メンバーがいません</div>'
+          : `<ul class="group-member-list">${members.map(u => `<li>${escapeHtml(u.name || u.email)}${u.isAdmin ? '（管理者）' : ''}</li>`).join('')}</ul>`}
+      </div>
+
+      <div class="user-perms-section">
+        <div class="user-perms-title">データソース別アクセス権</div>
+        <div class="group-filters-desc">
+          ・「見せる」: このグループのメンバーがこのソースを開ける<br>
+          ・「行絞り込み」: 設定すると、行のうち条件に一致するものだけ見せる（空欄なら絞らない）
+        </div>
+        ${isNew
+          ? '<div class="preset-empty" style="padding:8px 0">グループを保存後に設定できます</div>'
+          : (sourcesCache.length === 0
+              ? '<div class="preset-empty" style="padding:8px 0">データソースがありません</div>'
+              : `<div class="group-source-list">${sourcesHtml}</div>`)}
+      </div>
+
+      <div class="user-row-actions">
+        <button type="button" class="save-btn" data-group-save>${isNew ? '作成' : '保存'}</button>
+        ${isNew ? '' : '<button type="button" class="link-btn danger" data-group-delete>削除</button>'}
+      </div>
+    </div>`;
+}
+
+// 詳細画面のDOMから編集中のデータを読み取る
+// name + 各ソース行のフィルタ + 可視性チェックボックスを集める
+function collectGroupDetailData() {
+  const row = document.querySelector('[data-group-id]');
+  if (!row) return null;
+  const id = row.dataset.groupId;
+  const name = row.querySelector('[data-group-name]').value.trim();
+
+  const sourceFilters = {};
+  const visibility = {};  // sid → bool (チェックされたら見せる)
+  row.querySelectorAll('.group-source-row').forEach(r => {
+    const sid = r.dataset.sourceId;
+    const visible = r.querySelector('[data-group-source-visible]')?.checked;
+    visibility[sid] = !!visible;
+    const field = r.querySelector('[data-group-filter-field]')?.value.trim() || '';
+    const op = r.querySelector('[data-group-filter-op]')?.value || 'equals';
+    const raw = r.querySelector('[data-group-filter-values]')?.value.trim() || '';
+    if (field) {
+      if (op === 'equals') sourceFilters[sid] = { field, op, value: raw };
+      else sourceFilters[sid] = { field, op, values: raw.split(',').map(s => s.trim()).filter(Boolean) };
+    }
+  });
+  return { id, name, sourceFilters, visibility };
+}
+
+async function saveGroup() {
+  const data = collectGroupDetailData();
+  if (!data) return;
+  if (!data.name) {
+    await showModal({title: '保存できません', body: 'グループ名を入力してください', okText: 'OK', cancelText: ''});
+    return;
+  }
+  try {
+    let gid = data.id;
+
+    // (1) グループ本体: name と sourceFilters を保存
+    if (gid === '__new__') {
+      const created = await api.createGroup({ name: data.name, sourceFilters: data.sourceFilters });
+      gid = created.id;
+      groupsCache.push(created);
+    } else {
+      await api.updateGroup(gid, { name: data.name, sourceFilters: data.sourceFilters });
+      const target = groupsCache.find(g => g.id === gid);
+      if (target) { target.name = data.name; target.sourceFilters = data.sourceFilters; }
+    }
+
+    // (2) ソース側 allowedGroupIds の更新 (可視性)
+    // 各ソースについて、現在の allowedGroupIds と希望状態を比較して差分を適用
+    for (const src of sourcesCache) {
+      const allowed = src.allowedGroupIds || [];
+      const isPublic = allowed.length === 0;
+      const want = data.visibility[src.id];
+      // 変更が必要なケース:
+      //   - public のままで want=true: 操作不要 (全員見える)
+      //   - public のままで want=false: 該当グループを「除外」する手段がない (制限ON状態にする必要)
+      //     → restricted モードに切り替える: 全グループのうち want=true のグループを allowedGroupIds に
+      //   - restricted で want=true: gid を allowed に追加 (含まれてなければ)
+      //   - restricted で want=false: gid を allowed から除外
+      if (isPublic) {
+        if (want === false) {
+          // 「自分だけ見せない」設定はサポートしない (他のグループの状態を破壊するため)
+          // → 他グループの設定を変えないかぎり実現できないので警告
+          console.warn(`Source ${src.id} is currently public; cannot hide from a single group from group-side UI.`);
+        }
+        continue;
+      }
+      const has = allowed.includes(gid);
+      if (want && !has) {
+        const next = [...allowed, gid];
+        await api.updateSource(src.id, { allowedGroupIds: next });
+        src.allowedGroupIds = next;
+      } else if (!want && has) {
+        const next = allowed.filter(g => g !== gid);
+        await api.updateSource(src.id, { allowedGroupIds: next });
+        src.allowedGroupIds = next;
+      }
+    }
+
+    await showModal({title: '保存完了', body: 'グループを保存しました', okText: 'OK', cancelText: ''});
+    groupDetailId = null;
+    renderGroupsView();
+  } catch (e) {
+    await showModal({title: '保存失敗', body: e.message || '保存に失敗しました', okText: 'OK', cancelText: ''});
+  }
+}
+
+async function deleteGroup() {
+  const data = collectGroupDetailData();
+  if (!data || data.id === '__new__') return;
+  const g = groupsCache.find(x => x.id === data.id);
+  const hasMembers = S.USERS.some(u => u.groupId === data.id);
+  const ok = await showModal({
+    title: 'グループを削除',
+    body: `「${g?.name || data.id}」を削除しますか？` + (hasMembers ? '\n\n所属メンバーは自動的に「未分類」に戻ります。' : ''),
+    okText: '削除', danger: true,
+  });
+  if (!ok) return;
+  try {
+    await api.deleteGroup(data.id);
+    groupsCache = groupsCache.filter(x => x.id !== data.id);
+    // ローカルのユーザーキャッシュも整合させる
+    S.USERS.forEach(u => { if (u.groupId === data.id) u.groupId = null; });
+    groupDetailId = null;
+    renderGroupsView();
+  } catch (e) {
+    await showModal({title: '削除失敗', body: e.message || '削除に失敗しました', okText: 'OK', cancelText: ''});
+  }
+}
+
 // ===== setupSettingsEvents =====
 export function setupSettingsEvents() {
   // Login is now handled via Firebase Auth (see main.js -> signIn())
@@ -531,17 +763,38 @@ export function setupSettingsEvents() {
   document.getElementById('open-filters-doc').addEventListener('click', () => { if (hasPerm('editFilters')) enterSettingsMode('filters'); });
   document.getElementById('open-defaults-doc').addEventListener('click', () => { if (hasPerm('editDefaults')) enterSettingsMode('defaults'); });
   document.getElementById('open-dims-doc').addEventListener('click', () => { if (hasPerm('editDimensions')) enterSettingsMode('dims'); });
-  document.getElementById('open-api-settings').addEventListener('click', () => { if (hasPerm('manageUsers')) enterSettingsMode('api'); });
   document.getElementById('open-presets-settings').addEventListener('click', () => enterSettingsMode('presets'));
+  document.getElementById('open-groups').addEventListener('click', () => { if (hasPerm('manageGroups')) enterSettingsMode('groups'); });
 
-  // ----- API SETTINGS -----
-  document.getElementById('api-save-btn').addEventListener('click', async () => {
-    const clientId = document.getElementById('api-client-id').value.trim();
-    S.API_SETTINGS = { clientId };
-    saveApiSettings();
-    renderApiStatus();
-    await showModal({title: '\u4fdd\u5b58\u5b8c\u4e86', body: 'API\u8a2d\u5b9a\u3092\u4fdd\u5b58\u3057\u307e\u3057\u305f', okText: 'OK', cancelText: ''});
+  // ----- GROUPS -----
+  document.getElementById('add-group-btn')?.addEventListener('click', () => {
+    groupDetailId = '__new__';
+    renderGroupsView();
   });
+
+  document.getElementById('groups-list')?.addEventListener('click', async e => {
+    // 一覧 → 詳細
+    const openBtn = e.target.closest('[data-group-open]');
+    if (openBtn) { groupDetailId = openBtn.dataset.groupOpen; renderGroupsView(); return; }
+
+    // 詳細 → 一覧に戻る
+    if (e.target.closest('[data-group-back]')) { groupDetailId = null; renderGroupsView(); return; }
+
+    // 保存
+    if (e.target.closest('[data-group-save]')) {
+      await saveGroup();
+      return;
+    }
+
+    // 削除
+    if (e.target.closest('[data-group-delete]')) {
+      await deleteGroup();
+      return;
+    }
+  });
+
+  document.getElementById('groups-list')?.addEventListener('input', () => markGroupsDirty());
+  document.getElementById('groups-list')?.addEventListener('change', () => markGroupsDirty());
 
   // ----- DIMS HELP -----
   document.getElementById('dims-help-btn').addEventListener('click', async () => {
@@ -549,7 +802,7 @@ export function setupSettingsEvents() {
       <div class="ref-desc"><strong>\u30c7\u30a3\u30e1\u30f3\u30b7\u30e7\u30f3\u8a08\u7b97\u5f0f\u306f JavaScript\u5f0f\u30d9\u30fc\u30b9</strong>\u3067\u3059\u3002\u884c\u30aa\u30d6\u30b8\u30a7\u30af\u30c8 <code>r</code> \u3092\u53c2\u7167\u3057\u3066\u4efb\u610f\u306eJS\u5f0f\u3092\u66f8\u3051\u307e\u3059\u3002</div>
       <div class="ref-section-title">\u7a2e\u985e\u306e\u610f\u5473</div>
       <div class="ref-syntax">
-        <code>\u305d\u306e\u307e\u307e\u5024</code> \u2014 CSV\u30ab\u30e9\u30e0\u306e\u5024\u3092\u305d\u306e\u307e\u307e\u4f7f\u3046<br>
+        <code>\u305d\u306e\u307e\u307e\u5024</code> \u2014 \u30c7\u30fc\u30bf\u30ab\u30e9\u30e0\u306e\u5024\u3092\u305d\u306e\u307e\u307e\u4f7f\u3046<br>
         <code>\u65e5\u4ed8</code> \u2014 \u65e5\u4ed8\u3068\u3057\u3066\u6271\u3046\uff08YYYY-MM-DD)<br>
         <code>\u6708 (YYYY-MM)</code> \u2014 \u65e5\u4ed8\u306e\u5148\u982d7\u6587\u5b57\u3092\u62bd\u51fa<br>
         <code>\u66dc\u65e5</code> \u2014 \u65e5\u4ed8\u304b\u3089\u66dc\u65e5(\u65e5/\u6708/\u706b/...)\u306b\u5909\u63db<br>
@@ -567,7 +820,7 @@ export function setupSettingsEvents() {
         <div><code>r.x ?? '\u4e0d\u660e'</code> null\u57cb\u3081</div>
       </div>
       <div class="ref-desc">
-        <code>r</code> \u306fCSV\u306e1\u884c\u5206\u306e\u30aa\u30d6\u30b8\u30a7\u30af\u30c8\u3002<code>r.operator</code> \u306e\u3088\u3046\u306bCSV\u30ab\u30e9\u30e0\u540d\u3067\u5024\u3092\u53c2\u7167\u3067\u304d\u307e\u3059\u3002
+        <code>r</code> \u306fCSV\u306e1\u884c\u5206\u306e\u30aa\u30d6\u30b8\u30a7\u30af\u30c8\u3002<code>r.operator</code> \u306e\u3088\u3046\u306b\u30c7\u30fc\u30bf\u30ab\u30e9\u30e0\u540d\u3067\u5024\u3092\u53c2\u7167\u3067\u304d\u307e\u3059\u3002
       </div>
       <div class="ref-section-title">\u8a08\u7b97\u5f0f\u306e\u4f8b</div>
       <div class="ref-syntax">
@@ -646,7 +899,7 @@ export function setupSettingsEvents() {
         try { new Function('r', `"use strict"; return (${d.expression})`); }
         catch (err) { await showModal({title: '\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093', body: `\u300c${d.label || d.key}\u300d\u306e\u8a08\u7b97\u5f0f\u306b\u69cb\u6587\u30a8\u30e9\u30fc\u304c\u3042\u308a\u307e\u3059`, okText: 'OK', cancelText: ''}); return; }
       } else {
-        if (!d.field) { await showModal({title: '\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093', body: `\u300c${d.label || d.key}\u300d\u306eCSV\u30ab\u30e9\u30e0\u540d\u304c\u7a7a\u3067\u3059`, okText: 'OK', cancelText: ''}); return; }
+        if (!d.field) { await showModal({title: '\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093', body: `\u300c${d.label || d.key}\u300d\u306e\u30c7\u30fc\u30bf\u30ab\u30e9\u30e0\u540d\u304c\u7a7a\u3067\u3059`, okText: 'OK', cancelText: ''}); return; }
       }
     }
     const ok = await showModal({title: '\u30c7\u30a3\u30e1\u30f3\u30b7\u30e7\u30f3\u5b9a\u7fa9\u3092\u4fdd\u5b58', body: '\u5909\u66f4\u5185\u5bb9\u3092\u4fdd\u5b58\u3057\u307e\u3059\u304b\uff1f', okText: '\u4fdd\u5b58'});
@@ -836,7 +1089,7 @@ export function setupSettingsEvents() {
     if (!hasPerm('editFilters')) return;
     const defs = S.FILTER_DEFS_DRAFT || S.FILTER_DEFS;
     if (defs.some(f => !f.field)) {
-      await showModal({title: '\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093', body: 'CSV\u30ab\u30e9\u30e0\u540d\u304c\u7a7a\u306e\u30d5\u30a3\u30eb\u30bf\u304c\u3042\u308a\u307e\u3059', okText: 'OK', cancelText: ''});
+      await showModal({title: '\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093', body: '\u30c7\u30fc\u30bf\u30ab\u30e9\u30e0\u540d\u304c\u7a7a\u306e\u30d5\u30a3\u30eb\u30bf\u304c\u3042\u308a\u307e\u3059', okText: 'OK', cancelText: ''});
       return;
     }
     const ok = await showModal({title: '\u30d5\u30a3\u30eb\u30bf\u3092\u4fdd\u5b58', body: '\u5909\u66f4\u5185\u5bb9\u3092\u4fdd\u5b58\u3057\u307e\u3059\u304b\uff1f', okText: '\u4fdd\u5b58'});
@@ -1015,6 +1268,7 @@ export function setupSettingsEvents() {
     if (!u) return;
     if (e.target.matches('[data-user-name]')) u.name = e.target.value;
     else if (e.target.matches('[data-perm]')) u.perms[e.target.dataset.perm] = e.target.checked;
+    else if (e.target.matches('[data-user-group]')) u.groupId = e.target.value || null;
     markUsersDirty();
   });
   document.getElementById('users-list').addEventListener('change', e => {
@@ -1046,7 +1300,7 @@ export function setupSettingsEvents() {
         const orig = originalMap[u.uid];
         if (!orig) continue;
         if (JSON.stringify(orig) !== JSON.stringify(u)) {
-          await api.updateUser(u.uid, { name: u.name, isAdmin: u.isAdmin, perms: u.perms });
+          await api.updateUser(u.uid, { name: u.name, isAdmin: u.isAdmin, perms: u.perms, groupId: u.groupId ?? null });
         }
       }
       // Deletions

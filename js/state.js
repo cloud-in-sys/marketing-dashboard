@@ -118,15 +118,9 @@ export const DOW_ORDER = {'日':0,'月':1,'火':2,'水':3,'木':4,'金':5,'土':
 
 export const PERM_GROUPS = [
   {group: 'sources', label: 'データソース', perms: [
-    {key: 'viewSources',   label: 'グループを表示'},
-    {key: 'addSource',     label: '追加'},
-    {key: 'deleteSource',  label: '削除'},
-  ]},
-  {group: 'preset', label: 'プリセット', perms: [
-    {key: 'viewPresets',   label: 'グループを表示'},
-    {key: 'editPreset',   label: '編集'},
-    {key: 'savePreset',   label: '新規保存'},
-    {key: 'deletePreset', label: '削除'},
+    {key: 'viewSources',       label: '閲覧'},
+    {key: 'manageSources',     label: '管理（追加・編集・削除・更新）'},
+    {key: 'connectAccount',    label: 'Googleアカウント連携'},
   ]},
   {group: 'custom', label: 'カスタムタブ', perms: [
     {key: 'viewCustom',   label: 'グループを表示'},
@@ -139,7 +133,14 @@ export const PERM_GROUPS = [
     {key: 'editFilters',    label: 'フィルタ設定'},
     {key: 'editDimensions', label: 'ディメンション設定'},
     {key: 'editDefaults',   label: '標準タブ設定'},
+    // プリセット系（以前は独立グループだったがサイドバーで「設定」に移動したので統合）
+    {key: 'viewPresets',    label: 'プリセット表示'},
+    {key: 'editPreset',     label: 'プリセット編集'},
+    {key: 'savePreset',     label: 'プリセット新規保存'},
+    {key: 'deletePreset',   label: 'プリセット削除'},
+    // ユーザー/グループ管理 (サイドバー「ユーザー管理」セクション)
     {key: 'manageUsers',    label: 'ユーザー管理'},
+    {key: 'manageGroups',   label: 'グループ管理'},
   ]},
 ];
 export const PERM_DEFS = PERM_GROUPS.flatMap(g => g.perms);
@@ -165,6 +166,10 @@ export const S = {
   CHARTS: [{id: 1, metric: 'ad_cost', type: 'bar', size: 'main', color: '#2563eb', bucket: 'auto'}],
   CHART_ID_SEQ: 2,
   CHART_POINTS: new Map(),
+  CHART_SETTINGS_ID: null,
+  CARDS: [],
+  CARD_ID_SEQ: 1,
+  CARD_SETTINGS_ID: null,
   THRESHOLDS: {},
   THRESHOLD_METRICS: [],
   CURRENT_FILTER: null,
@@ -241,6 +246,7 @@ export function saveState() {
   queueConfigPatch({
     state: {
       charts: S.CHARTS,
+      cards: S.CARDS,
       currentView: S.CURRENT_VIEW,
       tabStates: S.TAB_STATES,
     }
@@ -357,9 +363,11 @@ async function applyConfig(cfg) {
   S.CURRENT_VIEW = (st.currentView && (S.VIEWS[st.currentView] || S.CUSTOM_TABS.some(t => t.key === st.currentView))) ? st.currentView : 'summary_daily';
   S.TAB_STATES = st.tabStates && typeof st.tabStates === 'object' ? st.tabStates : {};
   S.CHARTS = Array.isArray(st.charts) && st.charts.length
-    ? st.charts.map(c => ({id: c.id, metric: c.metric, type: c.type, size: c.size, color: c.color || '#2563eb', name: c.name || '', bucket: c.bucket || 'auto'}))
+    ? st.charts.map(c => ({...c, color: c.color || '#2563eb', name: c.name || '', bucket: c.bucket || 'auto'}))
     : [{id: 1, metric: 'ad_cost', type: 'bar', size: 'main', color: '#2563eb', bucket: 'auto'}];
   S.CHART_ID_SEQ = Math.max(0, ...S.CHARTS.map(c => c.id)) + 1;
+  S.CARDS = Array.isArray(st.cards) ? st.cards.map(c => ({...c})) : [];
+  S.CARD_ID_SEQ = S.CARDS.length ? Math.max(0, ...S.CARDS.map(c => c.id)) + 1 : 1;
 
   // Resets
   S.FILTER_VALUES = {};

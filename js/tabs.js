@@ -56,13 +56,24 @@ export function applyView(viewKey) {
   emit('renderThresholds');
   renderTabPresetSelect();
   document.body.classList.toggle('tab-custom', isCustom);
-  emit('render');
   const viewEl = document.querySelector('.view');
   if (viewEl) {
     viewEl.classList.remove('animating');
     void viewEl.offsetWidth;
     viewEl.classList.add('animating');
   }
+  // タブの active 表示を先にフラッシュしてから重い集計/描画を実行。
+  // 連打時は最後の1回分だけ描画(中間の重い計算をスキップ)
+  scheduleRender();
+}
+
+let _renderRafId = null;
+function scheduleRender() {
+  if (_renderRafId != null) cancelAnimationFrame(_renderRafId);
+  _renderRafId = requestAnimationFrame(() => {
+    _renderRafId = null;
+    emit('render');
+  });
 }
 
 export function highlightActiveView() {

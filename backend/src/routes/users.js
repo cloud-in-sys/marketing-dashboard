@@ -20,7 +20,11 @@ app.post('/', adminOnly, async c => {
   const name = (body.name || '').trim() || email.split('@')[0] || 'User';
   const isAdmin = !!body.isAdmin;
   if (!email || !password) throw httpError(400, 'email and password are required');
-  if (password.length < 6) throw httpError(400, 'password must be at least 6 characters');
+  // Password policy: 8文字以上 + 英字 + 数字を含む
+  if (password.length < 8) throw httpError(400, 'パスワードは8文字以上で設定してください');
+  if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+    throw httpError(400, 'パスワードには英字と数字を両方含めてください');
+  }
 
   let userRecord;
   try {
@@ -59,6 +63,10 @@ app.put('/:uid', adminOnly, async c => {
     const clean = { ...VIEWER_PERMS };
     for (const k of PERM_KEYS) if (k in body.perms) clean[k] = !!body.perms[k];
     patch.perms = clean;
+  }
+  // groupId は単一値 (null で未分類)
+  if ('groupId' in body) {
+    patch.groupId = (typeof body.groupId === 'string' && body.groupId) ? body.groupId : null;
   }
   // Enforce at least one admin remains
   if (patch.isAdmin === false) {

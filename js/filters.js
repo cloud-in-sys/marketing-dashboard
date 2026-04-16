@@ -2,13 +2,19 @@ import { S } from './state.js';
 import { escapeHtml, getOptions } from './utils.js';
 import { emit } from './events.js';
 
+// 日付値を YYYY-MM-DD に正規化(時刻部分や '/' を吸収)
+function normDate(v) {
+  if (v == null) return '';
+  return String(v).slice(0, 10).replace(/\//g, '-');
+}
+
 // ===== Filters =====
 export function applyFilters(rows) {
   return rows.filter(r => {
     for (const f of S.FILTER_DEFS) {
       const v = S.FILTER_VALUES[f.id];
-      if (f.type === 'date_from') { if (v && String(r[f.field] || '') < v) return false; }
-      else if (f.type === 'date_to') { if (v && String(r[f.field] || '') > v) return false; }
+      if (f.type === 'date_from') { if (v && normDate(r[f.field]) < normDate(v)) return false; }
+      else if (f.type === 'date_to') { if (v && normDate(r[f.field]) > normDate(v)) return false; }
       else if (f.type === 'multi') { if (v instanceof Set && v.size && !v.has(r[f.field])) return false; }
     }
     return true;

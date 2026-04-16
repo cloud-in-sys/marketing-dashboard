@@ -14,6 +14,16 @@ export async function authMiddleware(c, next) {
     return c.json({ error: 'Invalid token' }, 401);
   }
 
+  // メール/パスワード認証のユーザーはメール確認済みを必須にする。
+  // Google SSO は provider 側で email_verified=true を保証しているので素通し。
+  // firebase 側の `firebase.identities.email` が存在してかつ `email_verified=false` なら拒否。
+  if (decoded.firebase?.sign_in_provider === 'password' && decoded.email_verified === false) {
+    return c.json({
+      error: 'メールアドレスの確認が完了していません。受信メールのリンクをクリックしてください。',
+      code: 'email_not_verified',
+    }, 403);
+  }
+
   // Load/create user profile in Firestore
   const userRef = db.collection('users').doc(decoded.uid);
   const snap = await userRef.get();
@@ -89,6 +99,44 @@ export function requirePerm(key) {
     if (!user?.perms?.[key] && !user?.isAdmin) {
       return c.json({ error: `Missing permission: ${key}` }, 403);
     }
+    await next();
+  };
+}
+
+// ひとつでも key を持っていれば通す
+export function requireAnyPerm(...keys) {
+  return async (c, next) => {
+    const user = c.get('user');
+    if (user?.isAdmin || keys.some(k => user?.perms?.[k])) {
+      await next();
+      return;
+    }
+    return c.json({ error: `Missing permission: one of ${keys.join(', ')}` }, 403);
+  };
+}
+
+// このユーザーが指定 sid にアクセスできるかを判定。
+// - admin: 常に可
+// - allowedGroupIds が空: 全員可
+// - 上記以外: user.groupId が allowedGroupIds に含まれていれば可
+export async function canAccessSource(user, sid) {
+  if (!user) return false;
+  if (user.isAdmin) return true;
+  const snap = await db.collection('sources').doc(sid).get();
+  if (!snap.exists) return false;
+  const allowed = snap.data().allowedGroupIds || [];
+  if (allowed.length === 0) return true;
+  return !!(user.groupId && allowed.includes(user.groupId));
+}
+
+// :sid パラメータを持つルートで source visibility を確認するミドルウェア
+export function requireSourceAccess() {
+  return async (c, next) => {
+    const user = c.get('user');
+    const sid = c.req.param('sid');
+    if (!sid) return c.json({ error: 'sid required' }, 400);
+    const ok = await canAccessSource(user, sid);
+    if (!ok) return c.json({ error: 'Source not accessible' }, 403);
     await next();
   };
 }

@@ -15,7 +15,7 @@ import { applyFilters, renderFilters, populateFilters } from './filters.js';
 import * as sheets from './sheets.js';
 import * as bq from './bq.js';
 import { api } from './api.js';
-import { renderChart } from './chart.js';
+import { renderChart, openChartSettings, closeChartSettings, renderCards, openCardSettings, closeCardSettings, renderCardSettingsPanel } from './chart.js';
 import { renderTable } from './table.js';
 import { groupRows } from './dimensions.js';
 import { dimLabel } from './dimensions.js';
@@ -26,6 +26,24 @@ import { seedDefaultPresets, renderPresets, loadPresetIntoGlobals, renderTabPres
 import { loadCustomTabs, renderCustomTabs, loadViewOrder, renderViewNav, applyView, highlightActiveView,
   setExitSettingsMode as setExitSettingsModeTabs } from './tabs.js';
 import { setupSettingsEvents, exitSettingsMode, enterSettingsMode, renderCsvColumns } from './settings.js';
+import { BRAND } from './config.js';
+
+// ===== ブランドロゴ描画 (各社で assets/logo.png を差し替え) =====
+// 画像が無い/読込失敗時は "LOGO" プレースホルダを表示 (設定漏れを視認しやすく)
+(function renderBrand() {
+  const alt = escapeHtml(BRAND.appName);
+  const headerEl = document.getElementById('brand-logo');
+  if (headerEl) {
+    headerEl.innerHTML = `
+      <img class="brand-logo-img" src="${BRAND.logoUrl}" alt="${alt}" onerror="this.outerHTML='<span class=&quot;brand-logo-fallback&quot;>LOGO</span>'">
+      <span class="logo-text">Marketing Metrics<em>DASHBOARD</em></span>
+    `;
+  }
+  const loginEl = document.getElementById('login-brand-logo');
+  if (loginEl) {
+    loginEl.innerHTML = `<img class="login-brand-logo-img" src="${BRAND.logoUrl}" alt="${alt}" onerror="this.outerHTML='<span class=&quot;login-brand-logo-fallback&quot;>LOGO</span>'">`;
+  }
+})();
 
 // ===== Wire up circular dep breakers =====
 setExitSettingsModePresets(exitSettingsMode);
@@ -115,6 +133,7 @@ function render() {
   if (S.CURRENT_FILTER) rows = rows.filter(S.CURRENT_FILTER);
   const dims = S.SELECTED_DIMS.length ? S.SELECTED_DIMS : ['action_date'];
   const groups = groupRows(rows, dims);
+  renderCards(rows);
   renderChart(rows);
   renderTable(groups);
   const titleEl = document.getElementById('view-title');
@@ -319,35 +338,156 @@ document.getElementById('add-sub-chart').addEventListener('click', () => {
   S.CHARTS.push({id: S.CHART_ID_SEQ++, metric: 'clicks', type: 'line', size: 'sub', color: nextColor(), bucket: 'auto', name: ''});
   render();
 });
-document.getElementById('charts-grid').addEventListener('change', e => {
+document.getElementById('add-mini-chart').addEventListener('click', () => {
+  S.CHARTS.push({id: S.CHART_ID_SEQ++, metric: 'mcv', type: 'bar', size: 'mini', color: nextColor(), bucket: 'auto', name: ''});
+  render();
+});
+
+// ===== KPI CARDS =====
+document.getElementById('add-card').addEventListener('click', () => {
+  const firstMetric = S.METRIC_DEFS[0]?.key || '';
+  S.CARDS.push({ id: S.CARD_ID_SEQ++, metric: firstMetric, label: '', subMetric: '', subLabel: '' });
+  render();
+});
+document.getElementById('cards-grid').addEventListener('click', e => {
+  const card = e.target.closest('[data-card-id]');
+  if (!card) return;
+  const id = +card.dataset.cardId;
+  if (e.target.closest('[data-card-role="remove"]')) {
+    S.CARDS = S.CARDS.filter(c => c.id !== id);
+    if (S.CARD_SETTINGS_ID === id) closeCardSettings();
+    render();
+    return;
+  }
+  if (e.target.closest('[data-card-role="settings"]')) {
+    openCardSettings(id);
+  }
+});
+// インライン名前変更
+document.getElementById('cards-grid').addEventListener('input', e => {
+  const role = e.target.dataset.cardRole;
+  if (role !== 'label') return;
+  const card = e.target.closest('[data-card-id]');
+  const c = S.CARDS.find(x => x.id === +card.dataset.cardId);
+  if (!c) return;
+  c.label = e.target.value;
+  // ライブ再描画は重いので、フォーカス保持のため再描画はスキップ。値は state にのみ保存。
+  saveState();
+});
+function onCardPanelChange(e) {
+  const role = e.target.dataset.cardPanelRole;
+  if (!role) return;
+  const c = S.CARDS.find(x => x.id === S.CARD_SETTINGS_ID);
+  if (!c) return;
+  c[role] = e.target.value;
+  render();
+}
+document.getElementById('card-settings-body').addEventListener('input', onCardPanelChange);
+document.getElementById('card-settings-body').addEventListener('change', onCardPanelChange);
+document.getElementById('card-settings-body').addEventListener('click', e => {
+  const btn = e.target.closest('[data-card-panel-role="resetColors"]');
+  if (!btn) return;
+  const c = S.CARDS.find(x => x.id === S.CARD_SETTINGS_ID);
+  if (!c) return;
+  delete c.bgColor;
+  delete c.textColor;
+  delete c.labelColor;
+  delete c.valueColor;
+  delete c.subColor;
+  render();
+});
+document.getElementById('card-settings-close').addEventListener('click', closeCardSettings);
+document.getElementById('card-settings-backdrop').addEventListener('click', closeCardSettings);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && S.CARD_SETTINGS_ID != null) closeCardSettings();
+});
+document.getElementById('charts-grid').addEventListener('click', e => {
   const card = e.target.closest('.chart-card');
   if (!card) return;
   const id = +card.dataset.id;
-  const chart = S.CHARTS.find(c => c.id === id);
+  const removeBtn = e.target.closest('[data-role="remove"]');
+  if (removeBtn) {
+    S.CHARTS = S.CHARTS.filter(c => c.id !== id);
+    if (S.CHART_SETTINGS_ID === id) closeChartSettings();
+    render();
+    return;
+  }
+  const settingsBtn = e.target.closest('[data-role="settings"]');
+  if (settingsBtn) {
+    openChartSettings(id);
+    return;
+  }
+});
+
+// 設定パネル: select/input 変更
+const DEFAULT_LINE_COLORS = ['#ef4444', '#10b981', '#f59e0b', '#7c3aed', '#0ea5e9', '#ec4899', '#14b8a6', '#f97316'];
+function ensureLines(chart) {
+  if (!Array.isArray(chart.lines)) {
+    chart.lines = [];
+    if (chart.metric2) chart.lines.push({ metric: chart.metric2, color: chart.color2 || DEFAULT_LINE_COLORS[0] });
+    if (chart.metric3) chart.lines.push({ metric: chart.metric3, color: chart.color3 || DEFAULT_LINE_COLORS[1] });
+    if (chart.metric4) chart.lines.push({ metric: chart.metric4, color: chart.color4 || DEFAULT_LINE_COLORS[2] });
+    // 旧フィールド掃除
+    delete chart.metric2; delete chart.metric3; delete chart.metric4;
+    delete chart.color2; delete chart.color3; delete chart.color4;
+  }
+  return chart.lines;
+}
+function onPanelChange(e) {
+  const el = e.target;
+  const role = el.dataset.panelRole;
+  if (!role) return;
+  const chart = S.CHARTS.find(c => c.id === S.CHART_SETTINGS_ID);
   if (!chart) return;
-  const role = e.target.dataset.role;
-  if (role === 'metric') chart.metric = e.target.value;
-  if (role === 'type') chart.type = e.target.value;
-  if (role === 'bucket') chart.bucket = e.target.value;
-  if (role === 'color') chart.color = e.target.value;
-  if (role === 'name') { chart.name = e.target.value; saveState(); return; }
+  if (role === 'metric') chart.metric = el.value;
+  if (role === 'bucket') chart.bucket = el.value;
+  if (role === 'type') chart.type = el.value;
+  if (role === 'color') chart.color = el.value;
+  if (role === 'stackBy') chart.stackBy = el.value;
+  if (role === 'showDots') chart.showDots = el.checked;
+  if (role === 'dotSize') chart.dotSize = Number(el.value);
+  if (role === 'lineWidth') chart.lineWidth = Number(el.value);
+  if (role === 'smoothLine') chart.smoothLine = el.checked;
+  if (role === 'showDataLabels') chart.showDataLabels = el.checked;
+  if (role === 'line-metric') {
+    const idx = Number(el.dataset.lineIdx);
+    const lines = ensureLines(chart);
+    if (lines[idx]) lines[idx].metric = el.value;
+  }
+  if (role === 'line-color') {
+    const idx = Number(el.dataset.lineIdx);
+    const lines = ensureLines(chart);
+    if (lines[idx]) lines[idx].color = el.value;
+  }
   render();
-});
-document.getElementById('charts-grid').addEventListener('input', e => {
-  const card = e.target.closest('.chart-card');
-  if (!card) return;
-  const chart = S.CHARTS.find(c => c.id === +card.dataset.id);
-  if (!chart) return;
-  const role = e.target.dataset.role;
-  if (role === 'color') { chart.color = e.target.value; render(); }
-  else if (role === 'name') { chart.name = e.target.value; saveState(); }
-});
-document.getElementById('charts-grid').addEventListener('click', e => {
-  const btn = e.target.closest('[data-role="remove"]');
+}
+function onPanelClick(e) {
+  const btn = e.target.closest('[data-panel-role]');
   if (!btn) return;
-  const id = +btn.closest('.chart-card').dataset.id;
-  S.CHARTS = S.CHARTS.filter(c => c.id !== id);
-  render();
+  const role = btn.dataset.panelRole;
+  const chart = S.CHARTS.find(c => c.id === S.CHART_SETTINGS_ID);
+  if (!chart) return;
+  if (role === 'line-add') {
+    const lines = ensureLines(chart);
+    const used = new Set(lines.map(l => l.metric));
+    const next = S.METRIC_DEFS.find(m => !used.has(m.key));
+    lines.push({ metric: next?.key || '', color: DEFAULT_LINE_COLORS[lines.length % DEFAULT_LINE_COLORS.length] });
+    render();
+  }
+  if (role === 'line-remove') {
+    const idx = Number(btn.dataset.lineIdx);
+    const lines = ensureLines(chart);
+    lines.splice(idx, 1);
+    render();
+  }
+}
+document.getElementById('chart-settings-body').addEventListener('change', onPanelChange);
+document.getElementById('chart-settings-body').addEventListener('input', onPanelChange);
+document.getElementById('chart-settings-body').addEventListener('click', onPanelClick);
+document.getElementById('chart-settings-close').addEventListener('click', closeChartSettings);
+document.getElementById('chart-settings-backdrop').addEventListener('click', closeChartSettings);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && S.CHART_SETTINGS_ID != null) closeChartSettings();
 });
 
 // ===== CHART DRAG REORDER =====
@@ -446,7 +586,7 @@ chartsGrid.addEventListener('mousemove', e => {
   guide.style.top = topPx + 'px';
   guide.style.height = (bottomPx - topPx) + 'px';
   tooltip.classList.remove('hidden');
-  tooltip.innerHTML = `<div class="tt-x">${nearest.x}</div><div class="tt-m">${nearest.metric}</div><div class="tt-y">${nearest.label}</div>`;
+  tooltip.innerHTML = `<div class="tt-x">${escapeHtml(String(nearest.x ?? ''))}</div><div class="tt-m">${escapeHtml(String(nearest.metric ?? ''))}</div><div class="tt-y">${escapeHtml(String(nearest.label ?? ''))}</div>`;
   const ttW = tooltip.offsetWidth;
   let leftPos = xPx - ttW / 2;
   const maxLeft = wrapRect.width - ttW - 4;
@@ -507,21 +647,147 @@ function reloadFullUI() {
 }
 
 function renderSourceNav() {
-  const el = document.getElementById('source-nav');
-  if (!el) return;
-  el.innerHTML = S.DATA_SOURCES.map(ds => {
-    const active = S.CURRENT_SOURCE === ds.id ? ' active' : '';
-    const count = (S.SOURCE_DATA[ds.id] || []).length;
-    const badge = count > 0 ? `<span class="source-count">${count.toLocaleString()}\u884c</span>` : '<span class="source-count source-empty">\u672a\u8aad\u307f\u8fbc\u307f</span>';
-    return `<div class="source-item">
-      <button type="button" class="nav-item${active}" data-source="${ds.id}">
-        <span class="source-name">${escapeHtml(ds.name)}</span>${badge}
-      </button>
-      <button type="button" class="source-rename" data-rename-source="${ds.id}" title="\u540d\u524d\u3092\u5909\u66f4">\u270e</button>
-      <button type="button" class="preset-del source-del" data-del-source="${ds.id}" title="\u524a\u9664">\u00d7</button>
-    </div>`;
-  }).join('');
+  // ヘッダードロップダウン内のソース一覧を描画
+  const list = document.getElementById('source-nav');
+  if (list) {
+    list.innerHTML = S.DATA_SOURCES.map(ds => {
+      const active = S.CURRENT_SOURCE === ds.id ? ' active' : '';
+      const count = (S.SOURCE_DATA[ds.id] || []).length;
+      const countLabel = count > 0 ? `${count.toLocaleString()}行` : '未取得';
+      // ドロップダウンは「切替」のみに徹する。編集・削除は設定画面(source-view)で行う。
+      return `<div class="source-dropdown-row${active}" data-source="${ds.id}">
+        <span class="source-nav-item-label">${escapeHtml(ds.name)}</span>
+        <span class="source-count">${countLabel}</span>
+      </div>`;
+    }).join('');
+  }
+  // ドロップダウンのボタンラベルも更新
+  const labelEl = document.getElementById('source-dropdown-label');
+  if (labelEl) {
+    const current = S.DATA_SOURCES.find(d => d.id === S.CURRENT_SOURCE);
+    labelEl.textContent = current ? current.name : 'データソース';
+  }
 }
+
+// ドロップダウンの開閉
+function toggleSourceDropdown(force) {
+  const menu = document.getElementById('source-dropdown-menu');
+  if (!menu) return;
+  const willShow = force !== undefined ? force : menu.classList.contains('hidden');
+  menu.classList.toggle('hidden', !willShow);
+}
+document.getElementById('source-dropdown-btn')?.addEventListener('click', e => {
+  e.stopPropagation();
+  toggleSourceDropdown();
+});
+// 外側クリックで閉じる
+document.addEventListener('click', e => {
+  const menu = document.getElementById('source-dropdown-menu');
+  if (!menu || menu.classList.contains('hidden')) return;
+  if (!e.target.closest('#source-dropdown')) toggleSourceDropdown(false);
+});
+// Escキーで閉じる
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') toggleSourceDropdown(false);
+});
+// 「⚙ 現在のソースの設定」ボタン
+document.getElementById('open-source-settings')?.addEventListener('click', () => {
+  toggleSourceDropdown(false);
+  enterSourceView();
+});
+
+// アクセス権 UI (グループ別可視性) の描画・保存
+async function renderSourceVisibilityUI() {
+  const ds = S.DATA_SOURCES.find(d => d.id === S.CURRENT_SOURCE);
+  if (!ds) return;
+  const groupsList = document.getElementById('source-visibility-groups-list');
+  if (!groupsList) return;
+
+  try {
+    const res = await api.listGroups();
+    const groups = res.groups || [];
+    const allowed = new Set(ds.allowedGroupIds || []);
+    if (groups.length === 0) {
+      groupsList.innerHTML = '<div class="preset-empty" style="padding:12px 0">まだグループがありません。設定→グループ管理で作成してください。</div>';
+    } else {
+      groupsList.innerHTML = groups.map(g => `<label>
+        <input type="checkbox" data-vis-group="${escapeHtml(g.id)}"${allowed.has(g.id) ? ' checked' : ''}>
+        <span>${escapeHtml(g.name)}</span>
+      </label>`).join('');
+    }
+  } catch (e) {
+    groupsList.innerHTML = `<div class="preset-empty">読み込みに失敗しました: ${escapeHtml(e.message || '')}</div>`;
+  }
+}
+
+document.getElementById('source-visibility-save')?.addEventListener('click', async () => {
+  const ds = S.DATA_SOURCES.find(d => d.id === S.CURRENT_SOURCE);
+  if (!ds) return;
+  const allowedGroupIds = [...document.querySelectorAll('[data-vis-group]')].filter(cb => cb.checked).map(cb => cb.dataset.visGroup);
+  try {
+    await api.updateSource(ds.id, { allowedGroupIds });
+    ds.allowedGroupIds = allowedGroupIds;
+    await showModal({title: '保存完了', body: 'アクセス権を保存しました', okText: 'OK', cancelText: ''});
+  } catch (e) {
+    await showModal({title: '保存失敗', body: e.message || '保存に失敗しました', okText: 'OK', cancelText: ''});
+  }
+});
+
+// 現在のソースの名前変更 (source-view 内のボタン)
+document.getElementById('source-rename-btn')?.addEventListener('click', async () => {
+  const ds = S.DATA_SOURCES.find(d => d.id === S.CURRENT_SOURCE);
+  if (!ds) return;
+  const newName = await showModal({title: '名前を変更', body: `「${ds.name}」の新しい名前を入力してください`, input: true, defaultValue: ds.name, okText: '次へ'});
+  if (!newName || newName === ds.name) return;
+  const ok = await showModal({title: '名前変更の確認', body: `「${ds.name}」を「${newName}」に変更しますか？`, okText: '変更'});
+  if (!ok) return;
+  try {
+    await api.updateSource(ds.id, { name: newName });
+    ds.name = newName;
+    document.getElementById('source-view-title').textContent = newName;
+    renderSourceNav();
+  } catch (err) {
+    showModal({title: '名前変更に失敗', body: err.message || '名前変更に失敗しました', okText: 'OK', cancelText: ''});
+  }
+});
+
+// 現在のソースの削除
+document.getElementById('source-delete-btn')?.addEventListener('click', async () => {
+  const ds = S.DATA_SOURCES.find(d => d.id === S.CURRENT_SOURCE);
+  if (!ds) return;
+  if (S.DATA_SOURCES.length <= 1) {
+    await showModal({title: '削除できません', body: 'データソースは最低1つ必要です', okText: 'OK', cancelText: ''});
+    return;
+  }
+  const ok = await showModal({
+    title: 'データソースを削除',
+    body: `「${ds.name}」を削除しますか？\nこのデータソースの全ての設定・プリセット・スナップショットが削除されます。`,
+    okText: '削除',
+    danger: true,
+  });
+  if (!ok) return;
+  const typed = await showModal({
+    title: '本当に削除しますか？',
+    body: `「${ds.name}」の削除は取り消せません。確認のため「削除」と入力してください。`,
+    input: true,
+    placeholder: '削除',
+    okText: '削除する',
+    danger: true,
+    noEnter: true,
+  });
+  if (typed !== '削除') return;
+  try {
+    await api.deleteSource(ds.id);
+    S.DATA_SOURCES = S.DATA_SOURCES.filter(d => d.id !== ds.id);
+    delete S.SOURCE_DATA[ds.id];
+    clearSourceRaw(ds.id);
+    await switchSource(S.DATA_SOURCES[0].id);
+    exitSettingsMode();
+    reloadFullUI();
+  } catch (err) {
+    showModal({title: '削除に失敗', body: err.message || '削除に失敗しました', okText: 'OK', cancelText: ''});
+  }
+});
 
 document.getElementById('source-nav').addEventListener('click', e => {
   const del = e.target.closest('[data-del-source]');
@@ -573,12 +839,17 @@ document.getElementById('source-nav').addEventListener('click', e => {
   }
   const btn = e.target.closest('[data-source]');
   if (btn) {
+    // 編集・削除アイコンのクリックは上で処理済み。ここに来るのはラベル本体クリック時のみ。
     const id = btn.dataset.source;
-    if (S.CURRENT_SOURCE !== id) {
-      switchSource(id);
-      reloadFullUI();
-    }
-    enterSourceView();
+    (async () => {
+      if (S.CURRENT_SOURCE !== id) {
+        await switchSource(id);
+        reloadFullUI();
+      }
+      // ドロップダウンを閉じてダッシュボードに戻る（設定画面は開かない）
+      toggleSourceDropdown(false);
+      exitSettingsMode();
+    })();
   }
 });
 
@@ -590,78 +861,130 @@ function enterSourceView() {
   document.querySelectorAll('#view-nav .nav-item, #custom-nav .nav-item').forEach(b => b.classList.remove('active'));
   renderSourceView();
   renderSourceNav();
-  // Auto-refresh sheets/bq data if configured
-  autoRefreshSheetsIfNeeded();
-  autoRefreshBqIfNeeded();
+  // Load snapshot data (cached daily batch or on-demand refresh)
+  loadSnapshotIfNeeded();
 }
 
-async function autoRefreshBqIfNeeded() {
-  if (!bq.isAuthenticated()) return;
-  const saved = loadBqInput();
-  if (!saved.project || !saved.query) return;
-  const currentRows = S.SOURCE_DATA[S.CURRENT_SOURCE] || [];
-  if (currentRows.length > 0) return;
-  const rowCountEl = document.getElementById('row-count');
+function formatRelativeTime(iso) {
+  if (!iso) return 'まだ更新されていません';
+  const ms = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return 'たった今';
+  if (min < 60) return `${min}分前`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}時間前`;
+  const d = Math.floor(hr / 24);
+  return `${d}日前`;
+}
+
+function renderSnapshotMeta(method, meta) {
+  const el = document.getElementById(method === 'sheets' ? 'sheets-snapshot-meta' : 'bq-snapshot-meta');
+  if (!el) return;
+  if (!meta?.exists) {
+    el.textContent = 'まだスナップショットがありません。「今すぐ更新」を押して取得してください。';
+    return;
+  }
+  const when = formatRelativeTime(meta.updatedAt);
+  el.textContent = `最終更新: ${when}  (${(meta.rows || 0).toLocaleString()}行)`;
+}
+
+async function loadSnapshotIfNeeded() {
+  const sid = S.CURRENT_SOURCE;
+  if (!sid) return;
+  await sheets.refreshConnectionState();
+  const currentRows = S.SOURCE_DATA[sid] || [];
+  const ds = S.DATA_SOURCES.find(d => d.id === sid);
+  const method = ds?.method || '';
+
   try {
-    const status = document.getElementById('bq-status');
-    if (status) status.innerHTML = '<span class="api-status-ok" style="font-size:11px">\u2b6f \u30af\u30a8\u30ea\u5b9f\u884c\u4e2d...</span>';
-    if (rowCountEl) rowCountEl.textContent = '\u5b9f\u884c\u4e2d...';
+    const meta = await api.getSnapshotMeta(sid);
+    renderSnapshotMeta(method, meta);
+    if (!meta.exists) return;
+    if (currentRows.length > 0) return; // already loaded
+    const rowCountEl = document.getElementById('row-count');
+    if (rowCountEl) rowCountEl.textContent = '読み込み中...';
     document.querySelector('.meta')?.classList.add('meta-loading');
-    const rows = await bq.runQuery(saved.project, saved.query);
-    S.SOURCE_DATA[S.CURRENT_SOURCE] = rows;
-    S.RAW = rows;
-    saveSourceMethod('bq');
+    const data = await api.getSnapshot(sid);
+    S.SOURCE_DATA[sid] = data.rows || [];
+    S.RAW = S.SOURCE_DATA[sid];
     populateFilters();
     renderSourceView();
     renderSourceNav();
     renderCsvColumns();
     render();
   } catch (e) {
-    console.warn('BQ auto-refresh failed:', e.message);
-    if (rowCountEl) rowCountEl.textContent = '0';
-    renderSourceView();
+    console.warn('Snapshot load failed:', e.message);
   } finally {
     document.querySelector('.meta')?.classList.remove('meta-loading');
   }
 }
 
-async function autoRefreshSheetsIfNeeded() {
-  if (!sheets.isAuthenticated()) return;
-  const saved = loadSheetsInput();
-  if (!saved.url || !saved.tab) return;
-  // Already has fresh data? Skip
-  const currentRows = S.SOURCE_DATA[S.CURRENT_SOURCE] || [];
-  if (currentRows.length > 0) return;
-  const fileId = sheets.extractSpreadsheetId(saved.url);
-  if (!fileId) return;
-  const rowCountEl = document.getElementById('row-count');
+// このデータソースのメソッド + 入力をクリアする。
+// Google OAuth（ユーザー単位）には影響しない。
+async function disconnectCurrentSource() {
+  const sid = S.CURRENT_SOURCE;
+  if (!sid) return;
   try {
-    const status = document.getElementById('sheets-status');
-    if (status) status.innerHTML = '<span class="api-status-ok" style="font-size:11px">\u2b6f \u30c7\u30fc\u30bf\u3092\u53d6\u5f97\u4e2d...</span>';
-    if (rowCountEl) rowCountEl.textContent = '\u8aad\u307f\u8fbc\u307f\u4e2d...';
-    document.querySelector('.meta')?.classList.add('meta-loading');
-    const rows = await sheets.fetchSheetData(fileId, saved.tab);
-    S.SOURCE_DATA[S.CURRENT_SOURCE] = rows;
-    S.RAW = rows;
-    saveSourceMethod('sheets');
-    populateFilters();
+    await api.disconnectSource(sid);
+    const ds = S.DATA_SOURCES.find(d => d.id === sid);
+    if (ds) {
+      ds.method = '';
+      delete ds.sheetsInput;
+      delete ds.bqInput;
+    }
+    S.SOURCE_METHOD = '';
+    S.SHEETS_INPUT = { url: '', tab: '' };
+    S.BQ_INPUT = { project: '', query: '' };
+    document.querySelectorAll('.source-method-card').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('.method-detail-panel').forEach(p => p.classList.add('hidden'));
     renderSourceView();
     renderSourceNav();
-    renderCsvColumns();
-    render();
   } catch (e) {
-    console.warn('Auto-refresh failed:', e.message);
-    if (rowCountEl) rowCountEl.textContent = '0';
-    renderSourceView();
-  } finally {
-    document.querySelector('.meta')?.classList.remove('meta-loading');
+    await showModal({title: '解除失敗', body: e.message || '連携解除に失敗しました', okText: 'OK', cancelText: ''});
   }
 }
+
+async function refreshSnapshotNow(method) {
+  const sid = S.CURRENT_SOURCE;
+  if (!sid) return;
+  const metaEl = document.getElementById(method === 'sheets' ? 'sheets-snapshot-meta' : 'bq-snapshot-meta');
+  if (metaEl) { metaEl.textContent = '更新中...'; metaEl.classList.add('updating'); }
+  try {
+    await api.refreshSnapshot(sid);
+    S.SOURCE_DATA[sid] = []; // invalidate cache
+    await loadSnapshotIfNeeded();
+  } catch (e) {
+    await showModal({title: '更新失敗', body: e.message || '更新に失敗しました', okText: 'OK', cancelText: ''});
+  } finally {
+    if (metaEl) metaEl.classList.remove('updating');
+  }
+}
+
+// (Live Sheets/BQ auto-refresh removed — data comes from daily snapshot now)
 
 function renderSourceView() {
   const ds = S.DATA_SOURCES.find(d => d.id === S.CURRENT_SOURCE);
   const name = ds ? ds.name : S.CURRENT_SOURCE;
   document.getElementById('source-view-title').textContent = name;
+
+  // メソッドカードのアクティブ表示と詳細パネルを現在の source.method に合わせる
+  const currentMethod = ds?.method || '';
+  document.querySelectorAll('.source-method-card').forEach(c => {
+    c.classList.toggle('active', !!currentMethod && c.dataset.method === currentMethod);
+    // 未連携ソースでは全カードをクリック可、連携済みでは同じメソッドカード以外を薄く表示
+    if (currentMethod && c.dataset.method !== currentMethod) {
+      c.classList.add('locked');
+    } else {
+      c.classList.remove('locked');
+    }
+  });
+  document.querySelectorAll('.method-detail-panel').forEach(p => p.classList.add('hidden'));
+  if (currentMethod) {
+    document.getElementById('detail-' + currentMethod)?.classList.remove('hidden');
+  }
+
+  // 可視性設定 (admin のみ、非同期でグループ一覧を取得)
+  renderSourceVisibilityUI();
 
   const rows = S.SOURCE_DATA[S.CURRENT_SOURCE] || [];
   const info = document.getElementById('source-info');
@@ -818,14 +1141,32 @@ document.getElementById('source-file').addEventListener('change', async e => {
 });
 
 // ----- METHOD CARD SELECTION -----
+// 排他制御: 既に連携済みのソースで別メソッドに切り替えたい場合は、
+// 先に「連携を解除」する必要がある。
 document.querySelectorAll('.source-method-card').forEach(card => {
-  card.addEventListener('click', e => {
+  card.addEventListener('click', async e => {
     if (card.classList.contains('disabled')) return;
     if (e.target.closest('input,button,label.file-btn')) return;
-    const method = card.dataset.method;
+
+    const targetMethod = card.dataset.method;
+    const ds = S.DATA_SOURCES.find(d => d.id === S.CURRENT_SOURCE);
+    const currentMethod = ds?.method || '';
+
+    // 既に別メソッドに連携済みなら切替をブロック
+    if (currentMethod && currentMethod !== targetMethod) {
+      const labels = { csv: 'CSVアップロード', sheets: 'Google スプレッドシート', bq: 'BigQuery' };
+      await showModal({
+        title: '連携を変更できません',
+        body: `このデータソースは既に「${labels[currentMethod] || currentMethod}」に連携されています。別の方法に切り替えるには、まず現在の連携を解除してください。`,
+        okText: 'OK',
+        cancelText: '',
+      });
+      return;
+    }
+
     document.querySelectorAll('.source-method-card').forEach(c => c.classList.toggle('active', c === card));
     document.querySelectorAll('.method-detail-panel').forEach(p => p.classList.add('hidden'));
-    const panel = document.getElementById('detail-' + method);
+    const panel = document.getElementById('detail-' + targetMethod);
     if (panel) panel.classList.remove('hidden');
   });
 });
@@ -840,35 +1181,29 @@ document.getElementById('sheets-auth-btn').addEventListener('click', async () =>
   }
 });
 
-// ----- SHEETS: fetch data -----
+// ----- SHEETS: 今すぐ更新 (save config + refresh snapshot) -----
 document.getElementById('sheets-fetch-btn').addEventListener('click', async () => {
   const urlOrId = document.getElementById('sheets-url-input').value.trim();
   const fileId = sheets.extractSpreadsheetId(urlOrId);
-  const sheet = document.getElementById('sheets-tab-input').value.trim();
-  if (!fileId) { await showModal({title: '\u30a8\u30e9\u30fc', body: '\u30b9\u30d7\u30ec\u30c3\u30c9\u30b7\u30fc\u30c8\u306eURL\u307e\u305f\u306fID\u304c\u6b63\u3057\u304f\u3042\u308a\u307e\u305b\u3093', okText: 'OK', cancelText: ''}); return; }
-  if (!sheet) { await showModal({title: '\u30a8\u30e9\u30fc', body: '\u30bf\u30d6\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', okText: 'OK', cancelText: ''}); return; }
-  if (!(await confirmOverwriteData('sheets'))) return;
-  try {
-    const rows = await sheets.fetchSheetData(fileId, sheet);
-    S.SOURCE_DATA[S.CURRENT_SOURCE] = rows;
-    S.RAW = rows;
-    saveSourceMethod('sheets');
-    populateFilters();
-    renderSourceView();
-    renderSourceNav();
-    renderCsvColumns();
-    await showModal({title: '\u53d6\u5f97\u5b8c\u4e86', body: `${rows.length.toLocaleString()}\u884c\u306e\u30c7\u30fc\u30bf\u3092\u8aad\u307f\u8fbc\u307f\u307e\u3057\u305f`, okText: 'OK', cancelText: ''});
-  } catch (e) {
-    await showModal({title: '\u53d6\u5f97\u30a8\u30e9\u30fc', body: e.message, okText: 'OK', cancelText: ''});
-  }
+  const tab = document.getElementById('sheets-tab-input').value.trim();
+  if (!fileId) { await showModal({title: 'エラー', body: 'スプレッドシートのURLまたはIDが正しくありません', okText: 'OK', cancelText: ''}); return; }
+  if (!tab) { await showModal({title: 'エラー', body: 'タブ名を入力してください', okText: 'OK', cancelText: ''}); return; }
+  // Persist inputs on the source doc so the batch job can read them
+  await saveSheetsInput(urlOrId, tab);
+  await saveSourceMethod('sheets');
+  await refreshSnapshotNow('sheets');
 });
 
-// ----- SHEETS: disconnect -----
+// ----- SHEETS: このソースの連携を解除 (method + inputs クリア) -----
 document.getElementById('sheets-disconnect').addEventListener('click', async () => {
-  const ok = await showModal({title: '\u9023\u643a\u89e3\u9664', body: 'Google\u30a2\u30ab\u30a6\u30f3\u30c8\u306e\u9023\u643a\u3092\u89e3\u9664\u3057\u307e\u3059\u304b\uff1f', okText: '\u89e3\u9664', danger: true});
+  const ok = await showModal({
+    title: 'このデータソースの連携を解除',
+    body: 'このデータソースのスプレッドシート連携を解除します。スナップショットは残りますが、以後「今すぐ更新」はできなくなります。別の方法（CSV / BigQuery）に切り替えたい場合はこの操作を実行してください。',
+    okText: '解除',
+    danger: true,
+  });
   if (!ok) return;
-  sheets.disconnect();
-  renderSourceView();
+  await disconnectCurrentSource();
 });
 
 // ----- BQ: AUTH -----
@@ -881,40 +1216,27 @@ document.getElementById('bq-auth-btn').addEventListener('click', async () => {
   }
 });
 
-// ----- BQ: RUN QUERY -----
+// ----- BQ: 今すぐ更新 (save config + refresh snapshot) -----
 document.getElementById('bq-fetch-btn').addEventListener('click', async () => {
   const project = document.getElementById('bq-project-input').value.trim();
   const query = document.getElementById('bq-query-input').value.trim();
-  if (!project) { await showModal({title: '\u30a8\u30e9\u30fc', body: '\u30d7\u30ed\u30b8\u30a7\u30af\u30c8ID\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', okText: 'OK', cancelText: ''}); return; }
-  if (!query) { await showModal({title: '\u30a8\u30e9\u30fc', body: 'SQL\u30af\u30a8\u30ea\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', okText: 'OK', cancelText: ''}); return; }
-  if (!(await confirmOverwriteData('bq'))) return;
-  const rowCountEl = document.getElementById('row-count');
-  try {
-    if (rowCountEl) rowCountEl.textContent = '\u5b9f\u884c\u4e2d...';
-    document.querySelector('.meta')?.classList.add('meta-loading');
-    const rows = await bq.runQuery(project, query);
-    S.SOURCE_DATA[S.CURRENT_SOURCE] = rows;
-    S.RAW = rows;
-    saveSourceMethod('bq');
-    populateFilters();
-    renderSourceView();
-    renderSourceNav();
-    renderCsvColumns();
-    render();
-    await showModal({title: '\u53d6\u5f97\u5b8c\u4e86', body: `${rows.length.toLocaleString()}\u884c\u306e\u30c7\u30fc\u30bf\u3092\u53d6\u5f97\u3057\u307e\u3057\u305f`, okText: 'OK', cancelText: ''});
-  } catch (e) {
-    await showModal({title: '\u30af\u30a8\u30ea\u30a8\u30e9\u30fc', body: e.message, okText: 'OK', cancelText: ''});
-  } finally {
-    document.querySelector('.meta')?.classList.remove('meta-loading');
-  }
+  if (!project) { await showModal({title: 'エラー', body: 'プロジェクトIDを入力してください', okText: 'OK', cancelText: ''}); return; }
+  if (!query) { await showModal({title: 'エラー', body: 'SQLクエリを入力してください', okText: 'OK', cancelText: ''}); return; }
+  await saveBqInput(project, query);
+  await saveSourceMethod('bq');
+  await refreshSnapshotNow('bq');
 });
 
-// ----- BQ: DISCONNECT -----
+// ----- BQ: このソースの連携を解除 (method + inputs クリア) -----
 document.getElementById('bq-disconnect').addEventListener('click', async () => {
-  const ok = await showModal({title: '\u9023\u643a\u89e3\u9664', body: 'Google\u30a2\u30ab\u30a6\u30f3\u30c8\u306e\u9023\u643a\u3092\u89e3\u9664\u3057\u307e\u3059\u304b\uff1f', okText: '\u89e3\u9664', danger: true});
+  const ok = await showModal({
+    title: 'このデータソースの連携を解除',
+    body: 'このデータソースのBigQuery連携を解除します。スナップショットは残りますが、以後「今すぐ更新」はできなくなります。別の方法（CSV / スプレッドシート）に切り替えたい場合はこの操作を実行してください。',
+    okText: '解除',
+    danger: true,
+  });
   if (!ok) return;
-  bq.disconnect();
-  renderSourceView();
+  await disconnectCurrentSource();
 });
 
 document.getElementById('add-source').addEventListener('click', async () => {
@@ -1189,6 +1511,8 @@ document.getElementById('header-logout')?.addEventListener('click', () => logout
 observeAuth({
   onReady: async () => {
     await initStateFromServer();
+    // Hydrate Google connection state from backend (shared by sheets+bq)
+    await sheets.refreshConnectionState();
     renderFilters();
     renderCurrentUserLabel();
     applyPermissionUI();
@@ -1210,7 +1534,7 @@ observeAuth({
     renderTabPresetSelect();
     render();
     // Auto-refresh Sheets/BQ data on startup if configured
-    setTimeout(() => { autoRefreshSheetsIfNeeded(); autoRefreshBqIfNeeded(); }, 500);
+    setTimeout(() => { loadSnapshotIfNeeded(); }, 300);
   },
   onLoggedOut: () => {
     // Clear everything; user sees login overlay

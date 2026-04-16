@@ -92,8 +92,13 @@ export function evalFormula(formula, ctx) {
   return compileDerived(formula)(ctx);
 }
 
+// 同じ rows 配列参照に対する集計結果をキャッシュ (WeakMap で GC フレンドリー)
+const _aggregateCache = new WeakMap();
+
 export function aggregate(rows) {
   ensureKeyCache();
+  const cached = _aggregateCache.get(rows);
+  if (cached && cached.ref === cachedMetricDefsRef) return cached.result;
   const a = {};
   for (let i = 0, len = cachedBaseKeys.length; i < len; i++) {
     const key = cachedBaseKeys[i];
@@ -107,6 +112,7 @@ export function aggregate(rows) {
     ctx[key] = v;
     a[key] = v;
   }
+  _aggregateCache.set(rows, { ref: cachedMetricDefsRef, result: a });
   return a;
 }
 

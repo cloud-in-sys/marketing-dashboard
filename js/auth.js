@@ -37,10 +37,10 @@ export function applyPermissionUI() {
   const u = getCurrentUser();
   document.body.classList.toggle('is-admin', !!u.isAdmin);
   const keys = [
-    'viewSources','addSource','deleteSource',
+    'viewSources','manageSources','connectAccount',
     'viewPresets','viewCustom','addCustom','savePreset',
     'editCustom','editPreset','deleteCustom','deletePreset',
-    'editMetrics','editFilters','editDefaults','editDimensions','manageUsers',
+    'editMetrics','editFilters','editDefaults','editDimensions','manageUsers','manageGroups',
   ];
   const camelToKebab = s => s.replace(/([A-Z])/g, '-$1').toLowerCase();
   for (const k of keys) {
@@ -114,6 +114,8 @@ function showAuthError(e) {
   let msg = e?.message || 'ログインに失敗しました';
   if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) {
     msg = 'メールアドレスまたはパスワードが違います';
+  } else if (code.includes('email-not-verified')) {
+    msg = e.message; // 「確認メールを送信しました…」の文言そのまま使う
   } else if (code.includes('too-many-requests')) {
     msg = '試行回数が多すぎます。しばらくしてから再度お試しください';
   } else if (code.includes('network-request-failed')) {

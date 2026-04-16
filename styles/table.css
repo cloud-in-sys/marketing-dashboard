@@ -144,6 +144,11 @@ thead th.col-frozen {
   z-index: 2;
   border-right: 2px solid var(--primary-soft);
 }
+tbody tr {
+  /* 画面外の行は layout/paint をスキップ(大量行時のパフォーマンス改善) */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 38px;
+}
 tbody td {
   padding: 0.75em 1.15em;
   border-bottom: 1px solid var(--border);

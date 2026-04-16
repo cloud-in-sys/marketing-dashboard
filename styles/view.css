@@ -204,6 +204,8 @@ body.readonly-tab .panel[data-panel="thresholds"] .panel-body {
   border-radius: 4px;
 }
 .link-btn:hover { background: var(--primary-soft); }
+.link-btn.danger { color: var(--danger); }
+.link-btn.danger:hover { background: #fee2e2; }
 
 .collapse-btn {
   background: transparent;

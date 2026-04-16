@@ -1,13 +1,14 @@
 import { API_BASE } from './config.js';
-import { getIdToken } from './firebaseClient.js';
+import { getIdToken, getAppCheckHeader } from './firebaseClient.js';
 
 async function request(method, path, body) {
-  const token = await getIdToken();
+  const [token, appCheckToken] = await Promise.all([getIdToken(), getAppCheckHeader()]);
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(appCheckToken ? { 'X-Firebase-AppCheck': appCheckToken } : {}),
     },
     body: body != null ? JSON.stringify(body) : undefined,
   });
@@ -34,11 +35,18 @@ export const api = {
   updateUser:    (uid, patch) => request('PUT', `/api/users/${uid}`, patch),
   deleteUser:    (uid) => request('DELETE', `/api/users/${uid}`),
 
+  // Groups
+  listGroups:    () => request('GET', '/api/groups'),
+  createGroup:   (data) => request('POST', '/api/groups', data),
+  updateGroup:   (gid, patch) => request('PUT', `/api/groups/${gid}`, patch),
+  deleteGroup:   (gid) => request('DELETE', `/api/groups/${gid}`),
+
   // Sources
   listSources:   () => request('GET', '/api/sources'),
   createSource:  (data) => request('POST', '/api/sources', data),
   updateSource:  (id, patch) => request('PUT', `/api/sources/${id}`, patch),
   deleteSource:  (id) => request('DELETE', `/api/sources/${id}`),
+  disconnectSource: (id) => request('POST', `/api/sources/${id}/disconnect`),
 
   // Config
   getConfig:     (sid) => request('GET', `/api/config/${sid}`),
@@ -54,7 +62,12 @@ export const api = {
   googleAuthUrl: () => request('GET', '/api/google/auth/url'),
   googleDisconnect: () => request('DELETE', '/api/google/connection'),
 
-  // Data fetch
+  // Data fetch (live - discouraged, use snapshots instead)
   fetchSheets:   (url, tab) => request('POST', '/api/google/sheets/fetch', { url, tab }),
   queryBq:       (projectId, query) => request('POST', '/api/google/bq/query', { projectId, query }),
+
+  // Snapshots (daily batch + on-demand refresh)
+  getSnapshot:   (sid) => request('GET', `/api/snapshots/${sid}`),
+  getSnapshotMeta: (sid) => request('GET', `/api/snapshots/${sid}/meta`),
+  refreshSnapshot: (sid) => request('POST', `/api/snapshots/${sid}/refresh`),
 };

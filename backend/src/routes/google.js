@@ -5,6 +5,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { db } from '../firebase.js';
 import { getSecret } from '../utils/secrets.js';
 import { httpError } from '../middleware/error.js';
+import { requirePerm } from '../middleware/auth.js';
 
 // HMAC-sign the state parameter with the OAuth client secret (server-side
 // only) so Google's callback can be trusted without our auth header.
@@ -24,7 +25,7 @@ async function verifyState(state) {
   const secret = await getSecret('google-oauth-client-secret');
   const expected = crypto.createHmac('sha256', secret).update(`${uid}.${ts}`).digest('hex');
   if (sig !== expected) return null;
-  if (Date.now() - Number(ts) > 10 * 60 * 1000) return null; // 10 min expiry
+  if (Date.now() - Number(ts) > 5 * 60 * 1000) return null; // 5 min expiry
   return uid;
 }
 
@@ -62,7 +63,7 @@ app.get('/status', async c => {
 });
 
 // GET /api/google/auth/url — start OAuth, returns URL to redirect to
-app.get('/auth/url', async c => {
+app.get('/auth/url', requirePerm('connectAccount'), async c => {
   const uid = c.get('uid');
   const oauth = await getOAuthClient();
   const state = await signState(uid);
@@ -96,7 +97,7 @@ export async function oauthCallback(c) {
 }
 
 // DELETE /api/google/connection — revoke & clear stored tokens
-app.delete('/connection', async c => {
+app.delete('/connection', requirePerm('connectAccount'), async c => {
   const uid = c.get('uid');
   const snap = await tokenDoc(uid).get();
   if (snap.exists) {
@@ -166,24 +167,45 @@ app.post('/bq/query', async c => {
   const auth = await getAuthorizedClient(uid);
   const bigquery = google.bigquery({ version: 'v2', auth });
 
-  // Start query
+  // Start query (returns first page)
   const qres = await bigquery.jobs.query({
     projectId,
     requestBody: {
       query,
       useLegacySql: false,
-      maxResults: 100000,
+      maxResults: 50000,
       timeoutMs: 60000,
     },
   });
 
+  const jobId = qres.data.jobReference?.jobId;
+  const location = qres.data.jobReference?.location;
   const fields = (qres.data.schema?.fields || []).map(f => f.name);
-  const rows = (qres.data.rows || []).map(r => {
+
+  const toRow = (r) => {
     const obj = {};
     (r.f || []).forEach((cell, i) => { obj[fields[i]] = cell.v; });
     return obj;
-  });
-  return c.json({ rows, fields });
+  };
+
+  const rows = (qres.data.rows || []).map(toRow);
+  let pageToken = qres.data.pageToken;
+  const MAX_ROWS = 1000000; // safety cap (1M rows)
+
+  // Paginate through remaining pages
+  while (pageToken && rows.length < MAX_ROWS) {
+    const next = await bigquery.jobs.getQueryResults({
+      projectId,
+      jobId,
+      location,
+      pageToken,
+      maxResults: 50000,
+    });
+    (next.data.rows || []).forEach(r => rows.push(toRow(r)));
+    pageToken = next.data.pageToken;
+  }
+
+  return c.json({ rows, fields, totalRows: rows.length });
 });
 
 export default app;

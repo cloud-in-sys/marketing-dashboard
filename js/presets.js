@@ -164,9 +164,12 @@ export function renderPresets() {
 
 export function loadPresetIntoGlobals(p) {
   if (Array.isArray(p.charts) && p.charts.length) {
-    S.CHARTS = p.charts.map(c => ({id: c.id, metric: c.metric, type: c.type, size: c.size, color: c.color || '#2563eb', name: c.name || '', bucket: c.bucket || 'auto'}));
+    // 全フィールド保持(lines, smoothLine, dotSize, lineWidth, showDataLabels 等)
+    S.CHARTS = p.charts.map(c => ({...c, color: c.color || '#2563eb', name: c.name || '', bucket: c.bucket || 'auto'}));
     S.CHART_ID_SEQ = Math.max(...S.CHARTS.map(c => c.id)) + 1;
   }
+  S.CARDS = Array.isArray(p.cards) ? p.cards.map(c => ({...c})) : [];
+  S.CARD_ID_SEQ = S.CARDS.length ? Math.max(0, ...S.CARDS.map(c => c.id)) + 1 : 1;
   S.SELECTED_DIMS = Array.isArray(p.dims) && p.dims.length ? [...p.dims] : ['action_date'];
   S.SELECTED_METRICS = Array.isArray(p.metrics) && p.metrics.length ? [...p.metrics] : S.METRIC_DEFS.map(m => m.key);
   S.THRESHOLDS = p.thresholds && typeof p.thresholds === 'object' ? JSON.parse(JSON.stringify(p.thresholds)) : {};
@@ -201,7 +204,8 @@ export async function savePresetPrompt() {
   const entry = {
     name,
     color: PRESET_COLORS[userCount % PRESET_COLORS.length],
-    charts: S.CHARTS.map(c => ({id: c.id, metric: c.metric, type: c.type, size: c.size, color: c.color || '#2563eb', name: c.name || '', bucket: c.bucket || 'auto'})),
+    charts: S.CHARTS.map(c => ({...c})),
+    cards: S.CARDS.map(c => ({...c})),
     dims: [...S.SELECTED_DIMS],
     metrics: [...S.SELECTED_METRICS],
     thresholds: JSON.parse(JSON.stringify(S.THRESHOLDS)),
@@ -238,7 +242,8 @@ export function syncPresetEdit() {
   const list = getPresets();
   const p = list[S.PRESET_EDIT_IDX];
   if (!p) return;
-  p.charts = S.CHARTS.map(c => ({id: c.id, metric: c.metric, type: c.type, size: c.size, color: c.color || '#2563eb', name: c.name || '', bucket: c.bucket || 'auto'}));
+  p.charts = S.CHARTS.map(c => ({...c}));
+  p.cards = S.CARDS.map(c => ({...c}));
   p.dims = [...S.SELECTED_DIMS];
   p.metrics = [...S.SELECTED_METRICS];
   p.thresholds = JSON.parse(JSON.stringify(S.THRESHOLDS));

@@ -45,7 +45,15 @@ export function dimLabel(key) {
   return (dimMap.get(key) || {}).label || key;
 }
 
+// 同一 rows 参照 + 同一 dims キーに対するグルーピング結果を WeakMap にキャッシュ。
+// render() 内で複数チャートが同じ xDim を使っても 1 回しか走らないようにする。
+const _groupCache = new WeakMap();
+
 export function groupRows(rows, dims) {
+  const dimsKey = dims.join('\u0001');
+  let cache = _groupCache.get(rows);
+  if (cache && cache.has(dimsKey)) return cache.get(dimsKey);
+
   const map = new Map();
   for (let i = 0, len = rows.length; i < len; i++) {
     const r = rows[i];
@@ -54,11 +62,15 @@ export function groupRows(rows, dims) {
     if (!map.has(key)) map.set(key, {vals, rows: []});
     map.get(key).rows.push(r);
   }
-  return [...map.values()].sort((a, b) => {
+  const result = [...map.values()].sort((a, b) => {
     for (let i = 0; i < dims.length; i++) {
       const c = dimSort(dims[i], a.vals[i], b.vals[i]);
       if (c) return c;
     }
     return 0;
   });
+
+  if (!cache) { cache = new Map(); _groupCache.set(rows, cache); }
+  cache.set(dimsKey, result);
+  return result;
 }
