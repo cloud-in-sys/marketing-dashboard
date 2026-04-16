@@ -75,6 +75,14 @@ function buildPieSVG(chart, rows, W, H) {
     }
     angle += sweep;
   });
+  // ツールチップ用ポイント登録（スライス中心をポイントに）
+  S.CHART_POINTS.set(chart.id, {
+    W, H, PT: 0, ih: H,
+    points: slices.map((sl, i) => {
+      const midAngle = -Math.PI / 2 + data.slice(0, i).reduce((s, d) => s + (d.y / total) * Math.PI * 2, 0) + (data[i].y / total) * Math.PI;
+      return { cx: (cx + radius * 0.5 * Math.cos(midAngle)) / W * W, cy: cy + radius * 0.5 * Math.sin(midAngle), x: sl.label, label: `${formatMetricValue(mdef, sl.value)} (${(sl.pct * 100).toFixed(1)}%)`, metric: mdef.label };
+    }),
+  });
   // 凡例
   const lineH = 16;
   const maxLegend = Math.min(slices.length, Math.floor((H - 20) / lineH));
@@ -234,6 +242,16 @@ function buildComboSVG(chart, rows, W, H) {
     const v = maxR * i / 4;
     s += `<text x="${W - PR + 6}" y="${y + 4}" text-anchor="start" font-size="10" fill="${lineDefs[0].color}">${formatMetricValue(lineDefs[0].mdef, v)}</text>`;
   }
+  // ツールチップ用ポイント登録
+  S.CHART_POINTS.set(chart.id, {
+    W, H, PT, ih,
+    points: data.map((d, i) => {
+      const cx = PL + step * i + step / 2;
+      const parts = [`${escapeHtml(m1.label)}: ${formatMetricValue(m1, d.y1)}`];
+      lineDefs.forEach((l, idx) => { parts.push(`${escapeHtml(l.mdef.label)}: ${formatMetricValue(l.mdef, d[`y${idx + 2}`])}`); });
+      return { cx, cy: PT + ih - ih * (d.y1 / max1), x: d.x, label: parts.join('\n'), metric: '' };
+    }),
+  });
   // 棒 (m1)
   data.forEach((d, i) => {
     const cx = PL + step * i + step / 2;

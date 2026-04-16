@@ -670,7 +670,9 @@ chartsGrid.addEventListener('mousemove', e => {
   guide.style.top = topPx + 'px';
   guide.style.height = (bottomPx - topPx) + 'px';
   tooltip.classList.remove('hidden');
-  tooltip.innerHTML = `<div class="tt-x">${escapeHtml(String(nearest.x ?? ''))}</div><div class="tt-m">${escapeHtml(String(nearest.metric ?? ''))}</div><div class="tt-y">${escapeHtml(String(nearest.label ?? ''))}</div>`;
+  const labelLines = String(nearest.label ?? '').split('\n');
+  const metricHtml = nearest.metric ? `<div class="tt-m">${escapeHtml(String(nearest.metric))}</div>` : '';
+  tooltip.innerHTML = `<div class="tt-x">${escapeHtml(String(nearest.x ?? ''))}</div>${metricHtml}${labelLines.map(l => `<div class="tt-y">${escapeHtml(l)}</div>`).join('')}`;
   const ttW = tooltip.offsetWidth;
   let leftPos = xPx - ttW / 2;
   const maxLeft = wrapRect.width - ttW - 4;
