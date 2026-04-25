@@ -30,19 +30,32 @@ app.post('/', requirePerm('manageGroups'), async c => {
   const body = await c.req.json();
   const name = (body.name || '').trim();
   if (!name) throw httpError(400, 'name is required');
+  const sourceFilters = body.sourceFilters && typeof body.sourceFilters === 'object' ? body.sourceFilters : {};
+  validateSourceFilters(sourceFilters);
   const doc = {
     name,
-    sourceFilters: body.sourceFilters && typeof body.sourceFilters === 'object' ? body.sourceFilters : {},
+    sourceFilters,
     createdAt: new Date().toISOString(),
   };
   const ref = await groupsCol().add(doc);
   return c.json({ id: ref.id, ...doc });
 });
 
+// 渡された sourceFilters の正規表現パターンを検証。不正があれば例外。
+function validateSourceFilters(sf) {
+  if (!sf || typeof sf !== 'object') return;
+  for (const [sid, f] of Object.entries(sf)) {
+    if (f && (f.op === 'regex' || f.op === 'notRegex')) {
+      try { new RegExp(String(f.value ?? '')); }
+      catch (e) { throw httpError(400, `Invalid regex for source ${sid}: ${e.message}`); }
+    }
+  }
+}
+
 // 更新
 // - name: 名前 (manageGroups)
 // - sourceFilters: 各ソースに対する行フィルタ map
-//   形式: { [sid]: { field, op: 'equals'|'in'|'notIn', value?, values? } }
+//   形式: { [sid]: { field, op: 'equals'|'in'|'notIn'|'regex'|'notRegex', value?, values? } }
 //   (manageGroups 必須)
 app.put('/:gid', requirePerm('manageGroups'), async c => {
   const gid = c.req.param('gid');
@@ -51,6 +64,7 @@ app.put('/:gid', requirePerm('manageGroups'), async c => {
 
   if (typeof body.name === 'string') patch.name = body.name.trim();
   if (body.sourceFilters && typeof body.sourceFilters === 'object') {
+    validateSourceFilters(body.sourceFilters);
     patch.sourceFilters = body.sourceFilters;
   }
 

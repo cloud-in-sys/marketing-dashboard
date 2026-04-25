@@ -1,7 +1,8 @@
-import { S, getPresets, syncCurrentTabState } from './state.js';
+import { S, getPresets, syncCurrentTabState, setUserCurrentView } from './state.js';
 import { escapeHtml, hexToSoft } from './utils.js';
 import { loadTabState, exitPresetEdit, renderTabPresetSelect } from './presets.js';
 import { emit } from './events.js';
+import { renderFilters } from './filters.js';
 
 // ===== Tabs & View navigation =====
 export function loadCustomTabs() {
@@ -48,8 +49,12 @@ export function applyView(viewKey) {
   syncCurrentTabState();
   exitPresetEdit();
   S.CURRENT_VIEW = viewKey;
+  // 最後に開いたタブをユーザー状態に記録(他ユーザーのCURRENT_VIEWは上書きしない)
+  setUserCurrentView(viewKey);
   S.CURRENT_FILTER = isBuiltin ? (S.VIEWS[viewKey].filter || null) : null;
   loadTabState(viewKey);
+  // タブ毎にフィルタが復元される可能性があるため UI を再描画
+  renderFilters();
   highlightActiveView();
   renderCustomTabs();
   emit('renderChips');

@@ -16,11 +16,6 @@ export async function refreshConnectionState() {
   }
 }
 
-export function isConfigured() {
-  // OAuth client ID lives on the backend; the frontend doesn't need to know it.
-  return true;
-}
-
 export function isAuthenticated() {
   return connectedState === true;
 }
@@ -52,12 +47,3 @@ export function extractSpreadsheetId(input) {
   return null;
 }
 
-export async function fetchSheetData(urlOrId, sheetName) {
-  const { rows } = await api.fetchSheets(urlOrId, sheetName);
-  return rows;
-}
-
-// Listing spreadsheets/sheet names is no longer exposed by the frontend
-// (user types URL + tab directly). Kept as stubs for compatibility.
-export async function fetchSpreadsheetList() { return []; }
-export async function fetchSheetNames() { return []; }

@@ -1,4 +1,4 @@
-import { S, DEFAULT_VIEWS_INIT, BUILTIN_SEED_VERSION, getPresets, setPresets, syncCurrentTabState, saveCustomTabs } from './state.js';
+import { S, DEFAULT_VIEWS_INIT, BUILTIN_SEED_VERSION, getPresets, setPresets, syncCurrentTabState, getTabFilterState } from './state.js';
 import { escapeHtml, hexToSoft } from './utils.js';
 import { showModal } from './modal.js';
 import { hasPerm } from './auth.js';
@@ -176,16 +176,6 @@ export function loadPresetIntoGlobals(p) {
   S.THRESHOLD_METRICS = Array.isArray(p.thresholdMetrics) ? [...p.thresholdMetrics] : [];
 }
 
-export function loadPreset(i) {
-  const p = getPresets()[i];
-  if (!p) return;
-  loadPresetIntoGlobals(p);
-  syncCurrentTabState();
-  emit('renderChips');
-  emit('renderThresholds');
-  emit('render');
-}
-
 export async function savePresetPrompt() {
   const name = await showModal({title: '\u65b0\u3057\u3044\u30d7\u30ea\u30bb\u30c3\u30c8\u3092\u4fdd\u5b58', body: '\u30d7\u30ea\u30bb\u30c3\u30c8\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', input: true, placeholder: '\u4f8b: \u6708\u6b21\u30ec\u30d3\u30e5\u30fc\u7528', okText: '\u4fdd\u5b58'});
   if (!name) return;
@@ -279,6 +269,24 @@ export function exitPresetEdit() {
   document.body.classList.remove('preset-editing');
 }
 
+// タブ別フィルタ値の復元 (配列→Set 変換)。
+// フィルタ状態はユーザー毎に管理(state.js の getTabFilterState 経由で取得)。
+// 保存値が無いタブは空フィルタにリセット。
+function restoreFilterStateForTab(viewKey) {
+  const fs = getTabFilterState(viewKey);
+  if (!fs || !fs.filterValues) {
+    S.FILTER_VALUES = {};
+    S.FILTER_CONDITIONS = {};
+    return;
+  }
+  const newValues = {};
+  for (const [k, v] of Object.entries(fs.filterValues)) {
+    newValues[k] = Array.isArray(v) ? new Set(v) : v;
+  }
+  S.FILTER_VALUES = newValues;
+  S.FILTER_CONDITIONS = fs.filterConditions ? JSON.parse(JSON.stringify(fs.filterConditions)) : {};
+}
+
 export function loadTabState(viewKey) {
   if (S.VIEWS[viewKey]) {
     const view = S.VIEWS[viewKey];
@@ -292,6 +300,7 @@ export function loadTabState(viewKey) {
       S.THRESHOLDS = {};
       S.THRESHOLD_METRICS = [];
     }
+    restoreFilterStateForTab(viewKey);
     return;
   }
   const st = S.TAB_STATES[viewKey];
@@ -300,6 +309,7 @@ export function loadTabState(viewKey) {
   S.SELECTED_METRICS = Array.isArray(st.metrics) ? [...st.metrics] : S.METRIC_DEFS.map(m => m.key);
   S.THRESHOLDS = st.thresholds ? JSON.parse(JSON.stringify(st.thresholds)) : {};
   S.THRESHOLD_METRICS = Array.isArray(st.thresholdMetrics) ? [...st.thresholdMetrics] : [];
+  restoreFilterStateForTab(viewKey);
 }
 
 export function initTabStates() {

@@ -28,6 +28,8 @@ async function request(method, path, body) {
 export const api = {
   // Me
   me:            () => request('GET', '/api/me'),
+  getMyState:    (sid) => request('GET', `/api/me/state/${sid}`),
+  putMyState:    (sid, state) => request('PUT', `/api/me/state/${sid}`, { state }),
 
   // Users
   listUsers:     () => request('GET', '/api/users'),

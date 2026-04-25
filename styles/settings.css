@@ -80,52 +80,6 @@ body.settings-mode .view { display: none; }
   gap: 2px;
   padding: 8px 0;
 }
-.metrics-doc-group {
-  display: grid;
-  grid-template-columns: 200px 1fr;
-  gap: 12px;
-  align-items: baseline;
-  padding: 10px 18px;
-  border-bottom: 1px solid var(--border);
-  font-size: 13px;
-}
-.metrics-doc-group:last-child { border-bottom: none; }
-.metrics-doc-group .metric-label {
-  font-weight: 700;
-  color: var(--text);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.metrics-doc-group .metric-label::before {
-  content: '';
-  width: 4px;
-  height: 14px;
-  background: linear-gradient(180deg, var(--primary), var(--secondary));
-  border-radius: 2px;
-}
-.metrics-doc-group code {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 12px;
-  background: var(--panel);
-  padding: 6px 10px;
-  border-radius: 5px;
-  color: var(--primary-600);
-  border: 1px solid var(--border);
-  display: inline-block;
-}
-.metrics-doc-group .metric-key {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 10px;
-  color: var(--muted);
-  font-weight: 500;
-  margin-left: 6px;
-}
-.metric-formula-edit {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
 .metric-formula-input {
   flex: 1;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
@@ -140,35 +94,6 @@ body.settings-mode .view { display: none; }
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-soft);
-}
-.metric-reset {
-  background: #ffffff;
-  border: 1px solid var(--border);
-  color: var(--muted);
-  width: 28px;
-  height: 28px;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 14px;
-  font-family: inherit;
-  flex-shrink: 0;
-}
-.metric-reset:hover:not(:disabled) { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
-.metric-reset:disabled { opacity: 0.35; cursor: not-allowed; }
-.metrics-doc-info {
-  background: linear-gradient(135deg, var(--primary-soft) 0%, #f5f3ff 100%);
-  border: 1px solid var(--primary-soft);
-  border-radius: 10px;
-  padding: 14px 18px;
-  margin: 10px 16px 14px;
-}
-.metrics-doc-info-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--primary-600);
-  margin-bottom: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 .metrics-doc-info-grid {
   display: grid;
@@ -187,32 +112,6 @@ body.settings-mode .view { display: none; }
   margin-right: 6px;
   font-size: 11px;
 }
-.metrics-doc-info-note {
-  font-size: 11px;
-  color: var(--muted);
-  line-height: 1.7;
-}
-.metrics-doc-info-note code {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  background: #ffffff;
-  padding: 1px 4px;
-  border-radius: 3px;
-  color: var(--primary-600);
-}
-.metrics-doc-sumref-btn {
-  margin-top: 10px;
-  background: #ffffff;
-  border: 1px solid var(--primary);
-  color: var(--primary);
-  padding: 7px 14px;
-  font-size: 12px;
-  font-weight: 600;
-  border-radius: 6px;
-  cursor: pointer;
-  font-family: inherit;
-}
-.metrics-doc-sumref-btn:hover { background: var(--primary); color: #ffffff; }
-
 body.no-edit-metrics .metric-formula-input,
 body.no-edit-metrics .metric-label-input,
 body.no-edit-metrics .metric-key-input,
@@ -221,7 +120,6 @@ body.no-edit-metrics .metric-fmt-select {
   background: var(--panel);
   color: var(--muted);
 }
-body.no-edit-metrics .metric-reset,
 body.no-edit-metrics .metric-del,
 body.no-edit-metrics .metrics-add-btn,
 body.no-edit-metrics #metrics-save-btn { display: none; }
@@ -618,11 +516,6 @@ body.no-manage-users #add-user-btn { display: none; }
   border-color: var(--primary);
   box-shadow: 0 0 0 2px var(--primary-soft);
 }
-.user-admin-toggle {
-  display: none;
-  cursor: pointer;
-}
-.user-admin-toggle input { accent-color: var(--primary); cursor: pointer; }
 .user-del {
   background: transparent;
   border: 1px solid var(--border);
@@ -914,7 +807,7 @@ body.no-manage-users #add-user-btn { display: none; }
 .group-source-vis-toggle input[type="checkbox"]:checked::before { transform: scale(1); }
 .group-source-filter {
   display: grid;
-  grid-template-columns: auto 1fr 120px 1.5fr;
+  grid-template-columns: auto 1fr 170px 1.5fr;
   gap: 6px;
   align-items: center;
 }
@@ -1003,21 +896,10 @@ body.no-refresh-snapshot .admin-refresh { display: none !important; }
 .ref-section-title:first-child { margin-top: 0; }
 
 /* ===== API SETTINGS VIEW ===== */
-.api-settings-body {
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
 .api-settings-desc {
   font-size: 13px;
   color: var(--muted);
   line-height: 1.6;
-}
-.api-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
 .api-input {
   border: 1px solid var(--border);
@@ -1050,39 +932,6 @@ body.no-refresh-snapshot .admin-refresh { display: none !important; }
   border-radius: 8px;
   font-size: 12px;
 }
-.api-help {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 16px;
-}
-.api-help-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 10px;
-}
-.api-help-steps {
-  margin: 0;
-  padding-left: 20px;
-  font-size: 12px;
-  color: var(--text);
-  line-height: 2;
-}
-.api-help-steps a {
-  color: var(--primary);
-  font-weight: 600;
-}
-.api-help-steps code {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  background: #ffffff;
-  padding: 2px 6px;
-  border-radius: 3px;
-  border: 1px solid var(--border);
-  font-size: 11px;
-  color: var(--primary-600);
-}
-
 /* ===== SHEETS INTEGRATION ===== */
 .sheets-connect, .sheets-form {
   width: 100%;
@@ -1095,28 +944,6 @@ body.no-refresh-snapshot .admin-refresh { display: none !important; }
 .sheets-form .api-input {
   font-size: 12px;
   padding: 8px 10px;
-}
-.sheets-sheet-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.sheets-file-select,
-.sheets-sheet-select {
-  flex: 1;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 7px 10px;
-  font-size: 12px;
-  font-family: inherit;
-  background: #ffffff;
-  color: var(--text);
-}
-.sheets-file-select:focus,
-.sheets-sheet-select:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px var(--primary-soft);
 }
 .sheets-status { text-align: center; }
 .sheets-input-box {
@@ -1145,17 +972,6 @@ body.no-refresh-snapshot .admin-refresh { display: none !important; }
   font-size: 12px;
   resize: vertical;
   min-height: 100px;
-}
-.sheets-noclient {
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-.sheets-noclient-text {
-  font-size: 11px;
-  color: var(--muted);
 }
 .hidden { display: none !important; }
 
@@ -1253,30 +1069,11 @@ body.no-refresh-snapshot .admin-refresh { display: none !important; }
   display: inline-flex;
   width: auto;
 }
-.method-detail-empty {
-  text-align: center;
-  color: var(--muted);
-  font-size: 13px;
-  padding: 20px;
-}
 .sheets-actions {
   display: flex;
   gap: 10px;
   align-items: center;
   justify-content: flex-end;
-}
-.source-method-badge {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background: var(--warning);
-  color: #ffffff;
-  padding: 2px 8px;
-  border-radius: 4px;
 }
 .source-info { padding: 16px; }
 .source-info-empty {
@@ -1359,3 +1156,122 @@ body.no-refresh-snapshot .admin-refresh { display: none !important; }
 }
 .source-preview-table tbody tr:nth-child(even) td { background: #fafbfc; }
 .source-preview-table tbody tr:hover td { background: var(--primary-soft); }
+/* メトリクス計算式の使い方ヘルプ */
+.metrics-syntax-help {
+  margin-bottom: 20px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.metrics-syntax-help summary {
+  padding: 14px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: background 0.12s;
+}
+.metrics-syntax-help summary::-webkit-details-marker { display: none; }
+.metrics-syntax-help summary::before {
+  content: '▶';
+  font-size: 10px;
+  color: var(--primary);
+  transition: transform 0.18s;
+}
+.metrics-syntax-help[open] summary::before { transform: rotate(90deg); }
+.metrics-syntax-help summary:hover { background: #f8fafc; }
+.metrics-syntax-help[open] summary {
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+}
+.metrics-syntax-help-body {
+  padding: 16px;
+  background: #f1f5f9;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.metrics-syntax-help-section {
+  padding: 18px 20px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.metrics-syntax-help-section h4 {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 12px 0;
+  padding-left: 10px;
+  color: var(--text);
+  border-left: 3px solid var(--primary);
+  line-height: 1.2;
+}
+.metrics-syntax-help-section h4 + h4 { margin-top: 18px; }
+.metrics-syntax-help-section p {
+  font-size: 13px;
+  color: var(--text);
+  margin: 0 0 8px 0;
+  line-height: 1.7;
+}
+.metrics-syntax-help-section p:last-child { margin-bottom: 0; }
+.metrics-syntax-help-section strong {
+  color: var(--text);
+  font-weight: 700;
+}
+.metrics-syntax-help-section table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  margin: 8px 0 4px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.metrics-syntax-help-section th {
+  text-align: left;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+  font-weight: 700;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.metrics-syntax-help-section td {
+  padding: 9px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: top;
+  color: var(--text);
+  line-height: 1.5;
+}
+.metrics-syntax-help-section tr:last-child td { border-bottom: none; }
+.metrics-syntax-help-section tr:hover td { background: #fafbfc; }
+/* 1列目(演算子/関数)はモノスペース風に強調 */
+.metrics-syntax-help-section td:first-child code,
+.metrics-syntax-help-section td:first-child {
+  white-space: nowrap;
+}
+.metrics-syntax-help-section code {
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #be185d;
+  border: 1px solid #e2e8f0;
+}
+/* インデントされた説明文（コード例の下） */
+.metrics-syntax-help-section p code {
+  font-size: 12px;
+}

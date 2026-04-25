@@ -224,16 +224,75 @@ export function saveMetricDefs()  { queueConfigPatch({ metricDefs: S.METRIC_DEFS
 export function saveDimensions()  { queueConfigPatch({ dimensions: S.DIMENSIONS }); }
 export function saveViews()       { queueConfigPatch({ views: serializeViews() }); }
 export function saveFilterDefs()  { queueConfigPatch({ filterDefs: S.FILTER_DEFS }); }
-export function saveColWidths()   { queueConfigPatch({ colWidths: S.COL_WIDTHS }); }
 export function saveBaseFormulas(){ queueConfigPatch({ baseFormulas: S.BASE_FORMULAS }); }
 export function saveFormulas()    { queueConfigPatch({ formulas: S.METRIC_FORMULAS }); }
 export function saveCustomTabs()  { queueConfigPatch({ customTabs: S.CUSTOM_TABS }); }
 export function saveViewOrder()   { queueConfigPatch({ viewOrder: S.VIEW_ORDER }); }
 
+// FILTER_VALUES の Set を JSON に保存できる形(配列)に変換
+function serializeFilterValues(values) {
+  const out = {};
+  for (const [k, v] of Object.entries(values || {})) {
+    out[k] = (v instanceof Set) ? Array.from(v) : v;
+  }
+  return out;
+}
+
+// ===== ユーザー毎の状態 (Firestore users/{uid}.userState[sid] に保存) =====
+// 内訳: tabFilters[viewKey] = { filterValues, filterConditions }, currentView
+// メモリキャッシュ + デバウンス保存。タブ表示設定(TAB_STATES)とは別管理。
+let _userStateCache = { tabFilters: {}, currentView: null };
+let _userStateTimer = null;
+async function loadUserStateForCurrentSource() {
+  if (!S.CURRENT_SOURCE) { _userStateCache = { tabFilters: {}, currentView: null }; return; }
+  try {
+    const r = await api.getMyState(S.CURRENT_SOURCE);
+    const s = (r && r.state) || {};
+    _userStateCache = {
+      tabFilters: s.tabFilters || {},
+      currentView: s.currentView || null,
+    };
+  } catch (e) {
+    console.warn('[user state] load failed', e);
+    _userStateCache = { tabFilters: {}, currentView: null };
+  }
+}
+function _scheduleUserStateSave() {
+  if (_userStateTimer) clearTimeout(_userStateTimer);
+  _userStateTimer = setTimeout(async () => {
+    _userStateTimer = null;
+    if (!S.CURRENT_SOURCE) return;
+    try { await api.putMyState(S.CURRENT_SOURCE, _userStateCache); }
+    catch (e) { console.warn('[user state] save failed', e); }
+  }, 500);
+}
+export function getTabFilterState(viewKey) {
+  return _userStateCache.tabFilters[viewKey] || null;
+}
+export function setTabFilterState(viewKey, filterValues, filterConditions) {
+  _userStateCache.tabFilters[viewKey] = { filterValues, filterConditions };
+  _scheduleUserStateSave();
+}
+export function getUserCurrentView() {
+  return _userStateCache.currentView || null;
+}
+export function setUserCurrentView(viewKey) {
+  if (_userStateCache.currentView === viewKey) return;
+  _userStateCache.currentView = viewKey;
+  _scheduleUserStateSave();
+}
+
 export function syncCurrentTabState() {
   if (S.PRESET_EDIT_IDX != null) return;
   if (!S.CURRENT_VIEW) return;
+  // フィルタ値はユーザー毎(Firestoreキャッシュ)に保存
+  setTabFilterState(
+    S.CURRENT_VIEW,
+    serializeFilterValues(S.FILTER_VALUES),
+    JSON.parse(JSON.stringify(S.FILTER_CONDITIONS || {}))
+  );
   if (S.VIEWS[S.CURRENT_VIEW]) return;
+  // カスタムタブの表示設定はソース共通 (全員で同じ)
   S.TAB_STATES[S.CURRENT_VIEW] = {
     dims: [...S.SELECTED_DIMS],
     metrics: [...S.SELECTED_METRICS],
@@ -280,12 +339,6 @@ export async function saveSourceMethod(method) {
 export function loadSourceMethod() { return S.SOURCE_METHOD; }
 
 // Session-only CSV (not persisted)
-export function saveSourceRaw(sid, rows) {
-  S.SOURCE_DATA[sid] = rows;
-}
-export function loadSourceRaw(sid) {
-  return S.SOURCE_DATA[sid] || [];
-}
 export function clearSourceRaw(sid) {
   S.SOURCE_DATA[sid] = [];
 }
@@ -299,25 +352,10 @@ export function setPresets(list) {
   }
 }
 
-// Data sources
-export async function saveDataSources() {
-  // Source list is CRUD'd individually; this is a no-op in the new model.
-}
-
 export function saveCurrentSource() {
   try {
     if (S.CURRENT_SOURCE) localStorage.setItem('dashboard.lastSource', S.CURRENT_SOURCE);
   } catch (e) {}
-}
-
-export function saveUsers() {
-  // Users are saved explicitly via api.updateUser in settings.js
-}
-export function saveCurrentUser() {
-  // Firebase Auth manages current user; no-op
-}
-export function saveApiSettings() {
-  // OAuth is now backend-managed; no-op
 }
 
 // ===== LOAD SOURCE CONFIG FROM SERVER =====
@@ -402,6 +440,14 @@ async function loadSourceConfigFromServer(sid) {
   ]);
   await applyConfig(config);
   S.PRESETS_CACHE = presets || [];
+  // ユーザー毎の状態(フィルタ・最終ビュー等)をロード
+  await loadUserStateForCurrentSource();
+  // 最終ビューの復元: ユーザーが最後に開いていたタブを優先
+  const userView = getUserCurrentView();
+  if (userView) {
+    const exists = !!S.VIEWS[userView] || (S.CUSTOM_TABS || []).some(t => t.key === userView);
+    if (exists) S.CURRENT_VIEW = userView;
+  }
 }
 
 // ===== SWITCH SOURCE =====
@@ -444,7 +490,3 @@ export async function initStateFromServer() {
   }
 }
 
-// Backwards-compat stub (some call sites still invoke this; make it a no-op)
-export function initStateFromStorage() {
-  console.warn('initStateFromStorage() is deprecated; use initStateFromServer()');
-}

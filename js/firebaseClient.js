@@ -4,6 +4,8 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
   sendEmailVerification,
@@ -44,8 +46,30 @@ export const firebaseAuth = getAuth(app);
 
 export async function signInWithGoogle() {
   const provider = new GoogleAuthProvider();
-  const cred = await signInWithPopup(firebaseAuth, provider);
-  return cred.user;
+  try {
+    const cred = await signInWithPopup(firebaseAuth, provider);
+    return cred.user;
+  } catch (e) {
+    // モバイル等でポップアップがブロックされた場合はリダイレクト方式にフォールバック
+    if (e?.code === 'auth/popup-blocked' || e?.code === 'auth/operation-not-supported-in-this-environment') {
+      await signInWithRedirect(firebaseAuth, provider);
+      return null; // ページが遷移するのでここには戻らない
+    }
+    throw e;
+  }
+}
+
+// リダイレクトから戻ってきた時の結果を取得（ブート時に呼ぶ）。
+// リダイレクト方式でのサインイン後、onAuthStateChanged も発火するが、
+// ここで呼んでおくと redirect 途中で起きたエラーを捕捉できる。
+export async function consumeGoogleRedirectResult() {
+  try {
+    const result = await getRedirectResult(firebaseAuth);
+    return result?.user || null;
+  } catch (e) {
+    // 呼び出し元でエラー表示
+    throw e;
+  }
 }
 
 export async function signInWithEmail(email, password) {

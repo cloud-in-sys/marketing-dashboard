@@ -13,6 +13,7 @@ export function fmt(v, type) {
   if (!isFinite(v)) v = 0;
   if (type === 'yen') return '\u00a5' + Math.round(v).toLocaleString();
   if (type === 'pct') return (v * 100).toFixed(2) + '%';
+  if (type === 'dec2') return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return Math.round(v).toLocaleString();
 }
 

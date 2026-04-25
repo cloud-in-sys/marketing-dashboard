@@ -15,10 +15,6 @@ export function setCurrentSourceId(sid) {
   pendingConfig = {};
 }
 
-export function getCurrentSourceId() {
-  return currentSid;
-}
-
 // Queue a partial config update. Flushed after debounce window.
 export function queueConfigPatch(patch) {
   if (!currentSid) return;

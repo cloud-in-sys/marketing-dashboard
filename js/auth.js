@@ -2,7 +2,7 @@
 // previous localStorage-based auth module where possible.
 
 import { S, VIEWER_PERMS } from './state.js';
-import { signInWithGoogle, signInWithEmail, sendPasswordReset, signOutUser, onAuthChange } from './firebaseClient.js';
+import { signInWithGoogle, signInWithEmail, sendPasswordReset, signOutUser, onAuthChange, consumeGoogleRedirectResult } from './firebaseClient.js';
 
 export function getCurrentUser() {
   return S.USERS.find(u => u.uid === S.CURRENT_USER)
@@ -133,17 +133,13 @@ export async function logout() {
   showLogin();
 }
 
-// Legacy API compatibility (old login form). Always returns false — password login removed.
-export function tryLogin() {
-  console.warn('tryLogin() is deprecated — use signIn() (Google SSO)');
-  return false;
-}
-export function loadUsers() { /* no-op; users loaded from server */ }
-
 // Register the auth state change handler. Called once by main.js during bootstrap.
 // onReady callback fires when user is authenticated AND profile is loaded.
 // onLoggedOut fires when user signs out.
 export function observeAuth({ onReady, onLoggedOut }) {
+  // signInWithRedirect 経由で戻ってきた場合、onAuthChange が user を拾う前に
+  // エラー有無を確認してUIに出す（例: ドメイン不一致、cancel 等）
+  consumeGoogleRedirectResult().catch(e => showAuthError(e));
   return onAuthChange(async fbUser => {
     if (!fbUser) {
       S.CURRENT_USER = null;

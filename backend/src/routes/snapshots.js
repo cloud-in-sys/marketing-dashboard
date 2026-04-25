@@ -109,12 +109,31 @@ function hashFast(s) {
   return Math.abs(h).toString(36);
 }
 
+// 正規表現キャッシュ。pattern → {ok, re} (ok=false なら不正パターンで毎回 true 扱い)
+const _regexCache = new Map();
+function getRegex(pattern) {
+  if (_regexCache.has(pattern)) return _regexCache.get(pattern);
+  let entry;
+  try { entry = { ok: true, re: new RegExp(pattern) }; }
+  catch { entry = { ok: false, re: null }; }
+  _regexCache.set(pattern, entry);
+  return entry;
+}
+
 // 単一フィルタの行マッチ判定
 function matchFilter(row, f) {
   const v = row[f.field];
   if (f.op === 'equals') return String(v) === String(f.value ?? '');
   if (f.op === 'in') return Array.isArray(f.values) && f.values.some(x => String(v) === String(x));
   if (f.op === 'notIn') return Array.isArray(f.values) && !f.values.some(x => String(v) === String(x));
+  if (f.op === 'regex') {
+    const r = getRegex(String(f.value ?? ''));
+    return r.ok ? r.re.test(String(v ?? '')) : true;  // 不正パターンは絞らない(全件通す)
+  }
+  if (f.op === 'notRegex') {
+    const r = getRegex(String(f.value ?? ''));
+    return r.ok ? !r.re.test(String(v ?? '')) : true;
+  }
   return true;
 }
 
