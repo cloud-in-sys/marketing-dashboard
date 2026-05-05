@@ -14,6 +14,8 @@ import { exitSettingsMode, renderCsvColumns } from './settings.js';
 import { api } from './api.js';
 import * as sheets from './sheets.js';
 import * as bq from './bq.js';
+import { makeSortable } from './sortable.js';
+import { hasPerm } from './auth.js';
 
 // ===== DATA SOURCES =====
 export function reloadFullUI() {
@@ -43,16 +45,41 @@ export function renderSourceNav() {
   // ヘッダードロップダウン内のソース一覧を描画
   const list = document.getElementById('source-nav');
   if (list) {
+    const canManage = hasPerm('manageSources');
     list.innerHTML = S.DATA_SOURCES.map(ds => {
       const active = S.CURRENT_SOURCE === ds.id ? ' active' : '';
       const count = (S.SOURCE_DATA[ds.id] || []).length;
       const countLabel = count > 0 ? `${count.toLocaleString()}行` : '未取得';
       // ドロップダウンは「切替」のみに徹する。編集・削除は設定画面(source-view)で行う。
-      return `<div class="source-dropdown-row${active}" data-source="${ds.id}">
+      // canManage の人にはドラッグで並び替え可能 (data-drag-key を付与)
+      const dragAttrs = canManage ? ` draggable="true" data-drag-key="${ds.id}"` : '';
+      return `<div class="source-dropdown-row${active}"${dragAttrs} data-source="${ds.id}">
         <span class="source-nav-item-label">${escapeHtml(ds.name)}</span>
         <span class="source-count">${countLabel}</span>
       </div>`;
     }).join('');
+    // 並び替えハンドラ (manageSources 権限保持者のみ)
+    if (canManage && !list._sortableAttached) {
+      makeSortable(list, async (movedId, targetId, before) => {
+        const ids = S.DATA_SOURCES.map(d => d.id);
+        const fromIdx = ids.indexOf(movedId);
+        const targetIdx = ids.indexOf(targetId);
+        if (fromIdx < 0 || targetIdx < 0) return;
+        const [moved] = S.DATA_SOURCES.splice(fromIdx, 1);
+        // splice 後のインデックスは要計算
+        let insertAt = S.DATA_SOURCES.findIndex(d => d.id === targetId);
+        if (insertAt < 0) return;
+        if (!before) insertAt += 1;
+        S.DATA_SOURCES.splice(insertAt, 0, moved);
+        renderSourceNav();
+        try {
+          await api.reorderSources(S.DATA_SOURCES.map(d => d.id));
+        } catch (e) {
+          console.warn('[sources] reorder failed', e);
+        }
+      });
+      list._sortableAttached = true;
+    }
   }
   // ドロップダウンのボタンラベルも更新
   const labelEl = document.getElementById('source-dropdown-label');

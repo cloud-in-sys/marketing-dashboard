@@ -21,8 +21,15 @@ const sourcesCol = () => db.collection('sources');
 //              isPublic === false かつ allowedGroupIds が空 → 非公開
 //              allowedGroupIds に自分の groupId が含まれる → 見える
 app.get('/', async c => {
-  const snap = await sourcesCol().orderBy('createdAt').get();
+  const snap = await sourcesCol().get();
   let sources = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  // 並び順は order フィールド (なければ createdAt 順) で安定化
+  sources.sort((a, b) => {
+    const ao = typeof a.order === 'number' ? a.order : Infinity;
+    const bo = typeof b.order === 'number' ? b.order : Infinity;
+    if (ao !== bo) return ao - bo;
+    return String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+  });
   if (sources.length === 0) {
     const doc = {
       name: 'デフォルト',
@@ -96,6 +103,20 @@ app.put('/:id', async c => {
 
   if (!Object.keys(patch).length) return c.json({ ok: true });
   await sourcesCol().doc(id).update(patch);
+  return c.json({ ok: true });
+});
+
+// 並び替え: ids 配列の順に order フィールドを 0,1,2... と書き換える
+//   PUT /api/sources/reorder  { ids: ['s1', 's2', ...] }
+app.put('/reorder', requirePerm('manageSources'), async c => {
+  const body = await c.req.json();
+  const ids = Array.isArray(body && body.ids) ? body.ids : null;
+  if (!ids) throw httpError(400, 'ids array required');
+  const batch = db.batch();
+  ids.forEach((id, index) => {
+    if (typeof id === 'string') batch.update(sourcesCol().doc(id), { order: index });
+  });
+  await batch.commit();
   return c.json({ ok: true });
 });
 

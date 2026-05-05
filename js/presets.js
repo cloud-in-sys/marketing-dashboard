@@ -3,6 +3,7 @@ import { escapeHtml, hexToSoft } from './utils.js';
 import { showModal } from './modal.js';
 import { hasPerm } from './auth.js';
 import { emit } from './events.js';
+import { getTableState, setTableState } from './table.js';
 
 // ===== Presets =====
 // 共通閾値定義
@@ -174,6 +175,7 @@ export function loadPresetIntoGlobals(p) {
   S.SELECTED_METRICS = Array.isArray(p.metrics) && p.metrics.length ? [...p.metrics] : S.METRIC_DEFS.map(m => m.key);
   S.THRESHOLDS = p.thresholds && typeof p.thresholds === 'object' ? JSON.parse(JSON.stringify(p.thresholds)) : {};
   S.THRESHOLD_METRICS = Array.isArray(p.thresholdMetrics) ? [...p.thresholdMetrics] : [];
+  if (p.tableState) setTableState(p.tableState);
 }
 
 export async function savePresetPrompt() {
@@ -200,6 +202,7 @@ export async function savePresetPrompt() {
     metrics: [...S.SELECTED_METRICS],
     thresholds: JSON.parse(JSON.stringify(S.THRESHOLDS)),
     thresholdMetrics: [...S.THRESHOLD_METRICS],
+    tableState: getTableState(),
   };
   const existing = list.findIndex(p => p.name === name && !p.builtin);
   if (existing >= 0) { entry.color = list[existing].color || entry.color; list[existing] = entry; }
@@ -238,6 +241,7 @@ export function syncPresetEdit() {
   p.metrics = [...S.SELECTED_METRICS];
   p.thresholds = JSON.parse(JSON.stringify(S.THRESHOLDS));
   p.thresholdMetrics = [...S.THRESHOLD_METRICS];
+  p.tableState = getTableState();
   p.color = document.getElementById('preset-color-picker').value || p.color;
   setPresets(list);
 }

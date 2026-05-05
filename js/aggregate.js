@@ -173,27 +173,128 @@ function parseAggregateInner(fnName, inner) {
   } else if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(column)) {
     return null;
   }
-  const filters = parseWhereStr(whereStr);
-  if (filters === null) return null;
-  return { fn: fnName, column, filters };
+  const ast = parseWhereStr(whereStr);
+  if (ast === false) return null;  // パースエラー
+  return { fn: fnName, column, filters: ast };  // ast: null = フィルタなし、ASTノード = フィルタあり
 }
 
-// where 句を OR-of-AND の構造でパース。
-// 戻り値: [[{field, op, value}, ...], ...]  外側が OR、内側が AND。
-// 空リストは「フィルタなし(全件マッチ)」。失敗時は null。
-function parseWhereStr(whereStr) {
-  if (!whereStr) return [];
-  const orGroups = [];
-  for (const group of whereStr.split(/\s+or\s+/i)) {
-    const ands = [];
-    for (const c of group.split(/\s+and\s+/i)) {
-      const pc = parseClause(c);
-      if (!pc) return null;
-      ands.push({ field: pc.field, op: pc.op, value: parseValue(pc.valueStr) });
+// where 句を AST にパース (and / or / カッコでのグループ化対応)。
+// AST ノード:
+//   { type: 'and', left, right }
+//   { type: 'or',  left, right }
+//   { type: 'clause', field, op, value }
+// 戻り値:
+//   null  → フィルタなし (空入力)
+//   ASTノード → 有効なフィルタ
+//   false → パースエラー (呼び出し側はこれを検出して伝播)
+function tokenizeWhere(str) {
+  const tokens = [];
+  let i = 0;
+  let buf = '';
+  const flush = () => {
+    const t = buf.trim();
+    if (t) tokens.push({ type: 'CLAUSE', text: t });
+    buf = '';
+  };
+  while (i < str.length) {
+    const ch = str[i];
+    // 引用文字列は中身をまとめて buffer に(中の AND/OR/() を演算子と誤認しない)
+    if (ch === "'" || ch === '"') {
+      const quote = ch;
+      buf += ch;
+      i++;
+      while (i < str.length && str[i] !== quote) buf += str[i++];
+      if (i < str.length) buf += str[i++];
+      continue;
     }
-    if (ands.length) orGroups.push(ands);
+    if (ch === '(') { flush(); tokens.push({ type: 'LPAREN' }); i++; continue; }
+    if (ch === ')') { flush(); tokens.push({ type: 'RPAREN' }); i++; continue; }
+    const rest = str.slice(i);
+    const am = /^\s+and\s+/i.exec(rest);
+    if (am) { flush(); tokens.push({ type: 'AND' }); i += am[0].length; continue; }
+    const om = /^\s+or\s+/i.exec(rest);
+    if (om) { flush(); tokens.push({ type: 'OR' }); i += om[0].length; continue; }
+    buf += ch;
+    i++;
   }
-  return orGroups;
+  flush();
+  return tokens;
+}
+
+// 再帰下降パーサー
+//   expr    := orExpr
+//   orExpr  := andExpr (OR andExpr)*
+//   andExpr := atom    (AND atom)*
+//   atom    := LPAREN expr RPAREN | CLAUSE
+function parseWhereAst(tokens) {
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const eat = () => tokens[pos++];
+  function orExpr() {
+    let left = andExpr();
+    if (left === false) return false;
+    while (peek() && peek().type === 'OR') {
+      eat();
+      const right = andExpr();
+      if (right === false) return false;
+      left = { type: 'or', left, right };
+    }
+    return left;
+  }
+  function andExpr() {
+    let left = atom();
+    if (left === false) return false;
+    while (peek() && peek().type === 'AND') {
+      eat();
+      const right = atom();
+      if (right === false) return false;
+      left = { type: 'and', left, right };
+    }
+    return left;
+  }
+  function atom() {
+    const t = peek();
+    if (!t) return false;
+    if (t.type === 'LPAREN') {
+      eat();
+      const inner = orExpr();
+      if (inner === false) return false;
+      const next = peek();
+      if (!next || next.type !== 'RPAREN') return false;
+      eat();
+      return inner;
+    }
+    if (t.type === 'CLAUSE') {
+      eat();
+      const pc = parseClause(t.text);
+      if (!pc) return false;
+      return { type: 'clause', field: pc.field, op: pc.op, value: parseValue(pc.valueStr) };
+    }
+    return false;
+  }
+  const ast = orExpr();
+  if (ast === false) return false;
+  if (pos < tokens.length) return false; // トークン余り
+  return ast;
+}
+
+function parseWhereStr(whereStr) {
+  if (!whereStr || !whereStr.trim()) return null;
+  const tokens = tokenizeWhere(whereStr);
+  if (tokens.length === 0) return null;
+  return parseWhereAst(tokens);
+}
+
+// AST ノードを行データに対して評価
+function evalAst(node, row, today) {
+  if (!node) return true;
+  if (node.type === 'and') return evalAst(node.left, row, today) && evalAst(node.right, row, today);
+  if (node.type === 'or')  return evalAst(node.left, row, today) || evalAst(node.right, row, today);
+  if (node.type === 'clause') {
+    const target = resolveValue(node.value, today);
+    return evalFilter(row[node.field], node.op, target);
+  }
+  return true;
 }
 
 // 式から集計関数呼び出しを抽出 → placeholder で置換した式と spec マップを返す
@@ -228,14 +329,14 @@ function liftFormula(formula) {
   result += formula.slice(lastEnd);
 
   // 旧書式 "fn(col) where ..." 互換: lifted が "__agg_X__ where ..." の形なら where を spec に統合
-  // inner で where が無い(filters が空)集計のみが対象。inner where が既にある場合は曖昧なので統合しない
+  // inner で where が無い(filters=null)集計のみが対象。inner where が既にある場合は曖昧なので統合しない
   const tw = TRAILING_WHERE_REGEX.exec(result.trim());
   if (tw) {
     const ph = tw[1];
     const whereStr = tw[2];
-    const filters = parseWhereStr(whereStr);
-    if (filters !== null && specs[ph] && specs[ph].filters.length === 0) {
-      specs[ph].filters = filters;
+    const ast = parseWhereStr(whereStr);
+    if (ast && ast !== false && specs[ph] && specs[ph].filters == null) {
+      specs[ph].filters = ast;
       result = ph;
     }
   }
@@ -248,30 +349,13 @@ function liftFormula(formula) {
 // 単一の集計仕様を rows に対して計算
 function computeAggregate(rows, spec, today) {
   const { fn, column, filters } = spec;
-  // filters は OR-of-AND: [[{field,op,value}, ...], ...] (空配列はフィルタなし)
-  const orGroups = filters.length
-    ? filters.map(group => group.map(f => ({
-        field: f.field, op: f.op, value: resolveValue(f.value, today),
-      })))
-    : null;
+  // filters は AST (or null = フィルタなし)
+  const ast = filters || null;
   let s = 0, count = 0, minV = null, maxV = null, distinct = null;
   if (fn === 'countDistinct') distinct = new Set();
   for (let i = 0, len = rows.length; i < len; i++) {
     const r = rows[i];
-    if (orGroups) {
-      // どれか1つの OR グループの AND 条件が全部 true なら通る
-      let matched = false;
-      for (let g = 0, gLen = orGroups.length; g < gLen; g++) {
-        const ands = orGroups[g];
-        let allMatch = true;
-        for (let j = 0, aLen = ands.length; j < aLen; j++) {
-          const f = ands[j];
-          if (!evalFilter(r[f.field], f.op, f.value)) { allMatch = false; break; }
-        }
-        if (allMatch) { matched = true; break; }
-      }
-      if (!matched) continue;
-    }
+    if (ast && !evalAst(ast, r, today)) continue;
     switch (fn) {
       case 'sum':
         s += num(r[column]);

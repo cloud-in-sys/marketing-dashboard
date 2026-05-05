@@ -44,6 +44,29 @@ if (!tableZoom || tableZoom < 50 || tableZoom > 200) tableZoom = DEFAULT_ZOOM;
 // Frozen columns
 let frozenCount = 1; // default: first dim column frozen
 
+// プリセット連携: テーブルの折り畳み/倍率/固定列を取得・適用
+export function getTableState() {
+  return {
+    collapsedGroups: [...collapsedGroups],
+    tableZoom,
+    frozenCount,
+  };
+}
+export function setTableState(state) {
+  if (!state || typeof state !== 'object') return;
+  collapsedGroups.clear();
+  if (Array.isArray(state.collapsedGroups)) {
+    state.collapsedGroups.forEach(k => collapsedGroups.add(k));
+  }
+  if (typeof state.tableZoom === 'number' && state.tableZoom >= 50 && state.tableZoom <= 200) {
+    tableZoom = state.tableZoom;
+    try { localStorage.setItem(ZOOM_KEY, String(tableZoom)); } catch (e) {}
+  }
+  if (typeof state.frozenCount === 'number' && state.frozenCount >= 0) {
+    frozenCount = state.frozenCount;
+  }
+}
+
 function makeGroupKey(path) {
   return path.map((v, i) => `${i}:${v}`).join('|');
 }

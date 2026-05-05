@@ -361,13 +361,7 @@ export function buildChartSVG(chart, rows, W, H) {
       const h = PT + ih - p.cy;
       s += `<rect x="${p.cx - barW / 2}" y="${p.cy}" width="${barW}" height="${h}" fill="${color}" rx="2"><title>${p.d.x}: ${yFmt(p.d.y)}</title></rect>`;
     });
-    if (chart.showDataLabels) {
-      const stride = Math.max(1, Math.ceil(pts.length / (chart.size === 'mini' ? 6 : chart.size === 'sub' ? 10 : 20)));
-      pts.forEach((p, i) => {
-        if (i % stride !== 0) return;
-        s += `<text x="${p.cx}" y="${p.cy - 4}" text-anchor="middle" font-size="10" fill="#334155" font-weight="600">${yFmt(p.d.y)}</text>`;
-      });
-    }
+    // データラベルは下の共通ブロック (chart.showDataLabels) で描画
   } else if (chart.type === 'area') {
     if (chart.smoothLine) {
       const d = smoothPath(pts);

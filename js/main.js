@@ -21,7 +21,7 @@ import { seedDefaultPresets, renderPresets, loadPresetIntoGlobals, renderTabPres
 import { loadCustomTabs, renderCustomTabs, loadViewOrder, renderViewNav, applyView, highlightActiveView,
   setExitSettingsMode as setExitSettingsModeTabs } from './tabs.js';
 import { setupSettingsEvents, exitSettingsMode } from './settings.js';
-import { BRAND } from './config.js';
+import { BRAND, THEME } from './config.js';
 import { renderSourceNav, loadSnapshotIfNeeded } from './sources.js';
 import { loadState } from './sidebar.js';
 import './cards.js';
@@ -30,10 +30,11 @@ import './thresholds.js';
 import './sidebar.js';
 import './csvExport.js';
 
-// ===== ブランドロゴ描画 (各社で assets/logo.png を差し替え) =====
+// ===== ブランド/テーマ適用 (各プロジェクトの app-config.js から差し替え) =====
 // 画像が無い/読込失敗時は "LOGO" プレースホルダを表示 (設定漏れを視認しやすく)
-(function renderBrand() {
+(function applyBrandAndTheme() {
   const alt = escapeHtml(BRAND.appName);
+  // ヘッダーロゴ
   const headerEl = document.getElementById('brand-logo');
   if (headerEl) {
     headerEl.innerHTML = `
@@ -41,10 +42,20 @@ import './csvExport.js';
       <span class="logo-text">Marketing Metrics<em>DASHBOARD</em></span>
     `;
   }
+  // ログイン画面ロゴ
   const loginEl = document.getElementById('login-brand-logo');
   if (loginEl) {
     loginEl.innerHTML = `<img class="login-brand-logo-img" src="${BRAND.logoUrl}" alt="${alt}" onerror="this.outerHTML='<span class=&quot;login-brand-logo-fallback&quot;>LOGO</span>'">`;
   }
+  // favicon / Apple Touch Icon を BRAND.faviconUrl で差し替え
+  if (BRAND.faviconUrl) {
+    document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(link => {
+      link.href = BRAND.faviconUrl;
+    });
+  }
+  // テーマ(色) を CSS カスタムプロパティとして反映
+  const root = document.documentElement;
+  if (THEME.headerGradient) root.style.setProperty('--header-gradient', THEME.headerGradient);
 })();
 
 // ===== Wire up circular dep breakers =====

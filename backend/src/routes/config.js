@@ -97,9 +97,17 @@ app.patch('/:sid', requireSourceAccess(), async c => {
   if (missing) return c.json({ error: `Missing permission: ${missing}` }, 403);
   const invalid = validateConfigExpressions(body);
   if (invalid) return c.json({ error: `Invalid expression: ${invalid}` }, 400);
-  const beforeSnap = await configDoc(sid).get();
+  const docRef = configDoc(sid);
+  const beforeSnap = await docRef.get();
   const before = beforeSnap.exists ? beforeSnap.data() : {};
-  await configDoc(sid).set({ ...body, updatedAt: new Date().toISOString() }, { merge: true });
+  // update() を使ってトップレベルフィールドを完全置換する。
+  // set({merge:true}) だと map 型(views など)が deep merge され、削除キーが残ってしまう。
+  const patch = { ...body, updatedAt: new Date().toISOString() };
+  if (beforeSnap.exists) {
+    await docRef.update(patch);
+  } else {
+    await docRef.set(patch);
+  }
   logExpressionHistory(sid, before, { ...before, ...body }, user);
   return c.json({ ok: true });
 });

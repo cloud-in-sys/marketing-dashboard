@@ -93,23 +93,13 @@ export function renderMetricsDoc() {
             <tr><td><code>startsWith</code></td><td>〜で始まる（前方一致）</td><td><code>url startsWith 'https://'</code></td></tr>
             <tr><td><code>endsWith</code></td><td>〜で終わる（後方一致）</td><td><code>email endsWith '@example.com'</code></td></tr>
           </table>
-          <h4 style="margin-top:14px">AND と OR を混ぜる時の読み方</h4>
-          <p><strong>AND の方が先に評価されます</strong>（算数で「×」が「+」より先なのと同じ感覚）。</p>
-          <p>例: <code>status='完了' and amount &gt; 1000 or status='保留'</code></p>
-          <p>↓ こう読まれます:</p>
-          <p style="padding-left:16px"><code>(status='完了' <strong>かつ</strong> amount &gt; 1000) <strong>または</strong> status='保留'</code></p>
-          <p>つまり「完了で1000超」 <strong>または</strong> 「保留」のいずれか。</p>
-          <p style="margin-top:8px"><strong>もし</strong>「完了 <strong>かつ</strong> (1000超 <strong>または</strong> 保留)」と書きたい時はカッコでまとめる必要がありますが、現状カッコでのグループ化は未対応です。その場合は次のように2つに分けてください:</p>
-          <p style="padding-left:16px">
-            <code>m1 = sum(x where status='完了' and amount &gt; 1000)</code><br>
-            <code>m2 = sum(x where status='完了' and status='保留')</code><br>
-            <code>合計 = m1 + m2</code>
-          </p>
-          <h4 style="margin-top:14px">もう少し例</h4>
+          <h4 style="margin-top:14px">AND と OR の優先順位</h4>
+          <p>AND が OR より優先されます（×が+より先と同じ）。明示的にグループ化したい時は <code>(...)</code> を使えます。</p>
           <table>
             <tr><th>式</th><th>意味</th></tr>
-            <tr><td><code>count() where status='A' or status='B'</code></td><td>A または B</td></tr>
-            <tr><td><code>sum(x where name contains '広告' or category='ad')</code></td><td>名前に「広告」を含む、またはカテゴリが ad</td></tr>
+            <tr><td><code>status='完了' and amount &gt; 1000 or status='保留'</code></td><td>(完了 かつ 1000超) または 保留</td></tr>
+            <tr><td><code>status='完了' and (category='A' or category='B')</code></td><td>完了 かつ (A または B)</td></tr>
+            <tr><td><code>(status='A' or status='B') and amount &gt; 100</code></td><td>(A または B) かつ 100超</td></tr>
             <tr><td><code>count() where url startsWith 'https://'</code></td><td>URL が https:// で始まる</td></tr>
             <tr><td><code>sum(x where category notContains 'テスト')</code></td><td>category に「テスト」を含まない</td></tr>
           </table>

@@ -45,6 +45,7 @@ export const api = {
 
   // Sources
   listSources:   () => request('GET', '/api/sources'),
+  reorderSources:(ids) => request('PUT', '/api/sources/reorder', { ids }),
   createSource:  (data) => request('POST', '/api/sources', data),
   updateSource:  (id, patch) => request('PUT', `/api/sources/${id}`, patch),
   deleteSource:  (id) => request('DELETE', `/api/sources/${id}`),

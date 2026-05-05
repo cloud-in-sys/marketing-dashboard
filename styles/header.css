@@ -4,7 +4,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 12px 20px;
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #1e3a8a 100%);
+  background: var(--header-gradient, linear-gradient(135deg, #1a0b2e 20%, #5b1e8b 30%, #c2185b 100%));
   border-bottom: 1px solid #1e293b;
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.18);
   position: sticky;
@@ -17,7 +17,7 @@
 .app-header .icon-btn:hover { background: rgba(255, 255, 255, 0.1); color: #ffffff; border-color: rgba(255, 255, 255, 0.15); }
 .app-header .meta {
   background: rgba(255, 255, 255, 0.08);
-  color: #cbd5e1;
+  color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 .app-header .meta span { color: #ffffff; }
@@ -46,11 +46,11 @@
   border-color: rgba(255, 255, 255, 0.12);
 }
 .app-header .header-user-name { color: #ffffff; }
-.app-header .header-user-role { color: #94a3b8; }
+.app-header .header-user-role { color: #ffffff; }
 .app-header .header-logout {
   background: transparent;
   border-color: rgba(255, 255, 255, 0.2);
-  color: #cbd5e1;
+  color: #ffffff;
 }
 .app-header .header-logout:hover {
   background: rgba(239, 68, 68, 0.2);
@@ -136,6 +136,8 @@
   cursor: pointer;
 }
 .source-dropdown-list .source-dropdown-row:hover { background: var(--primary-soft); }
+.source-dropdown-list .source-dropdown-row[draggable="true"] { cursor: grab; }
+.source-dropdown-list .source-dropdown-row.dragging { opacity: 0.4; }
 .source-dropdown-list .source-dropdown-row.active {
   background: var(--primary-soft);
   color: var(--primary);
@@ -233,26 +235,18 @@ body.no-manage-sources #bq-query-input { pointer-events: none; background: var(-
   color: var(--primary);
 }
 .brand-logo-img {
-  height: 36px;
+  height: 48px;
   width: auto;
-  max-width: 200px;
+  max-width: 240px;
   object-fit: contain;
   display: block;
+  filter: brightness(0) invert(1);
 }
 .brand-logo-fallback {
   font-size: 16px;
   font-weight: 800;
   color: #ffffff;
   letter-spacing: 0.08em;
-}
-.logo-icon {
-  width: 32px;
-  height: 32px;
-  padding: 5px;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
-  color: #ffffff;
-  border-radius: 9px;
-  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
 }
 .logo-text {
   display: flex;
