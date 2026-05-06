@@ -265,13 +265,21 @@ Firebase Console → Authentication で管理者アカウントを作成（Step 
 1. <https://console.firebase.google.com/project/{{PROJECT_ID}}/firestore/data>
 2. コレクション `users` を作成
 3. ドキュメントID = UID
-4. フィールド:
+4. フィールド（**全て必須**。`createdAt` 等が欠けるとバックエンドの `users` 一覧API が `orderBy('createdAt')` で除外し、ユーザー管理画面に表示されない）:
    ```
-   name: "{{管理者名}}"
-   email: "{{ADMIN_EMAIL}}"
+   uid: "{{UID}}" (string, ドキュメントIDと同じ値)
+   email: "{{ADMIN_EMAIL}}" (string)
+   name: "{{管理者名}}" (string)
+   photoURL: "" (string, 空でOK)
    isAdmin: true (boolean)
-   perms: {} (map, 空でOK)
+   perms: {} (map, 空でOK ※isAdmin=true なら全権限扱い)
+   createdAt: "2026-01-01T00:00:00.000Z" (string, ISO8601 形式の現在時刻)
    ```
+
+   コンソール画面での型指定:
+   - `uid`, `email`, `name`, `photoURL`, `createdAt` → `string`
+   - `isAdmin` → `boolean`
+   - `perms` → `map`
 
 ## Step 16: フロントエンドデプロイ
 
