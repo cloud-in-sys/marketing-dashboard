@@ -207,7 +207,27 @@ function tokenizeWhere(str) {
       if (i < str.length) buf += str[i++];
       continue;
     }
-    if (ch === '(') { flush(); tokens.push({ type: 'LPAREN' }); i++; continue; }
+    if (ch === '(') {
+      // 識別子直後の '(' は関数呼び出し (today() 等) として buf に含める
+      if (buf.length > 0 && /[a-zA-Z0-9_]$/.test(buf)) {
+        let depth = 1, j = i + 1, inS = false, inD = false;
+        while (j < str.length && depth > 0) {
+          const c = str[j];
+          if (!inS && !inD) {
+            if (c === '(') depth++;
+            else if (c === ')') depth--;
+            else if (c === "'") inS = true;
+            else if (c === '"') inD = true;
+          } else if (inS && c === "'") inS = false;
+          else if (inD && c === '"') inD = false;
+          j++;
+        }
+        buf += str.slice(i, j);
+        i = j;
+        continue;
+      }
+      flush(); tokens.push({ type: 'LPAREN' }); i++; continue;
+    }
     if (ch === ')') { flush(); tokens.push({ type: 'RPAREN' }); i++; continue; }
     const rest = str.slice(i);
     const am = /^\s+and\s+/i.exec(rest);
