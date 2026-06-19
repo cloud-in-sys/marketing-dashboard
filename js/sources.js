@@ -7,8 +7,8 @@ import { S, switchSource, saveSheetsInput, loadSheetsInput,
 import { escapeHtml } from './utils.js';
 import { parseCSV } from './csv.js';
 import { showModal } from './modal.js';
-import { populateFilters, renderFilters } from './filters.js';
-import { loadCustomTabs, loadViewOrder, renderViewNav, highlightActiveView, renderCustomTabs } from './tabs.js';
+import { populateFilters, renderFilters, renderMSDynamic, closeFloatingMs } from './filters/index.js';
+import { renderViewNav, highlightActiveView, renderCustomTabs } from './tabs.js';
 import { initTabStates, loadTabState, renderPresets, renderTabPresetSelect } from './presets.js';
 import { exitSettingsMode, renderCsvColumns } from './settings.js';
 import { api } from './api.js';
@@ -16,29 +16,45 @@ import * as sheets from './sheets.js';
 import * as bq from './bq.js';
 import { makeSortable } from './sortable.js';
 import { hasPerm } from './auth.js';
+import { FEATURES, dlog } from './config.js';
+import { getOptions } from './utils.js';
+import { invalidateAggregateCache, abortInFlightAggregate } from './aggregate/aggregateBackend.js';
 
 // ===== DATA SOURCES =====
-export function reloadFullUI() {
+// source 切替後の UI 全体再構築。
+// 1) クリティカル UI (filters / tab nav / chips / source nav) は同期で先に出す
+// 2) 非クリティカル UI (presets / preset select / csv columns) は次フレームへ
+//    遅延 → 同期 DOM ワークを切り上げてユーザー操作の受付を優先
+// 3) loadSnapshotIfNeeded() を await して snapshot meta + filter options を取得
+//    (loadSnapshotIfNeeded 内で emit('render') が走るので、ここでは追加で render を呼ばない)
+export async function reloadFullUI() {
+  // 新 source に切り替えた瞬間、前 source / 前タブの aggregate を即 abort。
+  // これがないと、後段の loadSnapshotIfNeeded が emit('render') して新 render が
+  // prefetchAggregates を呼ぶまで (≈300ms) 前 aggregate が Cloud Run で走り続ける。
+  abortInFlightAggregate('source-switch');
+  dlog('reloadFullUI start', { sid: S.CURRENT_SOURCE });
   exitSettingsMode();
   const main = document.querySelector('.main');
   if (main) { main.classList.remove('source-transition'); void main.offsetWidth; main.classList.add('source-transition'); }
+  // クリティカル: ユーザーが直後に触る可能性が高い部分
   renderFilters();
   populateFilters();
-  loadViewOrder();
   renderViewNav();
-  loadCustomTabs();
   initTabStates();
   loadTabState(S.CURRENT_VIEW);
   highlightActiveView();
   renderCustomTabs();
+  renderSourceNav();
   emit('renderChips');
   emit('renderThresholds');
-  renderPresets();
-  renderTabPresetSelect();
-  renderCsvColumns();
-  renderSourceNav();
-  loadSnapshotIfNeeded();
-  emit('render');
+  // 非クリティカル: panel / dropdown / 設定ページなど、即時表示しなくても問題ない部分。
+  // 次フレームに回すことで、現在の同期ブロックを切り上げてクリック等のイベントを処理させる。
+  requestAnimationFrame(() => {
+    renderPresets();
+    renderTabPresetSelect();
+    renderCsvColumns();
+  });
+  await loadSnapshotIfNeeded();
 }
 
 export function renderSourceNav() {
@@ -240,6 +256,7 @@ document.getElementById('source-nav').addEventListener('click', e => {
 
 // ===== SOURCE VIEW =====
 function enterSourceView() {
+  closeFloatingMs();
   exitSettingsMode();
   document.body.classList.add('settings-mode');
   document.getElementById('source-view').classList.remove('hidden');
@@ -273,26 +290,123 @@ function renderSnapshotMeta(method, meta) {
   el.textContent = `最終更新: ${when}  (${(meta.rows || 0).toLocaleString()}行)`;
 }
 
+// source 切替ごとに増えるバージョン。await から戻った時に「呼び出し時の sid と
+// 現在の sid」+「呼び出し時の version と現在の version」を両方比較して、
+// 古いレスポンスを無視する。getCurrentLoadVersion はテスト/外部参照用。
+let sourceLoadVersion = 0;
+export function getCurrentLoadVersion() { return sourceLoadVersion; }
+
+// source 切替単位の AbortController。前 source の補助 API (options/columns) や
+// meta fetch を新 source 切替時に一括 cancel する → 古い source 用の重い処理が
+// Cloud Run で走り続けるのを防ぐ。aggregate は別レイヤーで cancel される。
+let currentSourceController = null;
+export function getCurrentSourceSignal() { return currentSourceController?.signal; }
+
+// stale guard: 呼び出し時の (sid, version) が現在と一致するか
+function isFresh(sid, version) {
+  return S.CURRENT_SOURCE === sid && sourceLoadVersion === version;
+}
+
+// 各 multi フィルタの選択肢を populate (バックエンド or S.RAW から)。
+async function populateFilterOptionsFor(sid, version, signal) {
+  const fields = (S.FILTER_DEFS || []).filter(f => f.type === 'multi').map(f => f.field);
+  if (fields.length === 0) {
+    if (!isFresh(sid, version)) return;
+    S.FILTER_OPTIONS = {};
+    return;
+  }
+  if (FEATURES.useBackendAggregate) {
+    try {
+      const res = await api.aggregateOptions(sid, fields, { signal });
+      if (!isFresh(sid, version)) { dlog('discard stale aggregateOptions', { sid, version }); return; }
+      S.FILTER_OPTIONS = res.options || {};
+    } catch (e) {
+      if (e?.code === 'aborted') { dlog('aggregateOptions aborted', { sid, version }); return; }
+      if (!isFresh(sid, version)) return;
+      console.warn('aggregateOptions failed; falling back to S.RAW', e?.message || e);
+      S.FILTER_OPTIONS = {};
+      for (const f of fields) S.FILTER_OPTIONS[f] = getOptions(S.RAW, f);
+    }
+  } else {
+    if (!isFresh(sid, version)) return;
+    S.FILTER_OPTIONS = {};
+    for (const f of fields) S.FILTER_OPTIONS[f] = getOptions(S.RAW, f);
+  }
+}
+
 export async function loadSnapshotIfNeeded() {
   const sid = S.CURRENT_SOURCE;
   if (!sid) return;
+  const version = ++sourceLoadVersion;
+  // 前 source の補助 API を一括 cancel (新規 controller を作る)
+  if (currentSourceController) currentSourceController.abort();
+  const controller = new AbortController();
+  currentSourceController = controller;
+  const signal = controller.signal;
+  dlog('source switch start', { sid, version });
   await sheets.refreshConnectionState();
-  const currentRows = S.SOURCE_DATA[sid] || [];
+  if (!isFresh(sid, version)) { dlog('discard: switched during refreshConnectionState'); return; }
   const ds = S.DATA_SOURCES.find(d => d.id === sid);
   const method = ds?.method || '';
 
   try {
     const meta = await api.getSnapshotMeta(sid);
+    if (!isFresh(sid, version)) { dlog('discard: switched during getSnapshotMeta'); return; }
     renderSnapshotMeta(method, meta);
+    // aggregate cacheKey 用に updatedAt を保存 → snapshot 更新時に自動 invalidate
+    if (meta?.updatedAt) {
+      if (!S.SOURCE_SNAPSHOT_UPDATED_AT) S.SOURCE_SNAPSHOT_UPDATED_AT = {};
+      S.SOURCE_SNAPSHOT_UPDATED_AT[sid] = meta.updatedAt;
+    }
     if (!meta.exists) return;
+    document.querySelector('.meta')?.classList.add('meta-loading');
+
+    if (FEATURES.useBackendAggregate) {
+      // バックエンド集計モード: snapshot 全行はダウンロードしない。
+      // UI は即時切替。集計とフィルタ選択肢の取得は非同期で並行進行する。
+      // - aggregateColumns は設定画面を開いたときに lazy load (通常切替では呼ばない)
+      // - aggregateOptions は初回 render をブロックせず、到着次第フィルタ UI を再描画
+      // 重要: populateFilters はここで呼ばない (caller reloadFullUI で既に走り、
+      //       その後 loadTabState が値を復元している。ここで再呼びすると消える)。
+      S.RAW = [];
+      S.SOURCE_DATA[sid] = [];
+      S.FILTER_OPTIONS = {};
+      S.COLUMN_INFO = null;
+      renderSourceView();
+      renderSourceNav();
+      renderCsvColumns();
+      emit('render');  // batch aggregate を即座にキック (フィルタオプション待ちしない)
+      // バックグラウンドでフィルタ選択肢をロード。aggregate を優先したいので
+      // 80ms 程度遅らせて Cloud Run の同時負荷を下げる (タブ移動や連打時に
+      // aggregate と options/columns の snapshot scan が重なるのを防ぐ)。
+      setTimeout(() => {
+        if (!isFresh(sid, version)) return;
+        populateFilterOptionsFor(sid, version, signal).then(() => {
+          if (!isFresh(sid, version)) return;
+          for (const f of (S.FILTER_DEFS || [])) {
+            if (f.type === 'multi') renderMSDynamic(f);
+          }
+          dlog('source switch options loaded', { sid, version });
+        });
+      }, 80);
+      return;
+    }
+
+    const currentRows = S.SOURCE_DATA[sid] || [];
     if (currentRows.length > 0) return; // already loaded
     const rowCountEl = document.getElementById('row-count');
     if (rowCountEl) rowCountEl.textContent = '読み込み中...';
-    document.querySelector('.meta')?.classList.add('meta-loading');
     const data = await api.getSnapshot(sid);
+    if (!isFresh(sid, version)) { dlog('discard: switched during getSnapshot'); return; }
     S.SOURCE_DATA[sid] = data.rows || [];
     S.RAW = S.SOURCE_DATA[sid];
-    populateFilters();
+    await populateFilterOptionsFor(sid, version, signal);
+    if (!isFresh(sid, version)) return;
+    // populateFilters はここで呼ばない (caller で済んでいる、値を消さない)。
+    // multi-select の選択肢 UI だけ更新する。
+    for (const f of (S.FILTER_DEFS || [])) {
+      if (f.type === 'multi') renderMSDynamic(f);
+    }
     renderSourceView();
     renderSourceNav();
     renderCsvColumns();
@@ -301,6 +415,7 @@ export async function loadSnapshotIfNeeded() {
     console.warn('Snapshot load failed:', e.message);
   } finally {
     document.querySelector('.meta')?.classList.remove('meta-loading');
+    dlog('source switch end', { sid, version });
   }
 }
 
@@ -340,6 +455,7 @@ async function refreshSnapshotNow(method) {
   try {
     await api.refreshSnapshot(sid);
     S.SOURCE_DATA[sid] = []; // invalidate cache
+    invalidateAggregateCache();  // snapshot 更新 → 集計キャッシュも破棄
     await loadSnapshotIfNeeded();
     if (metaEl) metaEl.classList.add('update-success');
     await showModal({title: '更新完了', body: 'スナップショットを更新しました。', okText: 'OK', cancelText: ''});
@@ -359,6 +475,24 @@ async function refreshSnapshotNow(method) {
 }
 
 // (Live Sheets/BQ auto-refresh removed — data comes from daily snapshot now)
+
+// backend mode で source-view を開いた時、行データを持たないので列情報を遅延取得。
+// 1 ソースにつき 1 回だけ走らせる (S.COLUMN_INFO がセットされたら以降スキップ)。
+let _sourceViewColInfoInflight = null;
+async function fetchColumnInfoForSourceView() {
+  if (S.COLUMN_INFO || _sourceViewColInfoInflight || !S.CURRENT_SOURCE) return;
+  const sid = S.CURRENT_SOURCE;
+  _sourceViewColInfoInflight = api.aggregateColumns(sid, { signal: getCurrentSourceSignal() })
+    .then(ci => {
+      if (S.CURRENT_SOURCE !== sid) return; // ソース切替済み
+      S.COLUMN_INFO = ci;
+      renderSourceView();
+    })
+    .catch(e => {
+      if (e?.code !== 'aborted') console.warn('[source-view] column info fetch failed', e?.message || e);
+    })
+    .finally(() => { _sourceViewColInfoInflight = null; });
+}
 
 function renderSourceView() {
   const ds = S.DATA_SOURCES.find(d => d.id === S.CURRENT_SOURCE);
@@ -384,59 +518,89 @@ function renderSourceView() {
   // アクセス権はグループ管理側に統合済み
 
   const rows = S.SOURCE_DATA[S.CURRENT_SOURCE] || [];
+  // backend mode で行データを持たない場合は COLUMN_INFO (= 列名・サンプル値・行数) を使う
+  const colInfo = S.COLUMN_INFO;
+  const hasRows = rows.length > 0;
+  const hasColInfo = !hasRows && colInfo?.columns?.length;
   const info = document.getElementById('source-info');
-  if (rows.length === 0) {
-    info.innerHTML = '<div class="source-info-empty"><div class="source-info-icon">\u{1F4C1}</div><div class="source-info-text">データが読み込まれていません</div><div class="source-info-hint">上の「CSVアップロード」または「Googleスプレッドシート」からデータを取得してください</div></div>';
-  } else {
+  if (hasRows) {
     const cols = Object.keys(rows[0]);
     info.innerHTML = `<div class="source-info-grid">
       <div class="source-info-card"><div class="source-info-label">行数</div><div class="source-info-value">${rows.length.toLocaleString()}</div></div>
       <div class="source-info-card"><div class="source-info-label">カラム数</div><div class="source-info-value">${cols.length}</div></div>
     </div>`;
+  } else if (hasColInfo) {
+    info.innerHTML = `<div class="source-info-grid">
+      <div class="source-info-card"><div class="source-info-label">行数</div><div class="source-info-value">${(colInfo.accessibleRows || 0).toLocaleString()}</div></div>
+      <div class="source-info-card"><div class="source-info-label">カラム数</div><div class="source-info-value">${colInfo.columns.length}</div></div>
+    </div>`;
+  } else {
+    info.innerHTML = '<div class="source-info-empty"><div class="source-info-icon">\u{1F4C1}</div><div class="source-info-text">データが読み込まれていません</div><div class="source-info-hint">上の「CSVアップロード」または「Googleスプレッドシート」からデータを取得してください</div></div>';
+    // backend mode で source 選択済みなら lazy fetch を試みる
+    if (FEATURES.useBackendAggregate && S.CURRENT_SOURCE) fetchColumnInfoForSourceView();
   }
 
-  // CSV columns
+  // CSV columns + preview: backend mode で行データが無い時は COLUMN_INFO のサンプル値から再構築
   const colEl = document.getElementById('source-csv-columns');
   const countEl = document.getElementById('source-csv-column-count');
-  if (rows.length === 0) {
-    colEl.innerHTML = '<div class="preset-empty">CSVが読み込まれていません</div>';
-    if (countEl) countEl.textContent = '';
-  } else {
-    const columns = Object.keys(rows[0]);
-    if (countEl) countEl.textContent = `${columns.length}カラム`;
-    colEl.innerHTML = columns.map(col => {
+  const previewEl = document.getElementById('source-preview');
+
+  let columns;          // [{ name, samples, isNumeric }]
+  let previewRows;      // 配列
+  if (hasRows) {
+    columns = Object.keys(rows[0]).map(col => {
       const vals = [];
       const seen = new Set();
       for (const r of rows) {
         const v = r[col];
         if (v == null || v === '' || seen.has(v)) continue;
-        seen.add(v);
-        vals.push(v);
+        seen.add(v); vals.push(v);
         if (vals.length >= 5) break;
       }
       const isNumeric = vals.slice(0, 10).every(v => !isNaN(Number(v)) && v !== '');
-      const kind = isNumeric ? '数値' : '文字列';
-      return `<div class="csv-col-row">
-        <div class="csv-col-head">
-          <code class="csv-col-name">${escapeHtml(col)}</code>
-          <span class="csv-col-kind">${kind}</span>
-        </div>
-        <div class="csv-col-sample">例: ${vals.length ? vals.map(v => `<span>${escapeHtml(String(v).slice(0, 30))}</span>`).join(' / ') : ''}</div>
-      </div>`;
-    }).join('');
+      return { name: col, samples: vals, isNumeric };
+    });
+    previewRows = rows.slice(0, 20);
+  } else if (hasColInfo) {
+    columns = colInfo.columns;
+    // サンプル値配列から「擬似 row」を行ごとに再構築 (各列の i 番目を集めて 1 行に)
+    const maxRows = Math.max(0, ...columns.map(c => (c.samples || []).length));
+    previewRows = [];
+    for (let i = 0; i < maxRows; i++) {
+      const row = {};
+      for (const c of columns) row[c.name] = (c.samples || [])[i] ?? '';
+      previewRows.push(row);
+    }
   }
 
-  // Preview
-  const previewEl = document.getElementById('source-preview');
-  if (rows.length === 0) {
-    previewEl.innerHTML = '<div class="preset-empty">データなし</div>';
+  if (columns?.length) {
+    if (countEl) countEl.textContent = `${columns.length}カラム`;
+    colEl.innerHTML = columns.map(col => {
+      const kind = col.isNumeric ? '数値' : '文字列';
+      const sampleHtml = (col.samples || []).length
+        ? (col.samples || []).map(v => `<span>${escapeHtml(String(v).slice(0, 30))}</span>`).join(' / ')
+        : '';
+      return `<div class="csv-col-row">
+        <div class="csv-col-head">
+          <code class="csv-col-name">${escapeHtml(col.name)}</code>
+          <span class="csv-col-kind">${kind}</span>
+        </div>
+        <div class="csv-col-sample">例: ${sampleHtml}</div>
+      </div>`;
+    }).join('');
+    if (previewRows?.length) {
+      const colNames = columns.map(c => c.name);
+      previewEl.innerHTML = `<div class="source-preview-wrap"><table class="source-preview-table">
+        <thead><tr>${colNames.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead>
+        <tbody>${previewRows.map(r => `<tr>${colNames.map(c => `<td>${escapeHtml(String(r[c] ?? ''))}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table></div>`;
+    } else {
+      previewEl.innerHTML = '<div class="preset-empty">プレビュー行がありません</div>';
+    }
   } else {
-    const cols = Object.keys(rows[0]);
-    const previewRows = rows.slice(0, 20);
-    previewEl.innerHTML = `<div class="source-preview-wrap"><table class="source-preview-table">
-      <thead><tr>${cols.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead>
-      <tbody>${previewRows.map(r => `<tr>${cols.map(c => `<td>${escapeHtml(String(r[c] ?? ''))}</td>`).join('')}</tr>`).join('')}</tbody>
-    </table></div>`;
+    colEl.innerHTML = '<div class="preset-empty">データが読み込まれていません</div>';
+    if (countEl) countEl.textContent = '';
+    previewEl.innerHTML = '<div class="preset-empty">データなし</div>';
   }
 
   // Sheets UI state
@@ -636,35 +800,12 @@ document.getElementById('add-source').addEventListener('click', async () => {
   if (!copyConfirm) return;
   const copyFromId = document.getElementById('copy-source-select')?.value || '';
   try {
-    const created = await api.createSource({ name });
+    // 初期 config 作成 + プリセットコピーは backend 側で完結する。
+    // operator は settings 系権限を持たないので、フロント側で putConfig すると
+    // Missing permission: editMetrics 等で弾かれてしまうため。
+    const created = await api.createSource({ name, copyFromId: copyFromId || undefined });
     S.DATA_SOURCES.push(created);
     S.SOURCE_DATA[created.id] = [];
-    if (copyFromId) {
-      // 既存ソースの設定とプリセットをコピー
-      const [srcConfig, srcPresets] = await Promise.all([
-        api.getConfig(copyFromId),
-        api.listPresets(copyFromId),
-      ]);
-      await api.putConfig(created.id, srcConfig);
-      if (srcPresets.presets?.length) {
-        await api.putPresets(created.id, srcPresets.presets.map(p => {
-          const { id, ...rest } = p;
-          return rest;
-        }));
-      }
-    } else {
-      // 白紙の設定を保存
-      await api.putConfig(created.id, {
-        metricDefs: [],
-        dimensions: [],
-        filterDefs: [],
-        views: {},
-        formulas: {},
-        baseFormulas: {},
-        defaults: {},
-        presets: [],
-      });
-    }
     await switchSource(created.id);
     reloadFullUI();
   } catch (e) {

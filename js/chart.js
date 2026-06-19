@@ -1,7 +1,7 @@
 import { S } from './state.js';
 import { escapeHtml } from './utils.js';
-import { groupRows } from './dimensions.js';
-import { aggregate } from './aggregate.js';
+import { groupRows } from './aggregate/dimensions.js';
+import { aggregate } from './aggregate/aggregate.js';
 import { renderChartSettingsPanel, closeChartSettings } from './chartSettings.js';
 
 // 円グラフ / 積み上げ用のカラーパレット
@@ -30,9 +30,10 @@ export function smoothPath(pts) {
 function buildPieSVG(chart, rows, W, H) {
   const mdef = S.METRIC_DEFS.find(m => m.key === chart.metric);
   const xDim = chart.bucket && chart.bucket !== 'auto' ? chart.bucket : S.SELECTED_DIMS[0];
-  if (!mdef || !xDim) return '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">ディメンションを選択してください</div>';
+  if (!mdef) return '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">メトリクスを選択してください</div>';
+  if (!xDim) return '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">ディメンションを選択してください</div>';
   const groups = groupRows(rows, [xDim]);
-  let data = groups.map(g => ({x: g.vals[0], y: aggregate(g.rows)[chart.metric] || 0}))
+  let data = groups.map(g => ({x: g.vals[0], y: (g.agg || aggregate(g.rows))[chart.metric] || 0}))
     .filter(d => d.y > 0)
     .sort((a, b) => b.y - a.y);
   if (!data.length) return '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">データなし</div>';
@@ -104,7 +105,8 @@ function buildStackedSVG(chart, rows, W, H) {
   const mdef = S.METRIC_DEFS.find(m => m.key === chart.metric);
   const xDim = chart.bucket && chart.bucket !== 'auto' ? chart.bucket : S.SELECTED_DIMS[0];
   const stackDim = chart.stackBy || '';
-  if (!mdef || !xDim) return '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">ディメンションを選択してください</div>';
+  if (!mdef) return '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">メトリクスを選択してください</div>';
+  if (!xDim) return '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">ディメンションを選択してください</div>';
   if (!stackDim) return '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">設定で「積み上げ軸」を選択してください</div>';
   if (xDim === stackDim) return '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">軸と積み上げ軸は異なるものを選択してください</div>';
 
@@ -123,7 +125,7 @@ function buildStackedSVG(chart, rows, W, H) {
     const sv = g.vals[1];
     if (!xSeen.has(xv)) { xSeen.add(xv); xOrder.push(xv); }
     if (!stackSeen.has(sv)) { stackSeen.add(sv); stackOrder.push(sv); }
-    cell.set(`${xv}${sv}`, aggregate(g.rows)[chart.metric] || 0);
+    cell.set(`${xv}${sv}`, (g.agg || aggregate(g.rows))[chart.metric] || 0);
   });
 
   // 合計の最大値(スケール用)
@@ -201,7 +203,8 @@ export function getComboLines(chart) {
 function buildComboSVG(chart, rows, W, H) {
   const m1 = S.METRIC_DEFS.find(m => m.key === chart.metric);
   const xDim = chart.bucket && chart.bucket !== 'auto' ? chart.bucket : S.SELECTED_DIMS[0];
-  if (!m1 || !xDim) return '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">ディメンションを選択してください</div>';
+  if (!m1) return '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">メトリクスを選択してください</div>';
+  if (!xDim) return '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">ディメンションを選択してください</div>';
 
   const lineDefs = getComboLines(chart)
     .map(l => ({ ...l, mdef: S.METRIC_DEFS.find(m => m.key === l.metric) }))
@@ -211,7 +214,7 @@ function buildComboSVG(chart, rows, W, H) {
 
   const groups = groupRows(rows, [xDim]);
   const data = groups.map(g => {
-    const a = aggregate(g.rows);
+    const a = g.agg || aggregate(g.rows);
     const row = { x: g.vals[0], y1: a[chart.metric] || 0 };
     lineDefs.forEach((l, idx) => { row[`y${idx + 2}`] = a[l.metric] || 0; });
     return row;
@@ -323,14 +326,30 @@ export function buildChartSVG(chart, rows, W, H) {
 
   const mdef = S.METRIC_DEFS.find(m => m.key === chart.metric);
   const xDim = chart.bucket && chart.bucket !== 'auto' ? chart.bucket : S.SELECTED_DIMS[0];
-  if (!mdef || !xDim) return '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">ディメンションを選択してください</div>';
+  if (!mdef) return '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">メトリクスを選択してください</div>';
+  if (!xDim) return '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">ディメンションを選択してください</div>';
   const groups = groupRows(rows, [xDim]);
-  const data = groups.map(g => ({x: g.vals[0], y: aggregate(g.rows)[chart.metric] || 0}));
+  const data = groups.map(g => ({x: g.vals[0], y: (g.agg || aggregate(g.rows))[chart.metric] || 0}));
   if (!data.length) return '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">データなし</div>';
+
+  // 折れ線型のみ「追加の折れ線」を同じY軸でサポート (棒/area/scatter では無視)。
+  const extraLines = chart.type === 'line'
+    ? getComboLines(chart)
+        .map(l => ({ ...l, mdef: S.METRIC_DEFS.find(m => m.key === l.metric) }))
+        .filter(l => l.mdef)
+    : [];
+  if (extraLines.length) {
+    data.forEach((d, i) => {
+      const a = groups[i].agg || aggregate(groups[i].rows);
+      extraLines.forEach((l, idx) => { d[`y${idx + 2}`] = a[l.metric] || 0; });
+    });
+  }
 
   const PL = 60, PR = 16, PT = 14, PB = 36;
   const iw = W - PL - PR, ih = H - PT - PB;
-  const maxY = Math.max(...data.map(d => d.y), 0) || 1;
+  const maxY = extraLines.length
+    ? Math.max(...data.map(d => d.y), ...data.flatMap(d => extraLines.map((_, idx) => d[`y${idx + 2}`])), 0) || 1
+    : Math.max(...data.map(d => d.y), 0) || 1;
   const step = iw / data.length;
   const barW = Math.min(step * 0.7, 36);
   const color = chart.color || '#2563eb';
@@ -354,7 +373,16 @@ export function buildChartSVG(chart, rows, W, H) {
   const pts = data.map((d, i) => ({cx: PL + step * i + step / 2, cy: PT + ih - ih * (d.y / maxY), d}));
   S.CHART_POINTS.set(chart.id, {
     W, H, PT, ih,
-    points: pts.map(p => ({cx: p.cx, cy: p.cy, x: p.d.x, label: yFmt(p.d.y), metric: mdef.label})),
+    points: pts.map(p => {
+      if (extraLines.length) {
+        const labels = [`${mdef.label}: ${yFmt(p.d.y)}`];
+        extraLines.forEach((l, idx) => {
+          labels.push(`${l.mdef.label}: ${formatMetricValue(l.mdef, p.d[`y${idx + 2}`] || 0)}`);
+        });
+        return {cx: p.cx, cy: p.cy, x: p.d.x, label: labels.join('\n'), metric: ''};
+      }
+      return {cx: p.cx, cy: p.cy, x: p.d.x, label: yFmt(p.d.y), metric: mdef.label};
+    }),
   });
   if (chart.type === 'bar') {
     pts.forEach(p => {
@@ -399,13 +427,40 @@ export function buildChartSVG(chart, rows, W, H) {
         s += `<circle cx="${p.cx}" cy="${p.cy}" r="${r}" fill="${color}" stroke="#ffffff" stroke-width="1.5"><title>${p.d.x}: ${yFmt(p.d.y)}</title></circle>`;
       });
     }
+    // 追加の折れ線 (line タイプのみ)。同じ Y 軸スケールで重ねる。
+    extraLines.forEach((l, idx) => {
+      const linePts = data.map((d, i) => ({
+        cx: PL + step * i + step / 2,
+        cy: PT + ih - ih * ((d[`y${idx + 2}`] || 0) / maxY),
+        d,
+      }));
+      if (chart.smoothLine) {
+        s += `<path d="${smoothPath(linePts)}" fill="none" stroke="${l.color}" stroke-width="${lw}" stroke-linejoin="round" stroke-linecap="round"/>`;
+      } else {
+        s += `<polyline points="${linePts.map(p => `${p.cx},${p.cy}`).join(' ')}" fill="none" stroke="${l.color}" stroke-width="${lw}" stroke-linejoin="round" stroke-linecap="round"/>`;
+      }
+      if (chart.showDots !== false) {
+        const r = chart.dotSize ?? 3.5;
+        linePts.forEach(p => {
+          s += `<circle cx="${p.cx}" cy="${p.cy}" r="${r}" fill="${l.color}" stroke="#ffffff" stroke-width="1.5"><title>${escapeHtml(String(p.d.x))} / ${escapeHtml(l.mdef.label)}: ${formatMetricValue(l.mdef, p.d[`y${idx + 2}`] || 0)}</title></circle>`;
+        });
+      }
+    });
   }
   // データラベル
   if (chart.showDataLabels) {
     const stride = Math.max(1, Math.ceil(pts.length / (chart.size === 'mini' ? 6 : chart.size === 'sub' ? 10 : 20)));
     pts.forEach((p, i) => {
       if (i % stride !== 0) return;
-      s += `<text x="${p.cx}" y="${p.cy - 6}" text-anchor="middle" font-size="10" fill="#334155" font-weight="600">${yFmt(p.d.y)}</text>`;
+      s += `<text x="${p.cx}" y="${p.cy - 6}" text-anchor="middle" font-size="10" fill="${extraLines.length ? color : '#334155'}" font-weight="600">${yFmt(p.d.y)}</text>`;
+    });
+    extraLines.forEach((l, idx) => {
+      data.forEach((d, i) => {
+        if (i % stride !== 0) return;
+        const cx = PL + step * i + step / 2;
+        const cy = PT + ih - ih * ((d[`y${idx + 2}`] || 0) / maxY);
+        s += `<text x="${cx}" y="${cy - 6}" text-anchor="middle" font-size="10" fill="${l.color}" font-weight="600">${formatMetricValue(l.mdef, d[`y${idx + 2}`] || 0)}</text>`;
+      });
     });
   }
   const labelStride = Math.max(1, Math.ceil(data.length / (chart.size === 'sub' ? 8 : 16)));
@@ -413,6 +468,15 @@ export function buildChartSVG(chart, rows, W, H) {
     if (i % labelStride !== 0) return;
     s += `<text x="${p.cx}" y="${H - PB + 16}" text-anchor="middle" font-size="10" fill="#64748b">${p.d.x}</text>`;
   });
+  // 凡例 (追加の折れ線がある場合のみ)
+  if (extraLines.length) {
+    const legendItems = [{ color, label: mdef.label }, ...extraLines.map(l => ({ color: l.color, label: l.mdef.label }))];
+    legendItems.forEach((li, i) => {
+      const lx = PL + i * 110;
+      s += `<rect x="${lx}" y="2" width="10" height="10" fill="${li.color}" rx="2"/>`;
+      s += `<text x="${lx + 14}" y="11" font-size="10" fill="#334155">${escapeHtml(li.label.slice(0, 12))}</text>`;
+    });
+  }
   s += '</svg>';
   return s;
 }

@@ -2,13 +2,10 @@ import { S, getPresets, syncCurrentTabState, setUserCurrentView } from './state.
 import { escapeHtml, hexToSoft } from './utils.js';
 import { loadTabState, exitPresetEdit, renderTabPresetSelect } from './presets.js';
 import { emit } from './events.js';
-import { renderFilters } from './filters.js';
+import { renderFilters } from './filters/index.js';
+import { dlog } from './config.js';
 
 // ===== Tabs & View navigation =====
-export function loadCustomTabs() {
-  // Now loaded by loadSourceConfig in state.js
-}
-
 export function renderCustomTabs() {
   const el = document.getElementById('custom-nav');
   if (!el) return;
@@ -19,10 +16,6 @@ export function renderCustomTabs() {
         return `<div class="custom-tab-item" data-drag-key="${t.key}" draggable="true" style="--tab-color:${color};--tab-color-soft:${soft}"><button type="button" class="nav-item${S.CURRENT_VIEW===t.key?' active':''}" data-custom="${t.key}"><span class="tab-badge">\u30de\u30a4</span>${escapeHtml(t.label)}</button><input type="color" class="custom-tab-color" data-color-key="${t.key}" value="${color}" title="\u8272\u3092\u5909\u66f4"><button type="button" class="preset-del" data-del-custom="${t.key}" title="\u524a\u9664">\u00d7</button></div>`;
       }).join('')
     : '<div class="preset-empty">\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u306a\u3057</div>';
-}
-
-export function loadViewOrder() {
-  // Now loaded by loadSourceConfig in state.js
 }
 
 export function renderViewNav() {
@@ -45,6 +38,7 @@ export function applyView(viewKey) {
   const isBuiltin = !!S.VIEWS[viewKey];
   const isCustom = S.CUSTOM_TABS.some(t => t.key === viewKey);
   if (!isBuiltin && !isCustom) return;
+  dlog('applyView', { from: S.CURRENT_VIEW, to: viewKey, sid: S.CURRENT_SOURCE });
   if (_exitSettingsMode) _exitSettingsMode();
   syncCurrentTabState();
   exitPresetEdit();

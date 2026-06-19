@@ -2,10 +2,11 @@ import { S, DEFAULT_BASE_FORMULAS, DEFAULT_FORMULAS,
   saveMetricDefs, saveFormulas, saveBaseFormulas } from '../state.js';
 import { escapeHtml } from '../utils.js';
 import { showModal } from '../modal.js';
-import { parseBaseFormula } from '../aggregate.js';
+import { parseBaseFormula, isPureBaseFormula } from '../aggregate/aggregate.js';
 import { hasPerm } from '../auth.js';
 import { renderViewNav } from '../tabs.js';
 import { emit } from '../events.js';
+import { makeSortable } from '../sortable.js';
 
 // ----- DIRTY FLAGS -----
 export function markMetricsDirty() {
@@ -27,21 +28,34 @@ export function renderMetricsDoc() {
     const formula = m.type === 'base'
       ? (baseSrc[m.key] || DEFAULT_BASE_FORMULAS[m.key] || '')
       : (derivedSrc[m.key] || DEFAULT_FORMULAS[m.key] || '');
-    return `<div class="metrics-doc-row" data-def-idx="${i}">
+    return `<div class="metrics-doc-row" data-def-idx="${i}" data-drag-key="${i}" draggable="true">
       <div class="metrics-doc-row-head">
-        <div class="field-col"><label class="field-label">名称</label><input type="text" class="metric-label-input" data-def-label value="${escapeHtml(m.label)}" placeholder="表示名"></div>
-        <div class="field-col"><label class="field-label">キー</label><input type="text" class="metric-key-input" data-def-key value="${escapeHtml(m.key)}" placeholder="key"></div>
-        <div class="field-col"><label class="field-label">書式</label><select class="metric-fmt-select" data-def-fmt>
+        <span class="drag-handle" data-drag-handle title="ドラッグで並び替え (同じ種類の中でのみ)">⋮⋮</span>
+        <div class="field-col"><label class="field-label">名称</label><textarea class="metric-label-input" data-def-label draggable="false" rows="1" placeholder="表示名 (Enter で改行・最大3行)">${escapeHtml(m.label)}</textarea></div>
+        <div class="field-col"><label class="field-label">キー</label><input type="text" class="metric-key-input" data-def-key draggable="false" value="${escapeHtml(m.key)}" placeholder="key"></div>
+        <div class="field-col"><label class="field-label">書式</label><select class="metric-fmt-select" data-def-fmt draggable="false">
           ${fmtOptions.map(o => `<option value="${o.v}"${m.fmt===o.v?' selected':''}>${o.l}</option>`).join('')}
         </select></div>
         <button type="button" class="metric-del" data-def-remove="${i}" title="削除">×</button>
       </div>
       <label class="field-label">計算式</label>
-      <input type="text" class="metric-formula-input" data-def-formula="${i}" value="${escapeHtml(formula)}" placeholder="${m.type==='base'?"sum(column) where funnel = '広告'":'ad_cost / clicks'}">
+      <input type="text" class="metric-formula-input" data-def-formula="${i}" draggable="false" value="${escapeHtml(formula)}" placeholder="${m.type==='base'?"sum(column) where funnel = '広告'":'ad_cost / clicks'}">
     </div>`;
   };
   const baseRows = defs.map((m, i) => ({m, i})).filter(x => x.m.type === 'base');
   const derivedRows = defs.map((m, i) => ({m, i})).filter(x => x.m.type === 'derived');
+  // 既存の基礎メトリクスにルール違反 (単一集計でない式) があれば警告を出す。
+  // ピボット親行で値が壊れるので「派生」に変える必要がある旨を案内。
+  const violators = baseRows
+    .map(x => ({ m: x.m, formula: (baseSrc[x.m.key] || DEFAULT_BASE_FORMULAS[x.m.key] || '') }))
+    .filter(x => x.formula && !isPureBaseFormula(x.formula));
+  const warningHtml = violators.length
+    ? `<div class="metrics-doc-warning">
+        <strong>⚠ 基礎メトリクスのルール違反があります</strong>
+        <div>以下は「単一の集計関数」になっていないため、多重ディメンションのピボット親行で値が壊れます。「派生」型に変更し、式は基礎メトリクスを参照する形 (例: <code>clicks / impression</code>) に書き換えてください。</div>
+        <ul>${violators.map(v => `<li><strong>${escapeHtml(v.m.label || v.m.key)}</strong>: <code>${escapeHtml(v.formula)}</code></li>`).join('')}</ul>
+      </div>`
+    : '';
   el.innerHTML = `
     <details class="metrics-syntax-help" id="metrics-syntax-help">
       <summary>計算式の書き方（クリックで展開）</summary>
@@ -125,22 +139,72 @@ export function renderMetricsDoc() {
             <tr><td><code>sessions &gt; 1000 ? bounce_rate : 0</code></td><td>セッション数が一定以上の時のみ</td></tr>
           </table>
         </div>
+        <div class="metrics-syntax-help-section">
+          <h4>スパークライン（ミニ進捗バー）</h4>
+          <p>派生メトリクスの式で <code>sparkline(EXPR)</code> または <code>sparkline(EXPR, { オプション1: 値1, オプション2: 値2 })</code> と書くと、その列のセルに「行の値 ÷ 最大値」の比率を示す進捗バーが表示されます。EXPR は他のメトリクス式と同じ書き方。</p>
+          <table>
+            <tr><th>例</th><th>意味</th></tr>
+            <tr><td><code>sparkline(cpa)</code></td><td>CPA 列。全行の中で最大の行が満タン、他はそれに対する比率</td></tr>
+            <tr><td><code>sparkline(rev_first - ad_cost)</code></td><td>利益 (売上−広告費)。式は派生メトリクスと同じ書き方</td></tr>
+            <tr><td><code>sparkline(ad_cost, { max: 1000000 })</code></td><td>固定目標 100 万円に対する達成率</td></tr>
+            <tr><td><code>sparkline(cvr, { color: '#10b981' })</code></td><td>緑のバー</td></tr>
+          </table>
+          <p style="margin-top:8px"><strong>OPTIONS 一覧:</strong></p>
+          <ul style="font-size:12px;line-height:1.6">
+            <li><code>color</code>: バーの色 (例 <code>'#2563eb'</code> or <code>'red'</code>、デフォルト青)</li>
+            <li><code>max</code>: 分母 (固定の目標値)。指定なし時は全行の最大値が自動的に分母になる。</li>
+          </ul>
+        </div>
       </div>
     </details>
+    ${warningHtml}
     <div class="metrics-doc-box">
       <div class="metrics-doc-section"><span>基礎メトリクス</span></div>
+      <div class="metrics-doc-hint">※ 基礎は「単一の集計関数」のみ (例: <code>sum(clicks)</code>)。比率/割り算/引き算は「派生」へ。</div>
       ${baseRows.map(x => renderRow(x.m, x.i)).join('') || '<div class="preset-empty">基礎メトリクスがありません</div>'}
       <button type="button" class="metrics-add-btn admin-only" data-add-type="base">+ 基礎メトリクスを追加</button>
     </div>
     <div class="metrics-doc-box">
       <div class="metrics-doc-section"><span>派生メトリクス</span></div>
+      <div class="metrics-doc-hint">※ 派生は基礎メトリクスを参照して組み合わせる (例: <code>clicks / impression</code>、<code>ad_cost / clicks</code>)。</div>
       ${derivedRows.map(x => renderRow(x.m, x.i)).join('') || '<div class="preset-empty">派生メトリクスがありません</div>'}
       <button type="button" class="metrics-add-btn admin-only" data-add-type="derived">+ 派生メトリクスを追加</button>
     </div>
   `;
+  // 名称 textarea の初期高さを scrollHeight に合わせる
+  el.querySelectorAll('textarea.metric-label-input').forEach(autosizeLabel);
+}
+
+// 名称 textarea を内容に合わせて自動リサイズ (3 行を上限とする CSS と組み合わせる)
+function autosizeLabel(el) {
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
 }
 
 export function setupMetricsEvents() {
+  // ----- METRICS DRAG-REORDER -----
+  // metrics-doc は persistent の親。基礎/派生は同一 defs 配列にあり、render 時に
+  // type でフィルタして 2 セクションに分かれて表示される。異種間の並び替えは
+  // 受け付けない (type === 'base' / 'derived' を比較)。
+  // data-drag-key は配列インデックス (key 入力は user-editable のため index が安全)。
+  makeSortable(document.getElementById('metrics-doc'), (fromStr, toStr, before) => {
+    if (!hasPerm('editMetrics')) return;
+    const from = +fromStr, to = +toStr;
+    if (isNaN(from) || isNaN(to) || from === to) return;
+    if (!S.METRIC_DEFS_DRAFT) S.METRIC_DEFS_DRAFT = JSON.parse(JSON.stringify(S.METRIC_DEFS));
+    const defs = S.METRIC_DEFS_DRAFT;
+    if (from < 0 || from >= defs.length || to < 0 || to >= defs.length) return;
+    const fromItem = defs[from];
+    const toItem = defs[to];
+    if (!fromItem || !toItem || fromItem.type !== toItem.type) return;
+    defs.splice(from, 1);
+    const toAdjusted = (from < to) ? to - 1 : to;
+    const insertAt = before ? toAdjusted : toAdjusted + 1;
+    defs.splice(insertAt, 0, fromItem);
+    markMetricsDirty();
+    renderMetricsDoc();
+  });
+
   // ----- METRICS DOC EVENTS -----
   document.getElementById('metrics-doc').addEventListener('input', e => {
     if (!hasPerm("editMetrics")) return;
@@ -150,8 +214,33 @@ export function setupMetricsEvents() {
     const defs = S.METRIC_DEFS_DRAFT || S.METRIC_DEFS;
     const def = defs[idx];
     if (!def) return;
-    if (e.target.matches('[data-def-label]')) def.label = e.target.value;
-    else if (e.target.matches('[data-def-key]')) def.key = e.target.value;
+    if (e.target.matches('[data-def-label]')) {
+      // 3 行上限: 超えたら切り詰めてカーソルを末尾に
+      const lines = e.target.value.split('\n');
+      if (lines.length > 3) e.target.value = lines.slice(0, 3).join('\n');
+      def.label = e.target.value;
+      autosizeLabel(e.target);
+    }
+    else if (e.target.matches('[data-def-key]')) {
+      const oldKey = def.key;
+      const newKey = e.target.value;
+      def.key = newKey;
+      if (oldKey !== newKey) {
+        if (def.type === 'base') {
+          if (!S.METRICS_DRAFT_BASE) S.METRICS_DRAFT_BASE = {...S.BASE_FORMULAS};
+          if (oldKey in S.METRICS_DRAFT_BASE) {
+            S.METRICS_DRAFT_BASE[newKey] = S.METRICS_DRAFT_BASE[oldKey];
+            delete S.METRICS_DRAFT_BASE[oldKey];
+          }
+        } else {
+          if (!S.METRICS_DRAFT) S.METRICS_DRAFT = {...S.METRIC_FORMULAS};
+          if (oldKey in S.METRICS_DRAFT) {
+            S.METRICS_DRAFT[newKey] = S.METRICS_DRAFT[oldKey];
+            delete S.METRICS_DRAFT[oldKey];
+          }
+        }
+      }
+    }
     else if (e.target.matches('[data-def-fmt]')) def.fmt = e.target.value;
     else if (e.target.matches('[data-def-formula]')) {
       const k = def.key;
@@ -217,6 +306,28 @@ export function setupMetricsEvents() {
         const v = (S.METRICS_DRAFT_BASE || S.BASE_FORMULAS)[d.key] || '';
         if (!parseBaseFormula(v)) {
           await showModal({title: '保存できません', body: `基礎メトリクス「${d.label || d.key}」の構文が不正です:\n${v}`, okText: 'OK', cancelText: ''});
+          return;
+        }
+        if (!isPureBaseFormula(v)) {
+          await showModal({
+            title: '保存できません',
+            body: `基礎メトリクス「${d.label || d.key}」の式は「単一の集計関数」だけにしてください。
+
+現在の式:
+${v}
+
+OK の例:
+  sum(clicks)
+  sum(amount) where funnel = '広告'
+  count()
+
+NG の例:
+  sum(a) / sum(b)   ← 比率は「派生」へ
+  sum(a) - sum(b)   ← 引き算も「派生」へ
+
+CTR / CPC / CPM 等の割り算は派生型にして、基礎メトリクスを参照する式 (例: clicks / impression) にしてください。多重ディメンションのピボット親行で値が壊れるのを防ぐためです。`,
+            okText: 'OK', cancelText: '',
+          });
           return;
         }
       }

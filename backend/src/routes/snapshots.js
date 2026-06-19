@@ -8,6 +8,7 @@ import { db } from '../firebase.js';
 import { getSecret } from '../utils/secrets.js';
 import { requirePerm } from '../middleware/auth.js';
 import { httpError } from '../middleware/error.js';
+import { requireSourceAccess, getGroupFilter, matchGroupFilter } from '../aggregate/sourceAccess.js';
 
 const gzip = promisify(zlib.gzip);
 const gunzip = promisify(zlib.gunzip);
@@ -21,29 +22,19 @@ const app = new Hono();
 
 // Return latest snapshot for a source.
 // 可視性:
-//   admin → 全部OK
-//   非admin → source.allowedGroupIds が空 OR 自分の groupId が含まれる
+//   admin                              → 全部 OK
+//   非 admin かつ allowedGroupIds 空   → 拒否 (未設定 = 公開しない)
+//   非 admin かつ allowedGroupIds あり → 自分の groupId が含まれていれば OK
 // 行絞り込み:
 //   admin → 絞らない
-//   非admin + source.tenantField 未設定 → 絞らない
-//   非admin + source.tenantField 設定 + user.groupId = null → **全行ブロック** (未分類=見せない)
-//   非admin + source.tenantField 設定 + user.groupId あり → row[tenantField] === group.name の行のみ
+//   非 admin かつ groupId なし → 絞らない
+//   非 admin かつ groupId あり → group.sourceFilters[sid] を適用
 app.get('/:sid', async c => {
   const sid = c.req.param('sid');
   const user = c.get('user');
 
-  // (1) 可視性チェック
-  const srcSnap = await db.collection('sources').doc(sid).get();
-  if (!srcSnap.exists) return c.json({ rows: [], updatedAt: null }, 404);
-  const source = srcSnap.data();
-  if (!user.isAdmin) {
-    const allowed = source.allowedGroupIds || [];
-    if (allowed.length > 0) {
-      if (!user.groupId || !allowed.includes(user.groupId)) {
-        return c.json({ error: 'このデータソースへのアクセス権がありません' }, 403);
-      }
-    }
-  }
+  // (1) 可視性チェック (共通ヘルパー)
+  await requireSourceAccess(user, sid);
 
   // (2) スナップショット取得
   const file = bucket().file(objectName(sid));
@@ -52,19 +43,8 @@ app.get('/:sid', async c => {
   const [meta] = await file.getMetadata();
   const updatedAt = meta.metadata?.updatedAt || meta.updated || '';
 
-  // (3) 行絞り込みの条件を決定
-  // ルール:
-  //   admin → 絞らない
-  //   未分類 (groupId なし) → 絞らない (アクセスが許可されたソースは全行見える)
-  //   グループ所属 → group.sourceFilters[sid] があればそのフィルタを適用
-  let filter = null;  // null = 絞らない
-  if (!user.isAdmin && user.groupId) {
-    const gSnap = await db.collection('groups').doc(user.groupId).get();
-    if (gSnap.exists) {
-      const sf = (gSnap.data().sourceFilters || {})[sid];
-      if (sf && sf.field) filter = sf;
-    }
-  }
+  // (3) 行絞り込みの条件を決定 (共通ヘルパー)
+  const filter = await getGroupFilter(user, sid);
 
   // (4) ETag
   const filterKey = filter ? JSON.stringify(filter) : '';
@@ -91,7 +71,7 @@ app.get('/:sid', async c => {
   const json = (await gunzip(buf)).toString('utf8');
   const parsed = JSON.parse(json);
   const allRows = Array.isArray(parsed.rows) ? parsed.rows : [];
-  const filtered = allRows.filter(row => matchFilter(row, filter));
+  const filtered = allRows.filter(row => matchGroupFilter(row, filter));
   const outBuf = await gzip(Buffer.from(JSON.stringify({ rows: filtered }), 'utf8'));
   c.header('Content-Encoding', 'gzip');
   c.header('Content-Type', 'application/json');
@@ -109,37 +89,11 @@ function hashFast(s) {
   return Math.abs(h).toString(36);
 }
 
-// 正規表現キャッシュ。pattern → {ok, re} (ok=false なら不正パターンで毎回 true 扱い)
-const _regexCache = new Map();
-function getRegex(pattern) {
-  if (_regexCache.has(pattern)) return _regexCache.get(pattern);
-  let entry;
-  try { entry = { ok: true, re: new RegExp(pattern) }; }
-  catch { entry = { ok: false, re: null }; }
-  _regexCache.set(pattern, entry);
-  return entry;
-}
-
-// 単一フィルタの行マッチ判定
-function matchFilter(row, f) {
-  const v = row[f.field];
-  if (f.op === 'equals') return String(v) === String(f.value ?? '');
-  if (f.op === 'in') return Array.isArray(f.values) && f.values.some(x => String(v) === String(x));
-  if (f.op === 'notIn') return Array.isArray(f.values) && !f.values.some(x => String(v) === String(x));
-  if (f.op === 'regex') {
-    const r = getRegex(String(f.value ?? ''));
-    return r.ok ? r.re.test(String(v ?? '')) : true;  // 不正パターンは絞らない(全件通す)
-  }
-  if (f.op === 'notRegex') {
-    const r = getRegex(String(f.value ?? ''));
-    return r.ok ? !r.re.test(String(v ?? '')) : true;
-  }
-  return true;
-}
-
 // Return just metadata (fast, for UI)
 app.get('/:sid/meta', async c => {
   const sid = c.req.param('sid');
+  const user = c.get('user');
+  await requireSourceAccess(user, sid);
   const file = bucket().file(objectName(sid));
   const [exists] = await file.exists();
   if (!exists) return c.json({ exists: false });

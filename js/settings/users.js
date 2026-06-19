@@ -120,19 +120,17 @@ function renderUserDetail(list, src, i) {
 }
 
 async function addUser() {
-  const email = await showModal({title: 'ユーザーを追加', body: '新しいユーザーのメールアドレスを入力してください', input: true, placeholder: 'user@example.com', okText: '次へ'});
+  const email = await showModal({title: 'ユーザーを追加', body: '新しいユーザーのメールアドレスを入力してください（Google アカウント）', input: true, placeholder: 'user@example.com', okText: '次へ'});
   if (!email) return;
-  const password = await showModal({title: 'パスワード', body: '初期パスワード（8文字以上、英字と数字を両方含む）を入力してください', input: true, placeholder: 'password', okText: '次へ'});
-  if (!password) return;
   const name = await showModal({title: '表示名', body: '表示名を入力してください', input: true, defaultValue: email.split('@')[0], placeholder: '例: 田中', okText: '作成', noEnter: true});
   if (!name) return;
   try {
-    const created = await api.createUser({ email, password, name, isAdmin: false });
+    const created = await api.createUser({ email, name, isAdmin: false });
     S.USERS.push(created);
     S.USERS_DRAFT = JSON.parse(JSON.stringify(S.USERS));
     settingsState.userDetailIdx = S.USERS_DRAFT.length - 1;
     renderUsersModal();
-    await showModal({title: '作成完了', body: `${email} を追加しました。初期パスワードを本人に伝えてください。`, okText: 'OK', cancelText: ''});
+    await showModal({title: '作成完了', body: `${email} を追加しました。本人が Google でログインすると有効化されます。`, okText: 'OK', cancelText: ''});
   } catch (e) {
     await showModal({title: '作成失敗', body: e.message || 'ユーザー作成に失敗しました', okText: 'OK', cancelText: ''});
   }

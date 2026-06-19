@@ -6,9 +6,6 @@ import {
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
-  signInWithEmailAndPassword,
-  sendPasswordResetEmail,
-  sendEmailVerification,
   signOut as fbSignOut,
   onAuthStateChanged,
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
@@ -70,23 +67,6 @@ export async function consumeGoogleRedirectResult() {
     // 呼び出し元でエラー表示
     throw e;
   }
-}
-
-export async function signInWithEmail(email, password) {
-  const cred = await signInWithEmailAndPassword(firebaseAuth, email, password);
-  // 未確認ユーザーには確認メールを送ってサインアウトし、呼び出し元に通知
-  if (!cred.user.emailVerified) {
-    try { await sendEmailVerification(cred.user); } catch (e) { /* best effort */ }
-    await fbSignOut(firebaseAuth);
-    const err = new Error('メールアドレス確認のメールを送信しました。受信メールのリンクをクリックしてから再ログインしてください。');
-    err.code = 'auth/email-not-verified';
-    throw err;
-  }
-  return cred.user;
-}
-
-export async function sendPasswordReset(email) {
-  await sendPasswordResetEmail(firebaseAuth, email);
 }
 
 export async function signOutUser() {

@@ -83,8 +83,22 @@ app.put('/:sid', requireSourceAccess(), async c => {
   if (invalid) return c.json({ error: `Invalid expression: ${invalid}` }, 400);
   const beforeSnap = await configDoc(sid).get();
   const before = beforeSnap.exists ? beforeSnap.data() : {};
-  await configDoc(sid).set({ ...body, updatedAt: new Date().toISOString() });
-  logExpressionHistory(sid, before, body, user);
+  // セキュリティ: PUT は doc 全体を上書きするので、権限のないフィールドを body から
+  // 「省略」することで既存値を実質削除できる脆弱性がある (ex: editMetrics 権限を
+  // 持たない user が他のフィールドだけ送って metricDefs を消去)。
+  // gated field は、対応する permission を持たない限り body の有無に関わらず
+  // 既存値を保つ。admin は通常通り全フィールド上書き可能。
+  const final = { ...body };
+  if (!user?.isAdmin) {
+    for (const [field, perm] of Object.entries(FIELD_PERM)) {
+      if (!user?.perms?.[perm] && (field in before)) {
+        final[field] = before[field];
+      }
+    }
+  }
+  final.updatedAt = new Date().toISOString();
+  await configDoc(sid).set(final);
+  logExpressionHistory(sid, before, final, user);
   return c.json({ ok: true });
 });
 

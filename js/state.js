@@ -138,15 +138,17 @@ export const PERM_GROUPS = [
     {key: 'editPreset',     label: 'プリセット編集'},
     {key: 'savePreset',     label: 'プリセット新規保存'},
     {key: 'deletePreset',   label: 'プリセット削除'},
-    // ユーザー/グループ管理 (サイドバー「ユーザー管理」セクション)
+    // 管理者設定 (サイドバー「管理者設定」セクション)
     {key: 'manageUsers',    label: 'ユーザー管理'},
     {key: 'manageGroups',   label: 'グループ管理'},
+    {key: 'manageBranding', label: 'ブランディング (ロゴ・タイトル・テーマ)'},
   ]},
 ];
 export const PERM_DEFS = PERM_GROUPS.flatMap(g => g.perms);
 export const ADMIN_PERMS = Object.fromEntries(PERM_DEFS.map(p => [p.key, true]));
 export const VIEWER_PERMS = Object.fromEntries(PERM_DEFS.map(p => [p.key, false]));
 export const PALETTE = ['#2563eb', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#7c3aed', '#ec4899', '#14b8a6'];
+export const DEFAULT_TABLE_CONFIG = Object.freeze({ showTotal: false, table: {}, styles: {}, headerStyles: {} });
 export const BUILTIN_SEED_VERSION = 3;
 
 // ===== UI-ONLY local storage keys (NOT synced to server) =====
@@ -173,6 +175,9 @@ export const S = {
   THRESHOLDS: {},
   THRESHOLD_METRICS: [],
   CURRENT_FILTER: null,
+  // タブごとのピボットテーブル設定 (実体は TAB_STATES[viewKey].tableConfig)。
+  // 形式は DEFAULT_TABLE_CONFIG / tableSettings.js のデータモデルコメントを参照。
+  TABLE_CONFIG: { showTotal: false, table: {}, styles: {}, headerStyles: {} },
   TAB_STATES: {},
   CUSTOM_TABS: [],
   PRESET_EDIT_IDX: null,
@@ -230,7 +235,7 @@ export function saveCustomTabs()  { queueConfigPatch({ customTabs: S.CUSTOM_TABS
 export function saveViewOrder()   { queueConfigPatch({ viewOrder: S.VIEW_ORDER }); }
 
 // FILTER_VALUES の Set を JSON に保存できる形(配列)に変換
-function serializeFilterValues(values) {
+export function serializeFilterValues(values) {
   const out = {};
   for (const [k, v] of Object.entries(values || {})) {
     out[k] = (v instanceof Set) ? Array.from(v) : v;
@@ -266,6 +271,13 @@ function _scheduleUserStateSave() {
     catch (e) { console.warn('[user state] save failed', e); }
   }, 500);
 }
+// debounce 中の保留分を即時 flush。pagehide からは opts.keepalive: true で呼ぶ。
+export async function flushUserStateNow(opts) {
+  if (_userStateTimer) { clearTimeout(_userStateTimer); _userStateTimer = null; }
+  if (!S.CURRENT_SOURCE) return;
+  try { await api.putMyState(S.CURRENT_SOURCE, _userStateCache, opts); }
+  catch (e) { console.warn('[user state] flush failed', e); }
+}
 export function getTabFilterState(viewKey) {
   return _userStateCache.tabFilters[viewKey] || null;
 }
@@ -285,32 +297,44 @@ export function setUserCurrentView(viewKey) {
 export function syncCurrentTabState() {
   if (S.PRESET_EDIT_IDX != null) return;
   if (!S.CURRENT_VIEW) return;
-  // フィルタ値はユーザー毎(Firestoreキャッシュ)に保存
+  // 標準タブは preset 優先のため per-user 状態を保存しない (読み込み時に preset が常に上書きするので保存しても無駄)
+  if (S.VIEWS[S.CURRENT_VIEW]) return;
+  // すでに削除されたカスタムタブに対しては TAB_STATES を再挿入しない (orphan 防止)。
+  if (!S.CUSTOM_TABS.some(t => t.key === S.CURRENT_VIEW)) return;
+  // カスタムタブのみフィルタを per-user に保存
   setTabFilterState(
     S.CURRENT_VIEW,
     serializeFilterValues(S.FILTER_VALUES),
     JSON.parse(JSON.stringify(S.FILTER_CONDITIONS || {}))
   );
-  if (S.VIEWS[S.CURRENT_VIEW]) return;
-  // カスタムタブの表示設定はソース共通 (全員で同じ)
+  // カスタムタブの表示設定 (dims/metrics 等) はソース共通
   S.TAB_STATES[S.CURRENT_VIEW] = {
     dims: [...S.SELECTED_DIMS],
     metrics: [...S.SELECTED_METRICS],
     thresholds: JSON.parse(JSON.stringify(S.THRESHOLDS)),
     thresholdMetrics: [...S.THRESHOLD_METRICS],
+    tableConfig: JSON.parse(JSON.stringify(S.TABLE_CONFIG || DEFAULT_TABLE_CONFIG)),
   };
 }
 
+// saveState は render 完了ごとに呼ばれるが、実際の state が変わっていない場合
+// (タブ切替やフィルタ無変更の resize 等) も毎回 queueConfigPatch を叩いてしまう。
+// 直前にシリアライズした state と一致したら queue を呼ばないことで、不要な
+// Firestore write (および debounce タイマー再設定) を抑える。
+let _lastStateHash = '';
 export function saveState() {
   syncCurrentTabState();
-  queueConfigPatch({
-    state: {
-      charts: S.CHARTS,
-      cards: S.CARDS,
-      currentView: S.CURRENT_VIEW,
-      tabStates: S.TAB_STATES,
-    }
-  });
+  const state = {
+    charts: S.CHARTS,
+    cards: S.CARDS,
+    currentView: S.CURRENT_VIEW,
+    tabStates: S.TAB_STATES,
+  };
+  // sid をハッシュに含めてソース切替も dirty 扱いにする
+  const hash = (S.CURRENT_SOURCE || '') + '' + JSON.stringify(state);
+  if (hash === _lastStateHash) return;
+  _lastStateHash = hash;
+  queueConfigPatch({ state });
 }
 
 // Source-level inputs (saved on the source doc, not on config)
@@ -333,6 +357,9 @@ export function loadBqInput() { return S.BQ_INPUT; }
 export async function saveSourceMethod(method) {
   S.SOURCE_METHOD = method || '';
   if (S.CURRENT_SOURCE) {
+    // local DATA_SOURCES も即時更新 → renderSourceView の lock 反映がリロード待ちにならない
+    const ds = S.DATA_SOURCES.find(d => d.id === S.CURRENT_SOURCE);
+    if (ds) ds.method = S.SOURCE_METHOD;
     try { await api.updateSource(S.CURRENT_SOURCE, { method: S.SOURCE_METHOD }); } catch (e) { console.warn(e); }
   }
 }
@@ -345,11 +372,22 @@ export function clearSourceRaw(sid) {
 
 // Presets: list replace semantics (matches frontend preset editor)
 export function getPresets() { return S.PRESETS_CACHE; }
+// API 呼び出しを直列化(同時並行で PUT すると Firestore batch が race して duplicates になる)。
+// 連続して呼ばれた場合は最新の list だけ送る。
+let _presetsSaveQueue = Promise.resolve();
+let _presetsSavePending = null;
 export function setPresets(list) {
   S.PRESETS_CACHE = list;
-  if (S.CURRENT_SOURCE) {
-    api.putPresets(S.CURRENT_SOURCE, list).catch(e => console.warn('[presets] save failed', e));
-  }
+  if (!S.CURRENT_SOURCE) return;
+  _presetsSavePending = list;
+  _presetsSaveQueue = _presetsSaveQueue
+    .then(async () => {
+      if (_presetsSavePending !== list) return; // 後発の setPresets に上書きされた
+      const toSave = _presetsSavePending;
+      _presetsSavePending = null;
+      try { await api.putPresets(S.CURRENT_SOURCE, toSave); }
+      catch (e) { console.warn('[presets] save failed', e); }
+    });
 }
 
 export function saveCurrentSource() {
@@ -367,7 +405,16 @@ async function applyConfig(cfg) {
   S.SELECTED_METRICS = S.METRIC_DEFS.map(m => m.key);
 
   S.DIMENSIONS = Array.isArray(cfg.dimensions)
-    ? cfg.dimensions.map(d => ({key: d.key, label: d.label, field: d.field || d.key, type: d.type || 'value'}))
+    ? cfg.dimensions.map(d => ({
+        key: d.key,
+        label: d.label,
+        field: d.field || d.key,
+        type: d.type || 'value',
+        expression: d.expression || '',
+        // type:'image' のサイズ指定 (任意。未設定なら CSS デフォルト)
+        ...(d.imageHeight != null ? { imageHeight: d.imageHeight } : {}),
+        ...(d.imageWidth  != null ? { imageWidth:  d.imageWidth  } : {}),
+      }))
     : ('dimensions' in cfg ? [] : JSON.parse(JSON.stringify(DEFAULT_DIMENSIONS)));
 
   S.VIEWS = {};
@@ -410,6 +457,12 @@ async function applyConfig(cfg) {
 
   // Resets
   S.FILTER_VALUES = {};
+  S.FILTER_OPTIONS = {};  // { [field]: [distinct values] } — フィルタ UI の選択肢 (backend or S.RAW から populate)
+  S.COLUMN_INFO = null;   // 設定画面プレビュー用 { columns: [{name, samples, isNumeric}], rowCount, sourceUpdatedAt }
+  // snapshot の updatedAt を sourceId ごとに保持。aggregate cacheKey に含めることで
+  // snapshot 更新時に自動 cache miss させる。loadSnapshotIfNeeded の getSnapshotMeta
+  // 結果を保存。S.SOURCE_SNAPSHOT_UPDATED_AT[sid] = '<iso8601>'。
+  if (!S.SOURCE_SNAPSHOT_UPDATED_AT) S.SOURCE_SNAPSHOT_UPDATED_AT = {};
   S.SELECTED_DIMS = ['action_date'];
   S.THRESHOLDS = {};
   S.THRESHOLD_METRICS = [];

@@ -2,6 +2,10 @@
 export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+// HTML エスケープした上で改行 (\n) を <br> に変換。複数行ラベル用。
+export function escapeHtmlNl(s) {
+  return escapeHtml(s).replace(/\n/g, '<br>');
+}
 
 export function hexToSoft(hex) {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '');

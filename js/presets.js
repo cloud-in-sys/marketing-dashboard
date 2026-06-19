@@ -1,4 +1,4 @@
-import { S, DEFAULT_VIEWS_INIT, BUILTIN_SEED_VERSION, getPresets, setPresets, syncCurrentTabState, getTabFilterState } from './state.js';
+import { S, DEFAULT_VIEWS_INIT, BUILTIN_SEED_VERSION, DEFAULT_TABLE_CONFIG, getPresets, setPresets, syncCurrentTabState, getTabFilterState, serializeFilterValues } from './state.js';
 import { escapeHtml, hexToSoft } from './utils.js';
 import { showModal } from './modal.js';
 import { hasPerm } from './auth.js';
@@ -119,7 +119,18 @@ export const BUILTIN_PRESET_DEFS = {
 };
 
 export function seedDefaultPresets() {
-  const existing = getPresets();
+  // 同名の builtin プリセット重複(過去の race による副作用)を起動時に掃除
+  const all = getPresets();
+  const seenNames = new Set();
+  let changed = false;
+  const deduped = all.filter(p => {
+    if (!p.builtin) return true;
+    if (seenNames.has(p.name)) { changed = true; return false; }
+    seenNames.add(p.name);
+    return true;
+  });
+  if (changed) setPresets(deduped);
+  const existing = deduped;
   // If presets already exist for this source, don't re-seed
   if (existing.length > 0) return;
   // First time for this source: create builtin presets for current VIEWS
@@ -163,6 +174,15 @@ export function renderPresets() {
     : '<div class="preset-empty">\u4fdd\u5b58\u306a\u3057</div>';
 }
 
+// FILTER_VALUES の Set ↔ Array 変換 (Array → Set のデシリアライズはここ、シリアライズは state.js から import)。
+function deserializeFilterValues(values) {
+  const out = {};
+  for (const [k, v] of Object.entries(values || {})) {
+    out[k] = Array.isArray(v) ? new Set(v) : v;
+  }
+  return out;
+}
+
 export function loadPresetIntoGlobals(p) {
   if (Array.isArray(p.charts) && p.charts.length) {
     // 全フィールド保持(lines, smoothLine, dotSize, lineWidth, showDataLabels 等)
@@ -176,6 +196,25 @@ export function loadPresetIntoGlobals(p) {
   S.THRESHOLDS = p.thresholds && typeof p.thresholds === 'object' ? JSON.parse(JSON.stringify(p.thresholds)) : {};
   S.THRESHOLD_METRICS = Array.isArray(p.thresholdMetrics) ? [...p.thresholdMetrics] : [];
   if (p.tableState) setTableState(p.tableState);
+  // プリセットにテーブル設定があれば復元、無ければデフォルトでリセット (前タブの設定が残らないように)。
+  S.TABLE_CONFIG = p.tableConfig
+    ? JSON.parse(JSON.stringify(p.tableConfig))
+    : JSON.parse(JSON.stringify(DEFAULT_TABLE_CONFIG));
+  if (!S.TABLE_CONFIG.table)        S.TABLE_CONFIG.table = {};
+  if (!S.TABLE_CONFIG.styles)       S.TABLE_CONFIG.styles = {};
+  if (!S.TABLE_CONFIG.headerStyles) S.TABLE_CONFIG.headerStyles = {};
+}
+
+// プリセット適用時のフィルタ上書き。
+// preset 優先: filterValues が無い場合は空にする(リセット)。
+export function applyPresetFilters(p) {
+  if (p && p.filterValues && typeof p.filterValues === 'object') {
+    S.FILTER_VALUES = deserializeFilterValues(p.filterValues);
+    S.FILTER_CONDITIONS = p.filterConditions ? JSON.parse(JSON.stringify(p.filterConditions)) : {};
+  } else {
+    S.FILTER_VALUES = {};
+    S.FILTER_CONDITIONS = {};
+  }
 }
 
 export async function savePresetPrompt() {
@@ -203,6 +242,9 @@ export async function savePresetPrompt() {
     thresholds: JSON.parse(JSON.stringify(S.THRESHOLDS)),
     thresholdMetrics: [...S.THRESHOLD_METRICS],
     tableState: getTableState(),
+    tableConfig: JSON.parse(JSON.stringify(S.TABLE_CONFIG || DEFAULT_TABLE_CONFIG)),
+    filterValues: serializeFilterValues(S.FILTER_VALUES),
+    filterConditions: JSON.parse(JSON.stringify(S.FILTER_CONDITIONS || {})),
   };
   const existing = list.findIndex(p => p.name === name && !p.builtin);
   if (existing >= 0) { entry.color = list[existing].color || entry.color; list[existing] = entry; }
@@ -242,6 +284,9 @@ export function syncPresetEdit() {
   p.thresholds = JSON.parse(JSON.stringify(S.THRESHOLDS));
   p.thresholdMetrics = [...S.THRESHOLD_METRICS];
   p.tableState = getTableState();
+  p.tableConfig = JSON.parse(JSON.stringify(S.TABLE_CONFIG || DEFAULT_TABLE_CONFIG));
+  p.filterValues = serializeFilterValues(S.FILTER_VALUES);
+  p.filterConditions = JSON.parse(JSON.stringify(S.FILTER_CONDITIONS || {}));
   p.color = document.getElementById('preset-color-picker').value || p.color;
   setPresets(list);
 }
@@ -255,6 +300,8 @@ export function enterPresetEdit(idx) {
   syncCurrentTabState();
   S.PRESET_EDIT_IDX = idx;
   loadPresetIntoGlobals(p);
+  applyPresetFilters(p);
+  emit('renderFilters');
   document.querySelectorAll('#view-nav .nav-item, #custom-nav .nav-item').forEach(b => b.classList.remove('active'));
   document.body.classList.add('preset-editing');
   document.body.classList.remove('readonly-tab', 'tab-custom');
@@ -293,18 +340,21 @@ function restoreFilterStateForTab(viewKey) {
 
 export function loadTabState(viewKey) {
   if (S.VIEWS[viewKey]) {
+    // 標準タブ: preset を全部優先(フィルタも preset の値を強制適用、per-user state からは復元しない)
     const view = S.VIEWS[viewKey];
     const presetName = view.presetName || view.label;
     const p = getPresets().find(x => x.name === presetName);
     if (p) {
       loadPresetIntoGlobals(p);
+      applyPresetFilters(p);
     } else {
       S.SELECTED_DIMS = [...view.dims];
       S.SELECTED_METRICS = S.METRIC_DEFS.map(m => m.key);
       S.THRESHOLDS = {};
       S.THRESHOLD_METRICS = [];
+      S.FILTER_VALUES = {};
+      S.FILTER_CONDITIONS = {};
     }
-    restoreFilterStateForTab(viewKey);
     return;
   }
   const st = S.TAB_STATES[viewKey];
@@ -313,6 +363,12 @@ export function loadTabState(viewKey) {
   S.SELECTED_METRICS = Array.isArray(st.metrics) ? [...st.metrics] : S.METRIC_DEFS.map(m => m.key);
   S.THRESHOLDS = st.thresholds ? JSON.parse(JSON.stringify(st.thresholds)) : {};
   S.THRESHOLD_METRICS = Array.isArray(st.thresholdMetrics) ? [...st.thresholdMetrics] : [];
+  S.TABLE_CONFIG = st.tableConfig
+    ? JSON.parse(JSON.stringify(st.tableConfig))
+    : JSON.parse(JSON.stringify(DEFAULT_TABLE_CONFIG));
+  if (!S.TABLE_CONFIG.table)         S.TABLE_CONFIG.table = {};
+  if (!S.TABLE_CONFIG.styles)        S.TABLE_CONFIG.styles = {};
+  if (!S.TABLE_CONFIG.headerStyles)  S.TABLE_CONFIG.headerStyles = {};
   restoreFilterStateForTab(viewKey);
 }
 
@@ -324,6 +380,7 @@ export function initTabStates() {
         metrics: S.METRIC_DEFS.map(m => m.key),
         thresholds: {},
         thresholdMetrics: [],
+        tableConfig: JSON.parse(JSON.stringify(DEFAULT_TABLE_CONFIG)),
       };
     }
   });
@@ -334,6 +391,7 @@ export function initTabStates() {
         metrics: S.METRIC_DEFS.map(m => m.key),
         thresholds: {},
         thresholdMetrics: [],
+        tableConfig: JSON.parse(JSON.stringify(DEFAULT_TABLE_CONFIG)),
       };
     }
   });

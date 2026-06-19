@@ -226,3 +226,56 @@ body.readonly-tab .panel[data-panel="thresholds"] .panel-body {
 .panel.collapsed .collapse-btn { transform: rotate(-90deg); }
 .panel.collapsed .panel-body { display: none; }
 .panel.collapsed .panel-head { border-bottom: none; border-radius: 10px; }
+
+/* ===== バックエンド集計中のロード表示 =====
+   render() の prefetch await の間、body.aggregating を付与する。
+   データ領域 (cards / charts / table) は薄く + ポインターイベント不可。
+   ビュー領域 (.view) の中央にスピナーを 1 つ出す。
+   タイトル/ヘッダー/サイドバー/データソースナビは触らない (即時切替の体感を維持)。 */
+body.aggregating #cards-grid,
+body.aggregating #charts-grid,
+body.aggregating #data-table {
+  opacity: 0.35;
+  pointer-events: none;
+  transition: opacity 0.15s ease-in;
+  filter: grayscale(0.3);
+}
+/* 中央スピナー: スクロール位置に関係なく「ダッシュボード可視領域の中央」に
+   常に表示する。.main は overflow: auto なのでスクロール時に .view 内部の
+   絶対配置だと画面外へ流れてしまう → position: fixed + サイドバー幅を補正。
+   サイドバー折り畳み時 (body.sidebar-collapsed) は補正を切る。 */
+body.aggregating::after {
+  content: '';
+  position: fixed;
+  top: 50%;
+  /* デフォルト: サイドバー 230px の中央寄り 115px ずれ */
+  left: calc(50% + 115px);
+  width: 36px;
+  height: 36px;
+  margin: -18px 0 0 -18px;
+  border: 3px solid rgba(148, 163, 184, 0.25);
+  border-top-color: var(--tab-accent, #2563eb);
+  border-radius: 50%;
+  animation: aggregating-spin 0.8s linear infinite;
+  pointer-events: none;
+  z-index: 1000;
+}
+body.aggregating.sidebar-collapsed::after {
+  left: 50%;
+}
+/* 設定画面ではスピナーを表示しない (settings-mode 中は .view 自体非表示) */
+body.settings-mode.aggregating::after { display: none; }
+body.settings-mode.aggregating #row-count { animation: none; color: inherit; font-weight: inherit; }
+@keyframes aggregating-spin {
+  to { transform: rotate(360deg); }
+}
+/* 集計中の「読み込み中...」をオレンジでパルス */
+@keyframes loading-pulse {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 1; }
+}
+body.aggregating #row-count {
+  color: #f97316;        /* orange-500 */
+  font-weight: 600;
+  animation: loading-pulse 1s ease-in-out infinite;
+}

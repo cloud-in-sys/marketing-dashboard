@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { db, auth } from '../firebase.js';
-import { adminOnly } from '../middleware/auth.js';
+import { adminOnly, invalidateUserCache } from '../middleware/auth.js';
 import { ADMIN_PERMS, VIEWER_PERMS, PERM_KEYS } from '../utils/perms.js';
 import { httpError } from '../middleware/error.js';
 
@@ -12,28 +12,22 @@ app.get('/', adminOnly, async c => {
   return c.json({ users: snap.docs.map(d => d.data()) });
 });
 
-// Create a new email/password user (admin only)
+// Pre-register a user by email (admin only). Google ログインで本人が初回サインインした時に
+// middleware/auth.js がメール一致で本物の UID へ doc を移行する。
 app.post('/', adminOnly, async c => {
   const body = await c.req.json();
   const email = (body.email || '').trim();
-  const password = body.password || '';
   const name = (body.name || '').trim() || email.split('@')[0] || 'User';
   const isAdmin = !!body.isAdmin;
-  if (!email || !password) throw httpError(400, 'email and password are required');
-  // Password policy: 8文字以上 + 英字 + 数字を含む
-  if (password.length < 8) throw httpError(400, 'パスワードは8文字以上で設定してください');
-  if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-    throw httpError(400, 'パスワードには英字と数字を両方含めてください');
-  }
+  if (!email) throw httpError(400, 'email is required');
 
-  let userRecord;
-  try {
-    userRecord = await auth.createUser({ email, password, displayName: name });
-  } catch (e) {
-    throw httpError(400, e.message || 'Failed to create auth user');
-  }
+  // 既に同 email で登録されていないかチェック
+  const dup = await db.collection('users').where('email', '==', email).limit(1).get();
+  if (!dup.empty) throw httpError(400, 'このメールアドレスは既に登録されています');
+
+  const pendingId = 'pending_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   const profile = {
-    uid: userRecord.uid,
+    uid: pendingId,
     email,
     name,
     photoURL: '',
@@ -41,7 +35,7 @@ app.post('/', adminOnly, async c => {
     perms: isAdmin ? { ...ADMIN_PERMS } : { ...VIEWER_PERMS },
     createdAt: new Date().toISOString(),
   };
-  await db.collection('users').doc(userRecord.uid).set(profile);
+  await db.collection('users').doc(pendingId).set(profile);
   return c.json(profile);
 });
 
@@ -77,6 +71,7 @@ app.put('/:uid', adminOnly, async c => {
     }
   }
   await ref.update(patch);
+  invalidateUserCache(uid);  // 権限/グループ変更を 60s 待たずに反映
   return c.json({ ok: true });
 });
 
@@ -97,6 +92,7 @@ app.delete('/:uid', adminOnly, async c => {
   // Delete Firestore record and Firebase Auth account
   await ref.delete();
   try { await auth.deleteUser(uid); } catch (e) { /* already gone */ }
+  invalidateUserCache(uid);
   return c.json({ ok: true });
 });
 

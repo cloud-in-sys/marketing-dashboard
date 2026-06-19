@@ -160,7 +160,8 @@ echo -n "GOCSPX-xxxx-あなたのクライアントシークレット" | \
 
 1. <https://console.firebase.google.com/project/{{PROJECT_ID}}/authentication/providers>
 2. **Google** 有効化（サポートメール: `{{ADMIN_EMAIL}}`）
-3. **メール/パスワード** 有効化
+
+UI からのログインは Google SSO のみ。メール/パスワード認証は廃止済み (フロントエンドにフォームなし、バックエンドミドルウェアで `google.com` 以外のプロバイダを 403 拒否)。
 
 ## Step 12: コードをコピーして設定変更
 
@@ -177,21 +178,23 @@ cd /path/to/new/dashboard
 ### 12-2. `firebase.json` 更新
 `rewrites` 内の `serviceId` を確認（`dashboard-backend` のまま、変更不要）
 
-### 12-3. `js/config.js` 更新
+### 12-3. `app-config.js` 更新
+リポジトリの `app-config.example.js` を `app-config.js` にコピーして以下を埋める:
 ```javascript
-export const FIREBASE_CONFIG = {
-  apiKey: 'xxx',         // Step 4 で取得した値
-  authDomain: '{{PROJECT_ID}}.firebaseapp.com',
-  projectId: '{{PROJECT_ID}}',
-  appId: '{{APP_ID}}',
-};
-export const API_BASE = '';
-export const APP_CHECK_SITE_KEY = '';  // 必要なら設定
-export const BRAND = {
-  logoUrl: 'assets/logo.png',
-  appName: '{{APP_NAME}}',
+window.__APP_CONFIG__ = {
+  firebase: {
+    apiKey: 'xxx',                                  // Step 4 で取得した値
+    authDomain: '{{PROJECT_ID}}.firebaseapp.com',
+    projectId: '{{PROJECT_ID}}',
+    appId: '{{APP_ID}}',
+  },
+  apiBase: '',
+  appCheckSiteKey: '',                              // 必要なら設定
+  features: { useBackendAggregate: true },
 };
 ```
+
+ロゴ・タイトル・ヘッダー色などのブランディングは **デプロイ後に管理者設定 > ブランディング画面から設定** する (Firestore の `config/branding` doc に保存される)。`js/config.js` 側に `BRAND` / `THEME` 定数は存在しません。
 
 ### 12-4. `backend/.env` 作成
 ```
@@ -201,39 +204,24 @@ GOOGLE_OAUTH_CLIENT_ID=519497398571-xxx.apps.googleusercontent.com
 OAUTH_REDIRECT_URI=https://dashboard-backend-{{PROJECT_NUMBER}}.{{REGION}}.run.app/api/google/auth/callback
 ```
 
-### 12-5. ロゴ差し替え
-ブランドロゴを会社ごとに差し替える。
+### 12-5. ブランディング設定
+ロゴ・favicon・タイトル・サブタイトル・ヘッダー色は **デプロイ後に画面 (管理者設定 > ブランディング) から設定** する。assets/ フォルダや config.js 編集は不要。
 
-**配置場所**: `assets/logo.png`（このファイル1つだけ置き換えればOK）
+**設定可能な項目**:
+| 項目 | 推奨 |
+|---|---|
+| タイトル | 例: `Marketing Metrics` (デフォルト) |
+| サブタイトル | 例: `DASHBOARD` (デフォルト) |
+| 画像が読み込めない時の代替テキスト (alt) | 例: 〇〇ダッシュボード |
+| ロゴ画像 | 400×120px 程度 / PNG・SVG / 透明背景 / 最大 200KB |
+| Favicon | 64×64px or 128×128px / PNG / 最大 200KB |
+| ヘッダー背景 (3色グラデーション) | 任意。デフォルトは白 |
+| ヘッダー文字色 | 任意。デフォルトは `#1e293b` (ダークネイビー) |
+| ロゴ画像フィルタ | そのまま / 白化 (暗い背景用) / 黒化 (明るい背景用) |
 
-**推奨サイズ・形式**:
-| 用途 | 推奨サイズ | 備考 |
-|---|---|---|
-| ヘッダー表示 | 36px 高さ（幅は比率維持、最大200px） | 横長OK |
-| ログイン画面 | 80x80px | 正方形推奨 |
-| ブラウザタブ（favicon） | 32x32px 以上 | 同ファイルが流用される |
-| Apple Touch Icon | 180x180px 推奨 | iOS ホーム画面用 |
+**保存先**: Firestore `config/branding` doc にテナント全体で共通の値として保存。GET は public エンドポイント (ログイン画面からも参照されるため)、PUT は `manageBranding` 権限保持者のみ。
 
-実装上は**どのサイズでも動く**（CSS で自動リサイズ）。1つの画像で全部の用途に使えるよう **正方形の透過PNG（256x256 程度）** が一番汎用的。
-
-**差し替え手順**:
-```bash
-# 古いロゴをバックアップして新しいロゴを配置
-cp assets/logo.png assets/logo.png.bak 2>/dev/null || true
-cp /path/to/new-logo.png assets/logo.png
-```
-
-**フォールバック**: `assets/logo.png` が存在しない、または読み込み失敗時は「LOGO」というテキストが表示される。`js/config.js` の `BRAND.appName` がアプリ名として別途表示される（ログイン画面タイトル等）。
-
-**適用箇所**（`index.html` で参照済み、コード修正不要）:
-- ヘッダー左上（`<div class="logo" id="brand-logo">`）
-- ログイン画面中央（`<div class="login-logo" id="login-brand-logo">`）
-- favicon（`<link rel="icon" href="assets/logo.png">`）
-- Apple touch icon（`<link rel="apple-touch-icon" href="assets/logo.png">`）
-
-**キャッシュ注意**: ロゴ変更後もブラウザキャッシュで旧ロゴが残ることがある。シークレットウィンドウで確認 or スーパーリロード（Cmd+Shift+R）。
-
-**ブランド名の変更**: `js/config.js` の `BRAND.appName` を書き換える（ログイン画面タイトル、ロゴ画像が無い時のフォールバック表示に使用）。
+**権限**: 初回管理者は自動で全権限を持つ。他のユーザーに編集権限を与えるには、管理者設定 > ユーザー一覧 > 対象ユーザー > 操作権限の「ブランディング」をオン。
 
 ### 12-6. 初期管理者設定
 後で Firestore に直接作成する（Step 15）。

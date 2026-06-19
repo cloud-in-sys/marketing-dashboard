@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import crypto from 'crypto';
-import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { db } from '../firebase.js';
 import { getSecret } from '../utils/secrets.js';
@@ -110,113 +109,6 @@ app.delete('/connection', requirePerm('connectAccount'), async c => {
     await tokenDoc(uid).delete();
   }
   return c.json({ ok: true });
-});
-
-async function getAuthorizedClient(uid) {
-  const snap = await tokenDoc(uid).get();
-  if (!snap.exists) throw httpError(401, 'Google not connected');
-  const { refreshToken, accessToken, expiryDate } = snap.data();
-  const oauth = await getOAuthClient();
-  oauth.setCredentials({
-    refresh_token: refreshToken,
-    access_token: accessToken,
-    expiry_date: expiryDate,
-  });
-  oauth.on('tokens', async tokens => {
-    const patch = { updatedAt: new Date().toISOString() };
-    if (tokens.access_token) patch.accessToken = tokens.access_token;
-    if (tokens.expiry_date) patch.expiryDate = tokens.expiry_date;
-    if (tokens.refresh_token) patch.refreshToken = tokens.refresh_token;
-    await tokenDoc(uid).set(patch, { merge: true });
-  });
-  // トークンの有効性を事前チェック — invalid_grant なら自動削除して再連携を促す
-  try {
-    await oauth.getAccessToken();
-  } catch (e) {
-    const msg = e.response?.data?.error || e.message || '';
-    if (msg === 'invalid_grant' || /invalid_grant|invalid_rapt/.test(String(e))) {
-      await tokenDoc(uid).delete();
-      throw httpError(401, 'Google連携の有効期限が切れました。再度連携してください。');
-    }
-    throw e;
-  }
-  return oauth;
-}
-
-// POST /api/google/sheets/fetch { url, tab }
-app.post('/sheets/fetch', async c => {
-  const uid = c.get('uid');
-  const { url, tab } = await c.req.json();
-  if (!url || !tab) throw httpError(400, 'url and tab are required');
-  const idMatch = /\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/.exec(url);
-  const spreadsheetId = idMatch ? idMatch[1] : (/^[a-zA-Z0-9_-]{20,}$/.test(url.trim()) ? url.trim() : null);
-  if (!spreadsheetId) throw httpError(400, 'Invalid spreadsheet URL');
-
-  const auth = await getAuthorizedClient(uid);
-  const sheets = google.sheets({ version: 'v4', auth });
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: tab });
-  const values = res.data.values || [];
-  if (values.length < 2) return c.json({ rows: [] });
-  const header = values[0].map(h => String(h).trim());
-  const rows = [];
-  for (let i = 1; i < values.length; i++) {
-    const row = values[i];
-    if (!row || row.every(v => v === '' || v == null)) continue;
-    const obj = {};
-    header.forEach((h, j) => { obj[h] = row[j] != null ? String(row[j]) : ''; });
-    rows.push(obj);
-  }
-  return c.json({ rows });
-});
-
-// POST /api/google/bq/query { projectId, query }
-app.post('/bq/query', async c => {
-  const uid = c.get('uid');
-  const { projectId, query } = await c.req.json();
-  if (!projectId || !query) throw httpError(400, 'projectId and query are required');
-
-  const auth = await getAuthorizedClient(uid);
-  const bigquery = google.bigquery({ version: 'v2', auth });
-
-  // Start query (returns first page)
-  const qres = await bigquery.jobs.query({
-    projectId,
-    requestBody: {
-      query,
-      useLegacySql: false,
-      maxResults: 50000,
-      timeoutMs: 60000,
-    },
-  });
-
-  const jobId = qres.data.jobReference?.jobId;
-  const location = qres.data.jobReference?.location;
-  const fields = (qres.data.schema?.fields || []).map(f => f.name);
-
-  const toRow = (r) => {
-    const obj = {};
-    (r.f || []).forEach((cell, i) => { obj[fields[i]] = cell.v; });
-    return obj;
-  };
-
-  const rows = (qres.data.rows || []).map(toRow);
-  let pageToken = qres.data.pageToken;
-  const MAX_ROWS = 1000000; // safety cap (1M rows)
-
-  // Paginate through remaining pages
-  while (pageToken && rows.length < MAX_ROWS) {
-    const next = await bigquery.jobs.getQueryResults({
-      projectId,
-      jobId,
-      location,
-      pageToken,
-      maxResults: 50000,
-    });
-    (next.data.rows || []).forEach(r => rows.push(toRow(r)));
-    pageToken = next.data.pageToken;
-  }
-
-  return c.json({ rows, fields, totalRows: rows.length });
 });
 
 export default app;

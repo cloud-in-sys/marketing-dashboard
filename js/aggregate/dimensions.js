@@ -1,4 +1,5 @@
-import { S, DOW_LABELS, DOW_ORDER } from './state.js';
+import { S, DOW_LABELS, DOW_ORDER } from '../state.js';
+import { getBackendGroups } from './aggregateCache.js';
 
 // ===== Dimensions & Grouping (optimized) =====
 let dimMapRef = null;
@@ -36,7 +37,12 @@ export function dimValue(row, key) {
 }
 
 export function dimSort(key, a, b) {
-  if (key === 'dow') return (DOW_ORDER[a] ?? 99) - (DOW_ORDER[b] ?? 99);
+  ensureDimMap();
+  const def = dimMap.get(key);
+  // ディメンション type が 'dow' なら曜日固定順(日月火水木金土)で並べる
+  if (def?.type === 'dow' || key === 'dow') {
+    return (DOW_ORDER[a] ?? 99) - (DOW_ORDER[b] ?? 99);
+  }
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -50,6 +56,10 @@ export function dimLabel(key) {
 const _groupCache = new WeakMap();
 
 export function groupRows(rows, dims) {
+  // バックエンド集計の prefetch 済み結果があればそれを使う。
+  // 返り値要素は { vals, rows: [], agg } — レンダラは g.agg を優先参照する。
+  const backend = getBackendGroups(rows, dims);
+  if (backend) return backend;
   const dimsKey = dims.join('\u0001');
   let cache = _groupCache.get(rows);
   if (cache && cache.has(dimsKey)) return cache.get(dimsKey);
