@@ -155,6 +155,30 @@ function dimCellHtml(dimKey, value, extraClasses = '', innerHtml = null, dimIdx 
 
 // Build hierarchy from pre-grouped data (avoids re-scanning rows)
 let levelKeys = [];
+// 全 dim 階層の parent groupKey を保持 (折りたたみ中の subtree も含む)。
+// collapse-all で「DOM に出ていない deeper level の key」も拾うのに使う。
+// これが無いと: 「全閉じ → +」で開いたとき、未登録の子 key が default=展開扱いになり cascade してしまう。
+let allGroupKeys = new Set();
+
+function collectGroupKeys(groups, totalDimCount) {
+  const keys = new Set();
+  function walk(bucket, dimIndex, parentPath) {
+    if (dimIndex >= totalDimCount - 1) return; // 最終 dim は leaf。toggle 無し
+    const byVal = new Map();
+    for (const g of bucket) {
+      const v = g.vals[dimIndex];
+      if (!byVal.has(v)) byVal.set(v, []);
+      byVal.get(v).push(g);
+    }
+    for (const [val, sub] of byVal) {
+      const path = [...parentPath, val];
+      keys.add(makeGroupKey(path));
+      walk(sub, dimIndex + 1, path);
+    }
+  }
+  walk(groups, 0, []);
+  return keys;
+}
 
 function buildFromGroups(groups, dims, metrics, totalDimCount) {
   // groups = [{vals: [v0, v1, ...], rows: [...], agg: {...}}, ...]
@@ -162,6 +186,8 @@ function buildFromGroups(groups, dims, metrics, totalDimCount) {
   for (let i = 0; i < groups.length; i++) {
     if (!groups[i].agg) groups[i].agg = aggregate(groups[i].rows);
   }
+
+  allGroupKeys = collectGroupKeys(groups, totalDimCount);
 
   // Build nested structure: group by dim[0], then dim[1], etc.
   return buildLevel(groups, dims, 0, totalDimCount, metrics, []);
@@ -537,8 +563,9 @@ document.getElementById('table-toolbar').addEventListener('click', e => {
   if (action === 'expand-all') {
     collapsedGroups.clear();
   } else if (action === 'collapse-all') {
-    // Collapse all levels: need to collect all keys by re-rendering first expanded, then collapsing
-    document.querySelectorAll('.pivot-toggle').forEach(t => collapsedGroups.add(t.dataset.pivotKey));
+    // DOM の querySelectorAll では subtree が collapsed のときに deeper level の key を拾えないので、
+    // データツリーから事前収集した allGroupKeys を使う (collectGroupKeys 参照)。
+    for (const k of allGroupKeys) collapsedGroups.add(k);
   } else if (action === 'expand-level' && level != null) {
     // Expand all at this level
     document.querySelectorAll(`.pivot-toggle[data-pivot-level="${level}"]`).forEach(t => {

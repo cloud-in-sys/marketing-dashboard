@@ -477,6 +477,37 @@ tbody tr:hover td.cell-yellow { background: rgba(245, 158, 11, 0.28); }
 .pivot-leaf-row.pivot-depth-4 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
 .pivot-leaf-row.pivot-depth-4 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
 
+/* 固定列の場合、stairstep の transparent だと横スクロール時にメトリクス側のセルが透けてしまう。
+   各 dim 列の depth-N-bg で塗りつぶして透過を防ぐ (非固定列は従来どおり transparent)。 */
+.pivot-depth-1.pivot-parent-row td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-2.pivot-parent-row td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-3.pivot-parent-row td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-4.pivot-parent-row td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-1 td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-2 td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-3 td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-4 td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-0-bg, linear-gradient(180deg, #eef2ff 0%, #e8ecf8 100%));
+}
+.pivot-depth-2.pivot-parent-row td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-3.pivot-parent-row td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-4.pivot-parent-row td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-2 td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-3 td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-4 td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-1-bg, linear-gradient(180deg, #f1f5f9 0%, #edf0f5 100%));
+}
+.pivot-depth-3.pivot-parent-row td.col-frozen[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-4.pivot-parent-row td.col-frozen[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-3 td.col-frozen[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-4 td.col-frozen[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-2-bg, #f8fafc);
+}
+.pivot-depth-4.pivot-parent-row td.col-frozen[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-4 td.col-frozen[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-3-bg, #fafbfc);
+}
+
 /* 親行・リーフ行の hover: depth-N と transparent ルールの後に置くことで cascade で勝つ。
    メトリクス列 + 前列の透明 dim 列の両方を hover 色で塗る。 */
 .pivot-parent-row:hover td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
