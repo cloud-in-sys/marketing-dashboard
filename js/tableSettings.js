@@ -31,6 +31,20 @@ function ensureConfig() {
   if (!c.sort) c.sort = {};
   return c;
 }
+// sort スキーマ: 旧 { col, dir, custom } → 新 { list: [{ col, dir, custom }, ...] }
+// table.js 側の sortListFrom() で実行時に同様の互換読み出しをする。
+function ensureSortList(cfg) {
+  if (!cfg.sort) cfg.sort = {};
+  if (!Array.isArray(cfg.sort.list)) {
+    cfg.sort.list = cfg.sort.col
+      ? [{ col: cfg.sort.col, dir: cfg.sort.dir || 'asc', custom: cfg.sort.custom || '' }]
+      : [];
+    delete cfg.sort.col;
+    delete cfg.sort.dir;
+    delete cfg.sort.custom;
+  }
+  return cfg.sort.list;
+}
 function setField(bucket, key, field, value) {
   const c = ensureConfig();
   if (key == null) {
@@ -73,7 +87,8 @@ function decoControls(style, roleNs) {
       <span>px</span>
       <input type="number" min="8" max="48" step="1" data-table-role="${roleNs}.fontSize" value="${sizeVal}" placeholder="–">
     </label>
-    ${alignControls(style, roleNs)}`;
+    ${alignControls(style, roleNs)}
+    ${vAlignControls(style, roleNs)}`;
 }
 // 配置 (左/中央/右)。未指定 = デフォルト (dim は左、metric は右など列ごとの既定)。
 function alignControls(style, roleNs) {
@@ -89,6 +104,21 @@ function alignControls(style, roleNs) {
     ${opt('center', '↔', '中央揃え')}
     ${opt('right',  '→', '右揃え')}
     <button type="button" class="table-settings-clear" data-table-role="clear:${roleNs}.align" title="配置を指定なしに戻す" aria-label="クリア"${cur ? '' : ' disabled'}>×</button>
+  </span>`;
+}
+// 縦方向の配置 (上/中央/下)。未指定 = ブラウザのデフォルト (middle)。改行を含むラベルで他列の揃え方を調整する用途。
+function vAlignControls(style, roleNs) {
+  const cur = style.vAlign || '';
+  const opt = (v, label, title) => `
+    <label class="table-settings-deco table-settings-align" title="${title}">
+      <input type="radio" name="${roleNs}.vAlign" data-table-role="${roleNs}.vAlign" value="${v}"${cur === v ? ' checked' : ''}>
+      <span>${label}</span>
+    </label>`;
+  return `<span class="table-settings-align-group">
+    ${opt('top',    '↑', '上揃え')}
+    ${opt('middle', '↕', '中央揃え (縦)')}
+    ${opt('bottom', '↓', '下揃え')}
+    <button type="button" class="table-settings-clear" data-table-role="clear:${roleNs}.vAlign" title="縦配置を指定なしに戻す" aria-label="クリア"${cur ? '' : ' disabled'}>×</button>
   </span>`;
 }
 // 1 つのカラーピッカー + (デフォルト) タグ + ✕ クリアボタン。
@@ -157,7 +187,7 @@ export function renderTableSettingsPanel() {
   // ディメンション階層別の背景色設定。
   // dim 数 N に対して N 個の control を出す:
   //   0 〜 N-2 → 親行 (集計行) bg, CSS 変数 --depth-i-bg
-  //   N-1     → リーフ (データ行) bg, CSS 変数 --leaf-bg
+  //   N-1     → データ行 (= 集計じゃない 1 件ごとの行) bg, CSS 変数 --leaf-bg
   const numDims = (S.SELECTED_DIMS || []).length;
   const depthDefaults = ['#fef3c7', '#fef9c3', '#ecfccb', '#dcfce7', '#dbeafe', '#ffffff'];
   const depthFields = [];
@@ -181,6 +211,23 @@ export function renderTableSettingsPanel() {
         <div class="table-settings-inline">
           ${defField('背景', 'table.headerBg', t.headerBg, '#eef2ff')}
           ${defField('文字', 'table.headerColor', t.headerColor, '#2563eb')}
+        </div>
+        <div class="table-settings-inline">
+          <span class="table-settings-align-group">
+            <label class="table-settings-deco table-settings-align" title="上揃え">
+              <input type="radio" name="table.headerVAlign" data-table-role="table.headerVAlign" value="top"${t.headerVAlign === 'top' ? ' checked' : ''}>
+              <span>↑</span>
+            </label>
+            <label class="table-settings-deco table-settings-align" title="中央揃え (縦)">
+              <input type="radio" name="table.headerVAlign" data-table-role="table.headerVAlign" value="middle"${t.headerVAlign === 'middle' ? ' checked' : ''}>
+              <span>↕</span>
+            </label>
+            <label class="table-settings-deco table-settings-align" title="下揃え">
+              <input type="radio" name="table.headerVAlign" data-table-role="table.headerVAlign" value="bottom"${t.headerVAlign === 'bottom' ? ' checked' : ''}>
+              <span>↓</span>
+            </label>
+            <button type="button" class="table-settings-clear" data-table-role="clear:table.headerVAlign" title="縦配置を指定なしに戻す" aria-label="クリア"${t.headerVAlign ? '' : ' disabled'}>×</button>
+          </span>
         </div>
         <div class="table-settings-field-title">総計行</div>
         <div class="table-settings-inline">
@@ -219,6 +266,21 @@ export function renderTableSettingsPanel() {
             </label>
             <button type="button" class="table-settings-clear" data-table-role="clear:table.totalAlign" title="配置を指定なしに戻す" aria-label="クリア"${t.totalAlign ? '' : ' disabled'}>×</button>
           </span>
+          <span class="table-settings-align-group">
+            <label class="table-settings-deco table-settings-align" title="上揃え">
+              <input type="radio" name="table.totalVAlign" data-table-role="table.totalVAlign" value="top"${t.totalVAlign === 'top' ? ' checked' : ''}>
+              <span>↑</span>
+            </label>
+            <label class="table-settings-deco table-settings-align" title="中央揃え (縦)">
+              <input type="radio" name="table.totalVAlign" data-table-role="table.totalVAlign" value="middle"${t.totalVAlign === 'middle' ? ' checked' : ''}>
+              <span>↕</span>
+            </label>
+            <label class="table-settings-deco table-settings-align" title="下揃え">
+              <input type="radio" name="table.totalVAlign" data-table-role="table.totalVAlign" value="bottom"${t.totalVAlign === 'bottom' ? ' checked' : ''}>
+              <span>↓</span>
+            </label>
+            <button type="button" class="table-settings-clear" data-table-role="clear:table.totalVAlign" title="縦配置を指定なしに戻す" aria-label="クリア"${t.totalVAlign ? '' : ' disabled'}>×</button>
+          </span>
         </div>
         <label class="table-settings-field" style="margin-top:10px">
           <input type="checkbox" data-table-role="root.showTotal"${cfg.showTotal ? ' checked' : ''}>
@@ -230,7 +292,7 @@ export function renderTableSettingsPanel() {
         </label>
         <div class="table-settings-field-title">階層別 行背景</div>
         ${depthFields.join('') || '<div class="preset-empty">ディメンションを選択してください</div>'}
-        <label class="table-settings-field" style="margin-top:10px" title="ONで親行/リーフ行のスタイルを列ごとの設定より優先 (閾値カラーは維持)">
+        <label class="table-settings-field" style="margin-top:10px" title="ONで親行/データ行のスタイルを列ごとの設定より優先 (閾値カラーは維持)">
           <input type="checkbox" data-table-role="table.depthPriority"${t.depthPriority ? ' checked' : ''}>
           <span>階層別のスタイルを列ごとより優先</span>
         </label>
@@ -302,31 +364,50 @@ function filterRow(c, cfg) {
 }
 
 // ===== 並び替え =====
+// 複数キーソート対応: 並び替え 1 → 2 → 3 ... の順で評価し、最初に差が出たもので決定。
+// 各エントリは旧 sort.col / sort.dir / sort.custom と同じ shape ({col, dir, custom})。
+//
+// UI は cfg.sort.list を素直にレンダリングする (col 未設定の項目も非表示にしない)。
+// 初回オープン時のために list が空なら 1 件の空エントリで初期化しておく → ユーザは
+// プルダウンから列を選ぶだけで動き出す。
 function sortBlock(columns, cfg) {
-  const sort = cfg.sort || {};
-  const colKey = sort.col || '';
-  const dir = sort.dir || 'asc';
-  const custom = sort.custom || '';
   if (!columns.length) return '<div class="preset-empty">表示中の列がありません</div>';
+  const list = ensureSortList(cfg);
+  if (list.length === 0) list.push({ col: '', dir: 'asc', custom: '' });
+  const renderItem = (item, i) => {
+    const colKey = item.col || '';
+    const dir = item.dir || 'asc';
+    const custom = item.custom || '';
+    return `
+    <div class="sort-item" data-sort-idx="${i}" style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-top:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <strong style="font-size:12px;color:var(--muted)">並べ替え ${i + 1}</strong>
+        ${list.length > 1 ? `<button type="button" class="link-btn" data-table-role="remove-sort:${i}" title="この並び替えを削除">× 削除</button>` : ''}
+      </div>
+      <select data-table-role="sortItem:${i}.col" style="width:100%">
+        <option value=""${!colKey ? ' selected' : ''}>指定なし</option>
+        ${columns.map(c => `<option value="${escapeHtml(c.key)}"${colKey === c.key ? ' selected' : ''}>${escapeHtml(c.label)}</option>`).join('')}
+      </select>
+      <div class="table-settings-inline" style="margin-top:8px">
+        <label class="table-settings-deco" title="昇順">
+          <input type="radio" name="sortItem.${i}.dir" data-table-role="sortItem:${i}.dir" value="asc"${dir === 'asc' ? ' checked' : ''}>
+          <span>昇順</span>
+        </label>
+        <label class="table-settings-deco" title="降順">
+          <input type="radio" name="sortItem.${i}.dir" data-table-role="sortItem:${i}.dir" value="desc"${dir === 'desc' ? ' checked' : ''}>
+          <span>降順</span>
+        </label>
+      </div>
+      <div class="table-settings-field-title" style="margin-top:8px">カスタム順序 <small style="font-weight:400;color:var(--muted)">(任意・1 行 1 値、リストにある値が先に並ぶ)</small></div>
+      <textarea data-table-role="sortItem:${i}.custom" rows="3" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:12px;border:1px solid var(--border);border-radius:6px;padding:6px 8px" placeholder="例:\n広告A\n広告B\n広告C">${escapeHtml(custom)}</textarea>
+    </div>`;
+  };
   return `
-    <div class="table-settings-field-title">並べ替え列</div>
-    <select data-table-role="sort.col" style="width:100%">
-      <option value=""${!colKey ? ' selected' : ''}>指定なし</option>
-      ${columns.map(c => `<option value="${escapeHtml(c.key)}"${colKey === c.key ? ' selected' : ''}>${escapeHtml(c.label)}</option>`).join('')}
-    </select>
-    <div class="table-settings-inline" style="margin-top:8px">
-      <label class="table-settings-deco" title="昇順">
-        <input type="radio" name="sort.dir" data-table-role="sort.dir" value="asc"${dir === 'asc' ? ' checked' : ''}>
-        <span>昇順</span>
-      </label>
-      <label class="table-settings-deco" title="降順">
-        <input type="radio" name="sort.dir" data-table-role="sort.dir" value="desc"${dir === 'desc' ? ' checked' : ''}>
-        <span>降順</span>
-      </label>
-      <button type="button" class="link-btn" data-table-role="clear:sort" title="並び替えをリセット">×</button>
+    ${list.map(renderItem).join('')}
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button type="button" class="link-btn" data-table-role="add-sort">+ 並び替えを追加</button>
+      ${list.some(it => it && it.col) ? '<button type="button" class="link-btn" data-table-role="clear:sort" title="並び替えを全てリセット">すべてリセット</button>' : ''}
     </div>
-    <div class="table-settings-field-title">カスタム順序 <small style="font-weight:400;color:var(--muted)">(任意・1 行 1 値、リストにある値が先に並ぶ)</small></div>
-    <textarea data-table-role="sort.custom" rows="4" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:12px;border:1px solid var(--border);border-radius:6px;padding:6px 8px" placeholder="例:\n広告A\n広告B\n広告C">${escapeHtml(custom)}</textarea>
   `;
 }
 
@@ -346,6 +427,20 @@ function onPanelChange(e) {
     emit('render');
     return;
   }
+  // 複数キーソート: sortItem:<idx>.<field>
+  if (role.startsWith('sortItem:')) {
+    const m = role.match(/^sortItem:(\d+)\.(\w+)$/);
+    if (m) {
+      const cfg = ensureConfig();
+      const list = ensureSortList(cfg);
+      const idx = +m[1];
+      const field = m[2];
+      while (list.length <= idx) list.push({ col: '', dir: 'asc', custom: '' });
+      list[idx][field] = el.value;
+      emit('render');
+      return;
+    }
+  }
   // {bucket}.{field}   or   {bucket}:{metricKey}.{field}
   const dot = role.lastIndexOf('.');
   if (dot < 0) return;
@@ -363,6 +458,28 @@ function onPanelChange(e) {
 }
 
 function onPanelClick(e) {
+  // 並び替えを追加
+  const addS = e.target.closest('[data-table-role="add-sort"]');
+  if (addS) {
+    const cfg = ensureConfig();
+    const list = ensureSortList(cfg);
+    list.push({ col: '', dir: 'asc', custom: '' });
+    renderTableSettingsPanel();
+    // 並び替え条件が空 (col='') のままなら render しない方が無駄が無いが、UI 上の整合のため emit
+    emit('render');
+    return;
+  }
+  // 並び替えを削除 (remove-sort:<idx>)
+  const rmS = e.target.closest('[data-table-role^="remove-sort:"]');
+  if (rmS) {
+    const idx = +rmS.dataset.tableRole.slice('remove-sort:'.length);
+    const cfg = ensureConfig();
+    const list = ensureSortList(cfg);
+    if (Number.isInteger(idx) && idx >= 0 && idx < list.length) list.splice(idx, 1);
+    renderTableSettingsPanel();
+    emit('render');
+    return;
+  }
   // 0 除外ショートカット (フィルタ): filter-zero:<colKey>
   const fz = e.target.closest('[data-table-role^="filter-zero:"]');
   if (fz) {
@@ -456,6 +573,7 @@ function styleToCss(s, includeDeco = true) {
     if (s.fontSize) parts.push(`font-size:${s.fontSize}px`);
   }
   if (s.align) parts.push(`text-align:${s.align}`);
+  if (s.vAlign) parts.push(`vertical-align:${s.vAlign}`);
   return parts.join(';');
 }
 // 列セル (データ td) のスタイル。key は metric key または 'dim:<dimKey>'。
@@ -469,7 +587,7 @@ export function buildHeaderCellStyle(key) {
 // テーブル全体のデフォルトスタイル: CSS 変数で各セルにカスケード。
 //   --header-bg / --header-color : ヘッダー (列ラベル)
 //   --depth-N-bg                 : 親行 第N+1 ディメンションの集計行背景 (N=0,1,2,...)
-//   --leaf-bg                    : リーフ (データ) 行背景
+//   --leaf-bg                    : データ行背景
 //   --dim-color / --data-color   : 列タイプ別デフォルト文字色
 //   --hover-bg                   : 行 hover 背景
 // 列ごと (列ごとセクション) の inline style はこれより優先される (specificity 1000)。
@@ -486,6 +604,8 @@ export function buildTableStyle() {
   if (t.totalUnderline) parts.push(`--total-text-decoration:underline`);
   if (t.totalFontSize)  parts.push(`--total-font-size:${t.totalFontSize}px`);
   if (t.totalAlign)     parts.push(`--total-text-align:${t.totalAlign}`);
+  if (t.totalVAlign)    parts.push(`--total-vertical-align:${t.totalVAlign}`);
+  if (t.headerVAlign)   parts.push(`--header-vertical-align:${t.headerVAlign}`);
   for (let i = 0; i < 8; i++) {
     if (t['depthBg' + i]) parts.push(`--depth-${i}-bg:${t['depthBg' + i]}`);
   }

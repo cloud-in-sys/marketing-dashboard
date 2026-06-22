@@ -77,7 +77,7 @@ function buildMetricCells(agg, metrics, opts = {}, groupVals = null) {
   return metrics.map(m => {
     const spark = getSparklineConfig(m.key);
     if (spark) {
-      // sparkline (gauge): リーフ・親集計行どちらでも描画。総計行 (groupVals==null) は空セル。
+      // sparkline (gauge): データ行・親集計行どちらでも描画。総計行 (groupVals==null) は空セル。
       // 行の agg と inner があれば series 無しでも描けるので、series 取得失敗を理由に空セルにはしない。
       const style = opts.skipColStyle ? '' : buildCellStyle(m.key);
       if (groupVals != null) {
@@ -180,7 +180,7 @@ function collectGroupKeys(groups, totalDimCount) {
   return keys;
 }
 
-function buildFromGroups(groups, dims, metrics, totalDimCount) {
+function buildFromGroups(groups, dims, metrics, totalDimCount, totalAgg = null) {
   // groups = [{vals: [v0, v1, ...], rows: [...], agg: {...}}, ...]
   // Pre-compute aggregate for each group once
   for (let i = 0; i < groups.length; i++) {
@@ -190,10 +190,13 @@ function buildFromGroups(groups, dims, metrics, totalDimCount) {
   allGroupKeys = collectGroupKeys(groups, totalDimCount);
 
   // Build nested structure: group by dim[0], then dim[1], etc.
-  return buildLevel(groups, dims, 0, totalDimCount, metrics, []);
+  // 最上位レベルの parent は total 自身 (parent(X) と total(X) が同じ値になる)。
+  return buildLevel(groups, dims, 0, totalDimCount, metrics, [], totalAgg, totalAgg);
 }
 
-function buildLevel(groups, dims, dimIndex, totalDimCount, metrics, parentPath) {
+// parentAgg: 直前の階層の集計 (= 親集計行の値)。最上位では total と同じ。
+// totalAgg:   テーブル全体の集計 (常に同じ値が深い階層まで伝播)。
+function buildLevel(groups, dims, dimIndex, totalDimCount, metrics, parentPath, parentAgg = null, totalAgg = null) {
   const isLastDim = dimIndex === dims.length - 1;
   // depthPriority=ON のとき、列ごとのインライン style を抑止して階層色 (CSS 変数) を優先。
   // 閾値カラー (cell-blue 等) は class なので別レイヤーで残る。
@@ -225,14 +228,17 @@ function buildLevel(groups, dims, dimIndex, totalDimCount, metrics, parentPath) 
             ? dimCellHtml(dims[i], '', '', '', i, depthOpts)
             : dimCellHtml(dims[i], g.vals[i], '', null, i, depthOpts);
         }
-        html += `<tr class="pivot-leaf-row pivot-depth-${dimIndex}">${dimCells}${buildMetricCells(g.agg, metrics, depthOpts, g.vals)}</tr>`;
+        // \u6d3e\u751f\u30e1\u30c8\u30ea\u30af\u30b9\u306e\u5f0f\u4e2d\u3067 parent()/total() \u3092\u4f7f\u3046\u5834\u5408\u306b\u5099\u3048\u3066\u3001\u73fe\u5728\u306e parent/total context \u3067\u518d\u8a55\u4fa1\u3002
+        // \u5f0f\u304c parent/total \u3092\u542b\u307e\u306a\u3051\u308c\u3070\u7d50\u679c\u306f g.agg \u3068\u540c\u3058\u3002
+        const leafAgg = (parentAgg || totalAgg) ? evalDerivedWithContext(g.agg, parentAgg, totalAgg) : g.agg;
+        html += `<tr class="pivot-leaf-row pivot-depth-${dimIndex}">${dimCells}${buildMetricCells(leafAgg, metrics, depthOpts, g.vals)}</tr>`;
       }
     } else {
       const isCollapsed = collapsedGroups.has(groupKey);
       const toggleIcon = isCollapsed ? '+' : '\u2212';
 
-      // Summarize: sum base metrics across all groups in this bucket
-      const parentAgg = sumAggs(bucket.map(g => g.agg));
+      // Summarize: sum base metrics across all groups in this bucket (parent/total context \u3064\u304d)
+      const myAgg = sumAggs(bucket.map(g => g.agg), parentAgg, totalAgg);
 
       if (!levelKeys[dimIndex]) levelKeys[dimIndex] = new Set();
       levelKeys[dimIndex].add(groupKey);
@@ -248,10 +254,11 @@ function buildLevel(groups, dims, dimIndex, totalDimCount, metrics, parentPath) 
           dimCells += dimCellHtml(dims[i], '', '', '', i, depthOpts);
         }
       }
-      html += `<tr class="pivot-parent-row pivot-depth-${dimIndex}">${dimCells}${buildMetricCells(parentAgg, metrics, depthOpts, path)}</tr>`;
+      html += `<tr class="pivot-parent-row pivot-depth-${dimIndex}">${dimCells}${buildMetricCells(myAgg, metrics, depthOpts, path)}</tr>`;
 
       if (!isCollapsed) {
-        html += buildLevel(bucket, dims, dimIndex + 1, totalDimCount, metrics, path);
+        // 子階層の parent は自分自身の集計、total は最上位の集計を継承。
+        html += buildLevel(bucket, dims, dimIndex + 1, totalDimCount, metrics, path, myAgg, totalAgg);
       }
     }
   }
@@ -259,8 +266,9 @@ function buildLevel(groups, dims, dimIndex, totalDimCount, metrics, parentPath) 
 }
 
 // Sum pre-computed aggregates (avoids re-scanning rows)
-function sumAggs(aggs) {
-  if (aggs.length === 1) return aggs[0];
+// parentAgg / totalAgg を渡すと、派生メトリクスの式中で parent(X) / total(X) を解決可能。
+function sumAggs(aggs, parentAgg = null, totalAgg = null) {
+  if (aggs.length === 1 && !parentAgg && !totalAgg) return aggs[0];
   const result = {};
   const baseKeys = baseMetricKeys();
   for (const k of baseKeys) {
@@ -268,8 +276,18 @@ function sumAggs(aggs) {
     for (let i = 0; i < aggs.length; i++) s += aggs[i][k] || 0;
     result[k] = s;
   }
-  // Recompute derived from summed base
+  // Recompute derived with parent/total context
+  return evalDerivedWithContext(result, parentAgg, totalAgg);
+}
+
+// 既存の baseAgg (= base + 旧 ctx で計算された derived) を、parent/total 集計を考慮して
+// derived のみ再評価して返す。base のキー値は不変。
+// 派生式が parent()/total() を使ってない場合でも結果は等価。
+function evalDerivedWithContext(baseAgg, parentAgg, totalAgg) {
+  const result = {...baseAgg};
   const ctx = {...result, min: Math.min, max: Math.max, abs: Math.abs, pow: Math.pow, sqrt: Math.sqrt, round: Math.round, Math};
+  if (parentAgg) for (const k of Object.keys(parentAgg)) ctx['__parent_' + k + '__'] = parentAgg[k];
+  if (totalAgg)  for (const k of Object.keys(totalAgg))  ctx['__total_'  + k + '__'] = totalAgg[k];
   const derivedKeys = derivedMetricKeys();
   for (const k of derivedKeys) {
     const f = S.METRIC_FORMULAS[k] || DEFAULT_FORMULAS[k] || '0';
@@ -432,30 +450,43 @@ function customSortIndex(value, customList) {
   return i >= 0 ? i : Number.MAX_SAFE_INTEGER;
 }
 // 親バケツ (buildLevel 内) のソート用 comparator を生成。
-// dims/dimIndex に対する sort.col / sort.dir / sort.custom を解決。
-function makeBucketComparator(dimIndex, dims, sort, bucketsMap) {
-  if (!sort || !sort.col) return (a, b) => dimSort(dims[dimIndex], a, b);
-  const customList = (sort.custom || '').split('\n').map(s => s.trim()).filter(Boolean);
-  const dir = sort.dir === 'desc' ? -1 : 1;
-  // dim ソート: 並び替え列がこの level の dim と一致する時のみ user sort を採用
-  if (sort.col.startsWith('dim:')) {
-    if (sort.col === 'dim:' + dims[dimIndex]) {
-      return (a, b) => {
-        if (customList.length) {
-          return (customSortIndex(a, customList) - customSortIndex(b, customList)) * dir
-              || dimSort(dims[dimIndex], a, b);
-        }
-        return dimSort(dims[dimIndex], a, b) * dir;
-      };
+// 1 つの sort 条件 ({col, dir, custom}) で 2 つのバケツキーを比較。
+// dim:<key> 条件は現在の level の dim と一致しないと適用しない (= 0 を返して次の条件に進む)。
+function compareBySortEntry(s, a, b, dimIndex, dims, bucketsMap) {
+  if (!s || !s.col) return 0;
+  const dir = s.dir === 'desc' ? -1 : 1;
+  if (s.col.startsWith('dim:')) {
+    if (s.col !== 'dim:' + dims[dimIndex]) return 0;
+    const customList = (s.custom || '').split('\n').map(x => x.trim()).filter(Boolean);
+    if (customList.length) {
+      const r = (customSortIndex(a, customList) - customSortIndex(b, customList)) * dir;
+      if (r !== 0) return r;
     }
-    return (a, b) => dimSort(dims[dimIndex], a, b);
+    return dimSort(dims[dimIndex], a, b) * dir;
   }
-  // metric ソート: バケツ内の合計値で比較。bucketsMap[val] = group[] から sum を計算。
+  const aSum = sumAggs((bucketsMap.get(a) || []).map(g => g.agg || aggregate(g.rows)))[s.col] || 0;
+  const bSum = sumAggs((bucketsMap.get(b) || []).map(g => g.agg || aggregate(g.rows)))[s.col] || 0;
+  return (aSum - bSum) * dir;
+}
+
+// 複数キーソート対応: sort.list[] を順に評価し、最初に差が出たもので決定。
+// 互換: 旧 sort.col / sort.dir / sort.custom も 1 件としてラップして扱う。
+function makeBucketComparator(dimIndex, dims, sort, bucketsMap) {
+  const list = sortListFrom(sort);
+  if (!list.length) return (a, b) => dimSort(dims[dimIndex], a, b);
   return (a, b) => {
-    const aSum = sumAggs((bucketsMap.get(a) || []).map(g => g.agg || aggregate(g.rows)))[sort.col] || 0;
-    const bSum = sumAggs((bucketsMap.get(b) || []).map(g => g.agg || aggregate(g.rows)))[sort.col] || 0;
-    return (aSum - bSum) * dir;
+    for (const s of list) {
+      const r = compareBySortEntry(s, a, b, dimIndex, dims, bucketsMap);
+      if (r !== 0) return r;
+    }
+    return dimSort(dims[dimIndex], a, b);
   };
+}
+function sortListFrom(sort) {
+  if (!sort) return [];
+  if (Array.isArray(sort.list)) return sort.list.filter(it => it && it.col);
+  if (sort.col) return [{ col: sort.col, dir: sort.dir || 'asc', custom: sort.custom || '' }];
+  return [];
 }
 
 export function renderTable(groups) {
@@ -481,44 +512,63 @@ export function renderTable(groups) {
   let bodyRows = '';
   levelKeys = [];
 
+  // 全体総計 = parent()/total() の解決元。1 回計算してテーブル全体で使い回す。
+  // ここで一度 derived を「self-referencing で評価」しておくことで、parent(X) / total(X) が
+  // 「自分自身の値」になる (= 比率なら 1.0)。総計行の表示にも使う。
+  let totalAgg = null;
+  if (groups.length) {
+    const baseTotal = sumAggs(groups.map(g => g.agg || aggregate(g.rows)));
+    totalAgg = evalDerivedWithContext(baseTotal, baseTotal, baseTotal);
+  }
+
   if (dims.length >= 2) {
-    bodyRows = buildFromGroups(groups, dims, metrics, dims.length);
+    bodyRows = buildFromGroups(groups, dims, metrics, dims.length, totalAgg);
   } else {
     const depthOpts = { skipColStyle: !!S.TABLE_CONFIG?.table?.depthPriority };
-    // 単一 dim パス: groups を直接ソート。metric ソート / カスタム順にも対応。
-    const sort = S.TABLE_CONFIG?.sort;
+    // 単一 dim パス: groups を直接ソート。複数キー対応。
+    const sortList = sortListFrom(S.TABLE_CONFIG?.sort);
     let sortedGroups = groups;
-    if (sort && sort.col) {
-      const dir = sort.dir === 'desc' ? -1 : 1;
-      const customList = (sort.custom || '').split('\n').map(s => s.trim()).filter(Boolean);
-      sortedGroups = [...groups].sort((a, b) => {
-        if (sort.col.startsWith('dim:')) {
+    if (sortList.length) {
+      const compareOne = (s, a, b) => {
+        if (!s || !s.col) return 0;
+        const dir = s.dir === 'desc' ? -1 : 1;
+        if (s.col.startsWith('dim:')) {
+          if (s.col !== 'dim:' + dims[0]) return 0;
+          const customList = (s.custom || '').split('\n').map(x => x.trim()).filter(Boolean);
           const va = a.vals[0], vb = b.vals[0];
           if (customList.length) {
-            return (customSortIndex(va, customList) - customSortIndex(vb, customList)) * dir
-                || dimSort(dims[0], va, vb);
+            const r = (customSortIndex(va, customList) - customSortIndex(vb, customList)) * dir;
+            if (r !== 0) return r;
           }
           return dimSort(dims[0], va, vb) * dir;
         }
         const aAgg = a.agg || aggregate(a.rows);
         const bAgg = b.agg || aggregate(b.rows);
-        return ((aAgg[sort.col] || 0) - (bAgg[sort.col] || 0)) * dir;
+        return ((aAgg[s.col] || 0) - (bAgg[s.col] || 0)) * dir;
+      };
+      sortedGroups = [...groups].sort((a, b) => {
+        for (const s of sortList) {
+          const r = compareOne(s, a, b);
+          if (r !== 0) return r;
+        }
+        return dimSort(dims[0], a.vals[0], b.vals[0]);
       });
     }
     bodyRows = sortedGroups.map(g => {
-      const agg = g.agg || aggregate(g.rows);
+      // 単一 dim でも parent()/total() を解決可能に (parent も total も全体総計を指す)。
+      const baseAgg = g.agg || aggregate(g.rows);
+      const agg = totalAgg ? evalDerivedWithContext(baseAgg, totalAgg, totalAgg) : baseAgg;
       const dimCells = g.vals.map((v, i) => dimCellHtml(dims[i], v, '', null, i, depthOpts)).join('');
       const metCells = buildMetricCells(agg, metrics, depthOpts, g.vals);
       return `<tr>${dimCells}${metCells}</tr>`;
     }).join('');
   }
 
-  // 総計行 (上部に表示)。全 groups の base 値を sum, derived を再計算。
+  // 総計行 (上部に表示)。renderTable 冒頭で計算した totalAgg をそのまま使う。
   // <thead> に入れることで、2 行目として自動的に sticky-top で 1 行目の下に
   // 重なる挙動になる。
   let totalRow = '';
-  if (S.TABLE_CONFIG?.showTotal && groups.length) {
-    const totalAgg = sumAggs(groups.map(g => g.agg || aggregate(g.rows)));
+  if (S.TABLE_CONFIG?.showTotal && groups.length && totalAgg) {
     // totalPriority=ON のとき、列ごとのインライン style を抑止して総計行 CSS 変数を優先。
     const totOpts = { skipColStyle: !!S.TABLE_CONFIG?.table?.totalPriority };
     const dimCells = dims.map((dk, i) => dimCellHtml(dk, '', 'total-label', i === 0 ? '総計' : '', i, totOpts)).join('');

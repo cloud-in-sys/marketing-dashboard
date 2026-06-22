@@ -36,7 +36,7 @@ export function renderDimsDoc() {
         <div class="metrics-doc-row dim-row" data-dim-idx="${i}" data-drag-key="${i}" draggable="true">
           <div class="dim-row-head">
             <span class="drag-handle" data-drag-handle title="ドラッグで並び替え">⋮⋮</span>
-            <div class="field-col"><label class="field-label">名称</label><input type="text" class="metric-label-input" data-dim-label draggable="false" value="${escapeHtml(d.label)}" placeholder="表示名"></div>
+            <div class="field-col"><label class="field-label">名称</label><textarea class="metric-label-input" data-dim-label draggable="false" rows="1" placeholder="表示名 (Enter で改行・最大5行)">${escapeHtml(d.label)}</textarea></div>
             <button type="button" class="metric-del" data-dim-remove="${i}" title="削除">×</button>
           </div>
           <div class="dim-row-grid">
@@ -67,6 +67,14 @@ export function renderDimsDoc() {
       <button type="button" class="metrics-add-btn" id="dims-add-btn">+ ディメンションを追加</button>
     </div>
   `;
+  // 名称 textarea の初期高さを scrollHeight に合わせる (5 行までの auto-resize)
+  el.querySelectorAll('textarea.metric-label-input').forEach(autosizeLabel);
+}
+
+// 名称 textarea を内容に合わせて自動リサイズ (5 行を上限とする CSS と組み合わせる)
+function autosizeLabel(el) {
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
 }
 
 export function setupDimensionsEvents() {
@@ -138,7 +146,13 @@ export function setupDimensionsEvents() {
     const defs = S.DIMENSIONS_DRAFT || [];
     const def = defs[idx];
     if (!def) return;
-    if (e.target.matches('[data-dim-label]')) def.label = e.target.value;
+    if (e.target.matches('[data-dim-label]')) {
+      // 5 行上限: 超えたら切り詰めてカーソルを末尾に
+      const lines = e.target.value.split('\n');
+      if (lines.length > 5) e.target.value = lines.slice(0, 5).join('\n');
+      def.label = e.target.value;
+      autosizeLabel(e.target);
+    }
     else if (e.target.matches('[data-dim-field]')) def.field = e.target.value;
     else if (e.target.matches('[data-dim-expr]')) def.expression = e.target.value;
     else if (e.target.matches('[data-dim-image-height]')) {

@@ -136,11 +136,12 @@ table {
 thead th {
   position: sticky;
   top: 0;
-  /* テーブル設定の「全体」で --header-bg / --header-color を設定可能 */
+  /* テーブル設定の「全体」で --header-bg / --header-color / --header-vertical-align を設定可能 */
   background: var(--header-bg, linear-gradient(180deg, #eef2ff 0%, #e0e7ff 100%));
   color: var(--header-color, var(--primary-600));
   font-weight: 700;
   text-align: right;
+  vertical-align: var(--header-vertical-align, middle);
   padding: 0.9em 1.15em;
   border-bottom: 2px solid var(--primary-soft);
   border-right: 1px solid var(--border-strong);
@@ -336,14 +337,14 @@ tbody td.col-frozen {
 .pivot-parent-row td.col-frozen:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
   background: linear-gradient(180deg, #eef2ff 0%, #e8ecf8 100%);
 }
-/* リーフ (データ) 行の背景: テーブル設定の「全体 > データ (リーフ) 行背景」で --leaf-bg */
+/* データ行 (集計じゃない 1 件ごと) の背景: テーブル設定の「全体 > 第N ディメンション」で --leaf-bg */
 .pivot-leaf-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
   background: var(--leaf-bg, #ffffff);
 }
 /* 単一ディメンション (= leaf も parent も無く tr 直下) の場合は tr のみで、偶奇交互の薄い背景を出す */
 tbody tr:not(.pivot-leaf-row):not(.pivot-parent-row):not(.total-row):nth-child(even) td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--leaf-bg, #fafbfc); }
 tbody tr:not(.pivot-leaf-row):not(.pivot-parent-row):not(.total-row):nth-child(odd) td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--leaf-bg, #ffffff); }
-/* Hover 背景 (リーフ行・通常行向け)。親行 hover は depth ルールの後に置く (下方参照)。 */
+/* Hover 背景 (データ行・通常行向け)。親行 hover は depth ルールの後に置く (下方参照)。 */
 tbody tr:hover td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--hover-bg, var(--primary-soft)); }
 tbody tr:hover td.group-col:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--hover-bg, #c7d2fe); }
 tbody tr:hover td.col-frozen:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--hover-bg, #c7d2fe); }
@@ -464,7 +465,7 @@ tbody tr:hover td.cell-yellow { background: rgba(245, 158, 11, 0.28); }
 .pivot-depth-4.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
 .pivot-depth-4.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
 
-/* リーフ行も親行と同じパターンで、自分の階層より前の dim 列は色を抜く。
+/* データ行も親行と同じパターンで、自分の階層より前の dim 列は色を抜く。
    .pivot-leaf-row.pivot-depth-N の N より小さい data-dim-idx の cell を transparent に。 */
 .pivot-leaf-row.pivot-depth-1 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
 .pivot-leaf-row.pivot-depth-2 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
@@ -508,7 +509,7 @@ tbody tr:hover td.cell-yellow { background: rgba(245, 158, 11, 0.28); }
   background: var(--depth-3-bg, #fafbfc);
 }
 
-/* 親行・リーフ行の hover: depth-N と transparent ルールの後に置くことで cascade で勝つ。
+/* 親行・データ行の hover: depth-N と transparent ルールの後に置くことで cascade で勝つ。
    メトリクス列 + 前列の透明 dim 列の両方を hover 色で塗る。 */
 .pivot-parent-row:hover td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
 .pivot-leaf-row:hover td:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
@@ -532,6 +533,7 @@ thead .total-row td {
   text-decoration: var(--total-text-decoration, none);
   font-size: var(--total-font-size, 0.95em);
   text-align: var(--total-text-align, right);
+  vertical-align: var(--total-vertical-align, middle);
   padding: 0.7em 1.15em;
   border-bottom: 2px solid var(--primary);
   border-right: 1px solid var(--border);
@@ -547,6 +549,7 @@ thead .total-row td {
 thead .total-row td.total-label {
   color: var(--total-color, var(--primary-600));
   text-align: var(--total-text-align, left);
+  vertical-align: var(--total-vertical-align, middle);
   padding-left: 12px;
 }
 /* 総計行の frozen 列は z-index を上げて、横スクロール時にメトリクスが透けないように */

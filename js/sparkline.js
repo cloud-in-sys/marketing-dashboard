@@ -44,6 +44,19 @@ export function getSparklineConfig(metricKey) {
   return parseSparkline(f);
 }
 
+// color allow-list: SVG fill 属性に差し込む文字列をホワイトリストで限定し、
+// `red" onload="..."` のような属性インジェクションを防ぐ。
+// 受け入れ: hex (#rgb / #rrggbb / #rrggbbaa) または CSS named color (英字のみ、上限 20 文字)
+// それ以外は null を返してデフォルト色にフォールバックさせる。
+const RE_COLOR_HEX  = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+const RE_COLOR_NAME = /^[a-zA-Z]{1,20}$/;
+function sanitizeColor(v) {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  if (RE_COLOR_HEX.test(t) || RE_COLOR_NAME.test(t)) return t;
+  return null;
+}
+
 // 最上位カンマ (括弧外、文字列外) で文字列を分割
 function splitTopLevelComma(s) {
   const out = [];
@@ -76,7 +89,11 @@ export function renderSparklineSVG(series, opts = {}, width = 100, height = 28) 
   const pad = 2;
   const w = width - pad * 2;
   const h = height - pad * 2;
-  const color = opts.color || '#2563eb';
+  // 色は allow-list で検証 (SVG 属性インジェクション防止)。
+  //   - hex: #rgb / #rrggbb / #rrggbbaa
+  //   - CSS named color: 英字のみ、最大 20 文字
+  // 検証失敗時はデフォルト色にフォールバック。
+  const color = sanitizeColor(opts.color) || '#2563eb';
 
   // 行レベルの値を取得 (派生メトリクスでも overcount しない)
   let rowValue = 0;
@@ -166,7 +183,7 @@ export function hasVisibleSparklineMetric() {
   return getVisibleSparklineMetrics().length > 0;
 }
 
-// テーブル側で「リーフ行 vals → series マップキー」を計算するため、
+// テーブル側で「データ行 vals → series マップキー」を計算するため、
 // 直近 prepareSparklineSeries で使った時間軸の位置を保持する。
 //   _seriesTimeIdxInCurrentDims < 0: 時間軸が currentDims に含まれない (追加 dim 経由)
 //   _seriesTimeIdxInCurrentDims >= 0: 時間軸が currentDims のその位置にある

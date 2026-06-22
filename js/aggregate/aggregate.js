@@ -320,7 +320,15 @@ function evalAst(node, row, today) {
 
 // 式から集計関数呼び出しを抽出 → placeholder で置換した式と spec マップを返す
 function liftFormula(formula) {
-  if (liftCache.has(formula)) return liftCache.get(formula);
+  const cacheKey = formula;
+  if (liftCache.has(cacheKey)) return liftCache.get(cacheKey);
+
+  // parent(metric) / total(metric) を識別子化: __parent_metric__ / __total_metric__
+  // (compileLifted の identifier→ctx 書き換えで自然に ctx.__parent_metric__ になる)
+  // ctx 側で渡せばその値が、未設定なら undefined → コンパイル後の try/catch で 0 にフォールバック。
+  formula = String(formula)
+    .replace(/\bparent\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)/g, '__parent_$1__')
+    .replace(/\btotal\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)/g, '__total_$1__');
 
   let nextId = 0;
   const specs = {};
@@ -363,7 +371,7 @@ function liftFormula(formula) {
   }
 
   const out = { lifted: result, specs };
-  liftCache.set(formula, out);
+  liftCache.set(cacheKey, out);
   return out;
 }
 

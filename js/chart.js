@@ -132,7 +132,7 @@ function buildStackedSVG(chart, rows, W, H) {
   const totals = xOrder.map(x => stackOrder.reduce((s, sv) => s + (cell.get(`${x}${sv}`) || 0), 0));
   const maxY = Math.max(...totals, 0) || 1;
 
-  const PL = 60, PR = 16, PT = 14, PB = 36;
+  const PL = 60, PR = 16, PT = 28, PB = 36;
   const iw = W - PL - PR, ih = H - PT - PB;
   const step = iw / xOrder.length;
   const barW = Math.min(step * 0.7, 36);
@@ -221,7 +221,7 @@ function buildComboSVG(chart, rows, W, H) {
   });
   if (!data.length) return '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">データなし</div>';
 
-  const PL = 60, PR = 60, PT = 14, PB = 36;
+  const PL = 60, PR = 60, PT = 28, PB = 36;
   const iw = W - PL - PR, ih = H - PT - PB;
   const max1 = Math.max(...data.map(d => d.y1), 0) || 1;
   // 右軸は複数線の最大値を共有
@@ -345,7 +345,7 @@ export function buildChartSVG(chart, rows, W, H) {
     });
   }
 
-  const PL = 60, PR = 16, PT = 14, PB = 36;
+  const PL = 60, PR = 16, PT = 28, PB = 36;
   const iw = W - PL - PR, ih = H - PT - PB;
   const maxY = extraLines.length
     ? Math.max(...data.map(d => d.y), ...data.flatMap(d => extraLines.map((_, idx) => d[`y${idx + 2}`])), 0) || 1

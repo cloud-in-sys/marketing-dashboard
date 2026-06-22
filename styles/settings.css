@@ -310,7 +310,7 @@ textarea.metric-label-input {
   resize: none;
   overflow: hidden;
   line-height: 1.35;
-  max-height: calc(1.35em * 3 + 14px); /* 3 行 + 上下 padding */
+  max-height: calc(1.35em * 5 + 14px); /* 5 行 + 上下 padding */
   width: 100%;
   box-sizing: border-box;
 }
@@ -1331,11 +1331,60 @@ body.no-refresh-snapshot .admin-refresh { display: none !important; }
   gap: 12px;
 }
 .metrics-syntax-help-section {
-  padding: 18px 20px;
+  padding: 0;
   background: #ffffff;
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  /* flex item の default min-width: auto だと内容に押し出されてはみ出る → 0 で強制縮小可能に */
+  min-width: 0;
+  overflow: hidden;
+}
+.metrics-syntax-help-section code {
+  /* 長い識別子 (例: total(revenue)) が単独のセル幅をはみ出さないように */
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.metrics-syntax-help-section > summary {
+  padding: 12px 18px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+  border-left: 3px solid var(--primary);
+  border-radius: 0 8px 8px 8px;
+  list-style: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.metrics-syntax-help-section > summary::-webkit-details-marker { display: none; }
+.metrics-syntax-help-section > summary::before {
+  content: '▸';
+  font-size: 10px;
+  color: var(--muted);
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+.metrics-syntax-help-section[open] > summary::before { transform: rotate(90deg); }
+.metrics-syntax-help-section[open] > summary {
+  border-bottom: 1px solid var(--border);
+  border-radius: 0 8px 0 0;
+  margin-bottom: 14px;
+}
+.metrics-syntax-help-section > *:not(summary) {
+  display: none;
+}
+.metrics-syntax-help-section[open] > *:not(summary) {
+  display: revert;
+  margin-left: 20px;
+  margin-right: 20px;
+}
+.metrics-syntax-help-section[open] > .metrics-help-table-wrap {
+  display: block;
+}
+.metrics-syntax-help-section[open] > *:not(summary):last-child {
+  margin-bottom: 18px;
 }
 .metrics-syntax-help-section h4 {
   font-size: 13px;
@@ -1358,16 +1407,25 @@ body.no-refresh-snapshot .admin-refresh { display: none !important; }
   color: var(--text);
   font-weight: 700;
 }
+.metrics-help-table-wrap {
+  max-width: calc(100% - 40px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #ffffff;
+  -webkit-overflow-scrolling: touch;
+}
 .metrics-syntax-help-section table {
   width: 100%;
+  min-width: 680px;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 13px;
-  margin: 8px 0 4px;
+  margin: 0;
   background: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
+  border: 0;
 }
 .metrics-syntax-help-section th {
   text-align: left;
@@ -1386,14 +1444,14 @@ body.no-refresh-snapshot .admin-refresh { display: none !important; }
   vertical-align: top;
   color: var(--text);
   line-height: 1.5;
+  /* 長い式例 (例: revenue / ad_cost - total(revenue) / total(ad_cost)) で
+     セルが折り畳みカードの幅をはみ出さないように、必要に応じて折り返す。
+     全ての使い方セクション (基本/集計関数/WHERE/演算子/today/parent.total/算術/sparkline) 共通。 */
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .metrics-syntax-help-section tr:last-child td { border-bottom: none; }
 .metrics-syntax-help-section tr:hover td { background: #fafbfc; }
-/* 1列目(演算子/関数)はモノスペース風に強調 */
-.metrics-syntax-help-section td:first-child code,
-.metrics-syntax-help-section td:first-child {
-  white-space: nowrap;
-}
 .metrics-syntax-help-section code {
   background: #f1f5f9;
   padding: 2px 6px;

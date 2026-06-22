@@ -19,9 +19,10 @@ export function applyBranding(data) {
   const appName         = data.appName         || '';
   const title           = data.title           || 'Marketing Metrics';
   const subtitle        = data.subtitle        || 'DASHBOARD';
-  const headerGradient  = data.headerGradient  || ''; // 空なら CSS フォールバック (白)
-  const headerTextColor = data.headerTextColor || ''; // 空なら CSS フォールバック (#1e293b)
-  const logoColor       = data.logoColor       || ''; // 空なら画像そのまま、指定で塗りつぶし
+  const headerGradient    = data.headerGradient    || ''; // 空なら CSS フォールバック (白)
+  const headerTextColor   = data.headerTextColor   || ''; // 空なら CSS フォールバック (#1e293b)
+  const headerAccentColor = data.headerAccentColor || ''; // 空なら CSS フォールバック (#ffffff)
+  const logoColor         = data.logoColor         || ''; // 空なら画像そのまま、指定で塗りつぶし
 
   // ロゴ。logoColor 指定時は mask + background-color で塗りつぶし表示。
   //   - logoUrl 無し         → fallback span (alt テキスト)
@@ -72,10 +73,12 @@ export function applyBranding(data) {
 
   // ヘッダー背景 / 文字色を CSS カスタムプロパティに反映
   const root = document.documentElement.style;
-  if (headerGradient)  root.setProperty('--header-gradient', headerGradient);
-  else                 root.removeProperty('--header-gradient');
-  if (headerTextColor) root.setProperty('--header-text-color', headerTextColor);
-  else                 root.removeProperty('--header-text-color');
+  if (headerGradient)    root.setProperty('--header-gradient', headerGradient);
+  else                   root.removeProperty('--header-gradient');
+  if (headerTextColor)   root.setProperty('--header-text-color', headerTextColor);
+  else                   root.removeProperty('--header-text-color');
+  if (headerAccentColor) root.setProperty('--header-accent-color', headerAccentColor);
+  else                   root.removeProperty('--header-accent-color');
 
   // ヘッダー右上のテキストロックアップ (もしあれば)
   const titleEl = document.querySelector('[data-brand-title]');

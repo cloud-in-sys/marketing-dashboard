@@ -31,7 +31,7 @@ export function renderMetricsDoc() {
     return `<div class="metrics-doc-row" data-def-idx="${i}" data-drag-key="${i}" draggable="true">
       <div class="metrics-doc-row-head">
         <span class="drag-handle" data-drag-handle title="ドラッグで並び替え (同じ種類の中でのみ)">⋮⋮</span>
-        <div class="field-col"><label class="field-label">名称</label><textarea class="metric-label-input" data-def-label draggable="false" rows="1" placeholder="表示名 (Enter で改行・最大3行)">${escapeHtml(m.label)}</textarea></div>
+        <div class="field-col"><label class="field-label">名称</label><textarea class="metric-label-input" data-def-label draggable="false" rows="1" placeholder="表示名 (Enter で改行・最大5行)">${escapeHtml(m.label)}</textarea></div>
         <div class="field-col"><label class="field-label">キー</label><input type="text" class="metric-key-input" data-def-key draggable="false" value="${escapeHtml(m.key)}" placeholder="key"></div>
         <div class="field-col"><label class="field-label">書式</label><select class="metric-fmt-select" data-def-fmt draggable="false">
           ${fmtOptions.map(o => `<option value="${o.v}"${m.fmt===o.v?' selected':''}>${o.l}</option>`).join('')}
@@ -58,22 +58,25 @@ export function renderMetricsDoc() {
     : '';
   el.innerHTML = `
     <details class="metrics-syntax-help" id="metrics-syntax-help">
-      <summary>計算式の書き方（クリックで展開）</summary>
+      <summary>計算式の書き方 (クリックで展開)</summary>
       <div class="metrics-syntax-help-body">
-        <div class="metrics-syntax-help-section">
-          <h4>基本</h4>
+        <p style="margin:0 0 10px;color:var(--muted);font-size:12px">トピックごとに開閉できます。基本以外は必要なときだけ開いてください。</p>
+
+        <details class="metrics-syntax-help-section">
+          <summary><strong>基本</strong> — 式の組み立て</summary>
           <p>「集計関数」「算術演算」「他メトリクス参照」を自由に組み合わせて書けます。基礎/派生の分類は表示用のグループ分けで、書ける式は同じです。</p>
-          <table>
+          <div class="metrics-help-table-wrap"><table>
             <tr><th>例</th><th>意味</th></tr>
             <tr><td><code>sum(revenue)</code></td><td>集計のみ</td></tr>
-            <tr><td><code>cost / clicks</code></td><td>他メトリクス参照のみ（旧派生）</td></tr>
+            <tr><td><code>cost / clicks</code></td><td>他メトリクス参照のみ (旧派生)</td></tr>
             <tr><td><code>sum(revenue) - sum(cost)</code></td><td>集計を組み合わせ</td></tr>
             <tr><td><code>profit / sum(cost) * 100</code></td><td>参照と集計の混在</td></tr>
-          </table>
-        </div>
-        <div class="metrics-syntax-help-section">
-          <h4>集計関数</h4>
-          <table>
+          </table></div>
+        </details>
+
+        <details class="metrics-syntax-help-section">
+          <summary><strong>集計関数</strong> — sum / count / avg / min / max / countDistinct</summary>
+          <div class="metrics-help-table-wrap"><table>
             <tr><th>関数</th><th>説明</th><th>例</th></tr>
             <tr><td><code>sum(field)</code></td><td>合計</td><td><code>sum(applications)</code></td></tr>
             <tr><td><code>count()</code></td><td>行数</td><td><code>count()</code></td></tr>
@@ -82,19 +85,24 @@ export function renderMetricsDoc() {
             <tr><td><code>min(field)</code></td><td>最小</td><td><code>min(score)</code></td></tr>
             <tr><td><code>max(field)</code></td><td>最大</td><td><code>max(score)</code></td></tr>
             <tr><td><code>countDistinct(field)</code></td><td>ユニーク値の数</td><td><code>countDistinct(user_id)</code></td></tr>
-          </table>
-        </div>
-        <div class="metrics-syntax-help-section">
-          <h4>WHERE 条件</h4>
+          </table></div>
+        </details>
+
+        <details class="metrics-syntax-help-section">
+          <summary><strong>WHERE 条件</strong> — 集計を絞り込む</summary>
           <p>集計関数のパレ内に <code>where</code> を書けます。<code>and</code> / <code>or</code> で連結可能。</p>
-          <table>
+          <div class="metrics-help-table-wrap"><table>
             <tr><th>例</th><th>意味</th></tr>
-            <tr><td><code>sum(revenue where status='完了')</code></td><td>パレ内 where（混合式での推奨）</td></tr>
-            <tr><td><code>sum(revenue) where status='完了'</code></td><td>パレ外 where（単一集計のみ・旧書式互換）</td></tr>
+            <tr><td><code>sum(revenue where status='完了')</code></td><td>パレ内 where (混合式での推奨)</td></tr>
+            <tr><td><code>sum(revenue) where status='完了'</code></td><td>パレ外 where (単一集計のみ・旧書式互換)</td></tr>
             <tr><td><code>sum(x where a='1') - sum(y where b='2')</code></td><td>集計ごとに where を変える</td></tr>
-          </table>
-          <h4 style="margin-top:14px">演算子</h4>
-          <table>
+          </table></div>
+          <p>※ カラム名は英数字とアンダースコアのみ。日本語カラムは BigQuery 側で <code>AS</code> で英名にリネームしてください。</p>
+        </details>
+
+        <details class="metrics-syntax-help-section">
+          <summary><strong>WHERE の比較演算子</strong> — = / != / contains / startsWith ...</summary>
+          <div class="metrics-help-table-wrap"><table>
             <tr><th>演算子</th><th>意味</th><th>例</th></tr>
             <tr><td><code>=</code></td><td>等しい</td><td><code>status = '完了'</code></td></tr>
             <tr><td><code>!=</code></td><td>等しくない</td><td><code>status != 'cancelled'</code></td></tr>
@@ -102,59 +110,79 @@ export function renderMetricsDoc() {
             <tr><td><code>&lt;=</code></td><td>以下</td><td><code>amount &lt;= 100</code></td></tr>
             <tr><td><code>&gt;</code></td><td>超</td><td><code>amount &gt; 100</code></td></tr>
             <tr><td><code>&gt;=</code></td><td>以上</td><td><code>amount &gt;= 100</code></td></tr>
-            <tr><td><code>contains</code></td><td>含む（部分一致）</td><td><code>name contains '広告'</code></td></tr>
+            <tr><td><code>contains</code></td><td>含む (部分一致)</td><td><code>name contains '広告'</code></td></tr>
             <tr><td><code>notContains</code></td><td>含まない</td><td><code>name notContains 'テスト'</code></td></tr>
-            <tr><td><code>startsWith</code></td><td>〜で始まる（前方一致）</td><td><code>url startsWith 'https://'</code></td></tr>
-            <tr><td><code>endsWith</code></td><td>〜で終わる（後方一致）</td><td><code>email endsWith '@example.com'</code></td></tr>
-          </table>
-          <h4 style="margin-top:14px">AND と OR の優先順位</h4>
-          <p>AND が OR より優先されます（×が+より先と同じ）。明示的にグループ化したい時は <code>(...)</code> を使えます。</p>
-          <table>
+            <tr><td><code>startsWith</code></td><td>〜で始まる (前方一致)</td><td><code>url startsWith 'https://'</code></td></tr>
+            <tr><td><code>endsWith</code></td><td>〜で終わる (後方一致)</td><td><code>email endsWith '@example.com'</code></td></tr>
+          </table></div>
+        </details>
+
+        <details class="metrics-syntax-help-section">
+          <summary><strong>AND / OR の優先順位</strong> — 複雑な条件</summary>
+          <p>AND が OR より優先されます (×が+より先と同じ)。明示的にグループ化したい時は <code>(...)</code> を使えます。</p>
+          <div class="metrics-help-table-wrap"><table>
             <tr><th>式</th><th>意味</th></tr>
             <tr><td><code>status='完了' and amount &gt; 1000 or status='保留'</code></td><td>(完了 かつ 1000超) または 保留</td></tr>
             <tr><td><code>status='完了' and (category='A' or category='B')</code></td><td>完了 かつ (A または B)</td></tr>
             <tr><td><code>(status='A' or status='B') and amount &gt; 100</code></td><td>(A または B) かつ 100超</td></tr>
             <tr><td><code>count() where url startsWith 'https://'</code></td><td>URL が https:// で始まる</td></tr>
             <tr><td><code>sum(x where category notContains 'テスト')</code></td><td>category に「テスト」を含まない</td></tr>
-          </table>
-          <p>※ カラム名は英数字とアンダースコアのみ。日本語カラムは BigQuery 側で <code>AS</code> で英名にリネームしてください。</p>
-        </div>
-        <div class="metrics-syntax-help-section">
-          <h4>today() — 今日の日付</h4>
+          </table></div>
+        </details>
+
+        <details class="metrics-syntax-help-section">
+          <summary><strong>today()</strong> — 今日の日付</summary>
           <p>WHERE 句で日付比較に使用。<code>today()-N</code> で N 日前、<code>today()+N</code> で N 日後。</p>
-          <table>
+          <div class="metrics-help-table-wrap"><table>
             <tr><th>例</th><th>意味</th></tr>
             <tr><td><code>sum(count where date = today())</code></td><td>今日のみ</td></tr>
-            <tr><td><code>sum(count where date &gt;= today()-7)</code></td><td>過去 7 日（昨日含む）</td></tr>
-            <tr><td><code>sum(count where date &gt;= today()-30 and date &lt; today())</code></td><td>直近 30 日（今日除く）</td></tr>
-          </table>
-        </div>
-        <div class="metrics-syntax-help-section">
-          <h4>算術・JavaScript 構文</h4>
-          <p>集計値や他メトリクス値に対して <code>+ - * /</code>、三項演算子（<code>? :</code>）、論理演算子（<code>&amp;&amp;</code>, <code>||</code>）、<code>Math.*</code> が使えます。</p>
-          <table>
+            <tr><td><code>sum(count where date &gt;= today()-7)</code></td><td>過去 7 日 (昨日含む)</td></tr>
+            <tr><td><code>sum(count where date &gt;= today()-30 and date &lt; today())</code></td><td>直近 30 日 (今日除く)</td></tr>
+          </table></div>
+        </details>
+
+        <details class="metrics-syntax-help-section">
+          <summary><strong>parent() / total()</strong> — 親集計・全体総計の参照 (シェア計算)</summary>
+          <p style="margin:0 0 10px;padding:8px 10px;background:#fef3c7;border-left:3px solid #f59e0b;font-size:12px"><strong>※ この関数はピボットテーブル上でしか正しく動きません</strong> (ディメンションを 1 つ以上選択した状態)。それ以外のビューでは <code>parent</code> と <code>total</code> は全て全体総計と等価になります。</p>
+          <p>派生メトリクスの式で <code>parent(metric)</code> と書くと <strong>1 つ上の階層</strong> の値、<code>total(metric)</code> と書くと <strong>全体総計</strong> の値が取れます。データ行 (集計じゃない 1 行ごと) ・親集計行のそれぞれで、自分の親 / 全体に対するシェアを表現できます。</p>
+          <div class="metrics-help-table-wrap"><table>
+            <tr><th>式</th><th>意味</th></tr>
+            <tr><td><code>ad_cost / parent(ad_cost)</code></td><td>親階層内シェア (例: 月内で各日の広告費比率)</td></tr>
+            <tr><td><code>revenue / total(revenue)</code></td><td>全体シェア (テーブル全体に占める割合)</td></tr>
+            <tr><td><code>(ad_cost / line_reg) - (parent(ad_cost) / parent(line_reg))</code></td><td>親階層 CPA との差分</td></tr>
+            <tr><td><code>revenue / ad_cost - total(revenue) / total(ad_cost)</code></td><td>全体平均 ROI からの乖離</td></tr>
+          </table></div>
+          <p style="margin-top:6px;font-size:12px;color:var(--muted)">※ ピボットの最上位 (depth 0) 行では <code>parent</code> と <code>total</code> は同じ値 (= 全体総計) になります。<br>※ 単一ディメンションの場合も <code>parent</code> と <code>total</code> は等価。</p>
+          <p style="margin-top:6px;font-size:12px;color:var(--muted)">引数に渡すのは <strong>メトリクスのキー名</strong> (例 <code>ad_cost</code>, <code>line_reg</code>) で、文字列ではなくそのまま書きます。</p>
+        </details>
+
+        <details class="metrics-syntax-help-section">
+          <summary><strong>算術 / JavaScript 構文</strong> — 三項演算子・Math.*</summary>
+          <p>集計値や他メトリクス値に対して <code>+ - * /</code>、三項演算子 (<code>? :</code>)、論理演算子 (<code>&amp;&amp;</code>, <code>||</code>)、<code>Math.*</code> が使えます。</p>
+          <div class="metrics-help-table-wrap"><table>
             <tr><th>例</th><th>意味</th></tr>
-            <tr><td><code>conversions / sessions * 100</code></td><td>CV率（%）</td></tr>
-            <tr><td><code>Math.max(revenue, 0)</code></td><td>負数を0に丸める</td></tr>
-            <tr><td><code>sessions &gt; 1000 ? bounce_rate : 0</code></td><td>セッション数が一定以上の時のみ</td></tr>
-          </table>
-        </div>
-        <div class="metrics-syntax-help-section">
-          <h4>スパークライン（ミニ進捗バー）</h4>
+            <tr><td><code>conversions / sessions * 100</code></td><td>CV 率 (%)</td></tr>
+            <tr><td><code>Math.max(revenue, 0)</code></td><td>負数を 0 に丸める</td></tr>
+            <tr><td><code>sessions &gt; 1000 ? bounce_rate : 0</code></td><td>セッション数が一定以上のときのみ</td></tr>
+          </table></div>
+        </details>
+
+        <details class="metrics-syntax-help-section">
+          <summary><strong>sparkline()</strong> — ミニ進捗バー</summary>
           <p>派生メトリクスの式で <code>sparkline(EXPR)</code> または <code>sparkline(EXPR, { オプション1: 値1, オプション2: 値2 })</code> と書くと、その列のセルに「行の値 ÷ 最大値」の比率を示す進捗バーが表示されます。EXPR は他のメトリクス式と同じ書き方。</p>
-          <table>
+          <div class="metrics-help-table-wrap"><table>
             <tr><th>例</th><th>意味</th></tr>
             <tr><td><code>sparkline(cpa)</code></td><td>CPA 列。全行の中で最大の行が満タン、他はそれに対する比率</td></tr>
             <tr><td><code>sparkline(rev_first - ad_cost)</code></td><td>利益 (売上−広告費)。式は派生メトリクスと同じ書き方</td></tr>
             <tr><td><code>sparkline(ad_cost, { max: 1000000 })</code></td><td>固定目標 100 万円に対する達成率</td></tr>
             <tr><td><code>sparkline(cvr, { color: '#10b981' })</code></td><td>緑のバー</td></tr>
-          </table>
+          </table></div>
           <p style="margin-top:8px"><strong>OPTIONS 一覧:</strong></p>
           <ul style="font-size:12px;line-height:1.6">
             <li><code>color</code>: バーの色 (例 <code>'#2563eb'</code> or <code>'red'</code>、デフォルト青)</li>
             <li><code>max</code>: 分母 (固定の目標値)。指定なし時は全行の最大値が自動的に分母になる。</li>
           </ul>
-        </div>
+        </details>
       </div>
     </details>
     ${warningHtml}
@@ -175,7 +203,7 @@ export function renderMetricsDoc() {
   el.querySelectorAll('textarea.metric-label-input').forEach(autosizeLabel);
 }
 
-// 名称 textarea を内容に合わせて自動リサイズ (3 行を上限とする CSS と組み合わせる)
+// 名称 textarea を内容に合わせて自動リサイズ (5 行を上限とする CSS と組み合わせる)
 function autosizeLabel(el) {
   el.style.height = 'auto';
   el.style.height = el.scrollHeight + 'px';
@@ -215,9 +243,9 @@ export function setupMetricsEvents() {
     const def = defs[idx];
     if (!def) return;
     if (e.target.matches('[data-def-label]')) {
-      // 3 行上限: 超えたら切り詰めてカーソルを末尾に
+      // 5 行上限: 超えたら切り詰めてカーソルを末尾に
       const lines = e.target.value.split('\n');
-      if (lines.length > 3) e.target.value = lines.slice(0, 3).join('\n');
+      if (lines.length > 5) e.target.value = lines.slice(0, 5).join('\n');
       def.label = e.target.value;
       autosizeLabel(e.target);
     }

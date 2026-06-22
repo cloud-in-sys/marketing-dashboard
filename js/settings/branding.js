@@ -120,6 +120,15 @@ export function renderBrandingForm() {
     </div>
 
     <div class="branding-row">
+      <label>ヘッダーの装飾色 <small>(枠線・バッジ背景。白ヘッダー時は暗い色を指定)</small></label>
+      <div class="branding-gradient">
+        <input type="color" data-branding="headerAccentColor" value="${draft.headerAccentColor || '#ffffff'}"${disabled}>
+        <button type="button" class="link-btn" data-branding-clear="headerAccentColor" title="指定なしに戻す"${disabled}>×</button>
+        <small style="color:var(--muted)">${draft.headerAccentColor ? '指定中: ' + draft.headerAccentColor : '指定なし (デフォルト = 白)'}</small>
+      </div>
+    </div>
+
+    <div class="branding-row">
       <label>ロゴの色 <small>(指定なし: 画像そのまま / 指定: その色で塗りつぶし)</small></label>
       <div class="branding-gradient">
         <input type="color" data-branding="logoColor" value="${draft.logoColor || '#ffffff'}"${disabled}>

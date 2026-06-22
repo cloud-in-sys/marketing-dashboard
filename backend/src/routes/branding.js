@@ -47,14 +47,15 @@ function validateText(k, v) {
 
 // フィールド別の処理 (空/null → null = 削除扱い、文字列 → 検証)
 const FIELD_VALIDATORS = {
-  logoUrl:         validateUrl,
-  faviconUrl:      validateUrl,
-  appName:         validateText,
-  title:           validateText,
-  subtitle:        validateText,
-  headerGradient:  validateGradient,
-  headerTextColor: validateHex,
-  logoColor:       validateHex,
+  logoUrl:           validateUrl,
+  faviconUrl:        validateUrl,
+  appName:           validateText,
+  title:             validateText,
+  subtitle:          validateText,
+  headerGradient:    validateGradient,
+  headerTextColor:   validateHex,
+  headerAccentColor: validateHex,
+  logoColor:         validateHex,
 };
 
 // 公開 GET (server.js で /api/branding にマウント、auth より前)
