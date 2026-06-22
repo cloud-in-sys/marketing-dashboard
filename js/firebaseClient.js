@@ -19,14 +19,17 @@ import { FIREBASE_CONFIG, APP_CHECK_SITE_KEY } from './config.js';
 const app = initializeApp(FIREBASE_CONFIG);
 
 // App Check: Firebase サービス呼び出しに X-Firebase-AppCheck トークンを付ける
+// site key 未設定のテナントでは App Check を初期化しない。
 let appCheck = null;
-try {
-  appCheck = initializeAppCheck(app, {
-    provider: new ReCaptchaV3Provider(APP_CHECK_SITE_KEY),
-    isTokenAutoRefreshEnabled: true,
-  });
-} catch (e) {
-  console.warn('[appcheck] init failed', e);
+if (APP_CHECK_SITE_KEY) {
+  try {
+    appCheck = initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(APP_CHECK_SITE_KEY),
+      isTokenAutoRefreshEnabled: true,
+    });
+  } catch (e) {
+    console.warn('[appcheck] init failed', e);
+  }
 }
 
 export async function getAppCheckHeader() {

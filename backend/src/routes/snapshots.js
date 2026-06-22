@@ -14,7 +14,11 @@ const gzip = promisify(zlib.gzip);
 const gunzip = promisify(zlib.gunzip);
 
 const storage = new Storage();
-const BUCKET = process.env.SNAPSHOT_BUCKET || 'marketing-493303-snapshots';
+// テナント中立: 明示の SNAPSHOT_BUCKET、無ければ GCP_PROJECT_ID から導出。
+// 特定テナントのバケットにフォールバックしない（クロステナント参照を防ぐ）。
+const BUCKET = process.env.SNAPSHOT_BUCKET
+  || (process.env.GCP_PROJECT_ID ? `${process.env.GCP_PROJECT_ID}-snapshots` : null);
+if (!BUCKET) throw new Error('SNAPSHOT_BUCKET or GCP_PROJECT_ID must be set');
 const bucket = () => storage.bucket(BUCKET);
 const objectName = (sid) => `snapshots/${sid}.json.gz`;
 
