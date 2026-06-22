@@ -205,39 +205,13 @@ USE_BACKEND_AGGREGATE=true
 > 注: フロントの Firebase 設定は `app-config.js`（`window.__APP_CONFIG__`）に集約されている。
 > `js/config.js` はそれを読むだけなので直接編集は不要。
 
-### 12-3. ロゴ差し替え
-ブランドロゴを会社ごとに差し替える。
+### 12-3. ブランディング（ロゴ・アプリ名・テーマ色）
+ブランディングは **Firestore 動的管理に移行済み**。コードや静的ファイル（旧 `assets/logo.png` /
+`js/config.js` の `BRAND`）の編集は不要で、デプロイ後に画面から設定する。
 
-**配置場所**: `assets/logo.png`（このファイル1つだけ置き換えればOK）
-
-**推奨サイズ・形式**:
-| 用途 | 推奨サイズ | 備考 |
-|---|---|---|
-| ヘッダー表示 | 36px 高さ（幅は比率維持、最大200px） | 横長OK |
-| ログイン画面 | 80x80px | 正方形推奨 |
-| ブラウザタブ（favicon） | 32x32px 以上 | 同ファイルが流用される |
-| Apple Touch Icon | 180x180px 推奨 | iOS ホーム画面用 |
-
-実装上は**どのサイズでも動く**（CSS で自動リサイズ）。1つの画像で全部の用途に使えるよう **正方形の透過PNG（256x256 程度）** が一番汎用的。
-
-**差し替え手順**:
-```bash
-# 古いロゴをバックアップして新しいロゴを配置
-cp assets/logo.png assets/logo.png.bak 2>/dev/null || true
-cp /path/to/new-logo.png assets/logo.png
-```
-
-**フォールバック**: `assets/logo.png` が存在しない、または読み込み失敗時は「LOGO」というテキストが表示される。`js/config.js` の `BRAND.appName` がアプリ名として別途表示される（ログイン画面タイトル等）。
-
-**適用箇所**（`index.html` で参照済み、コード修正不要）:
-- ヘッダー左上（`<div class="logo" id="brand-logo">`）
-- ログイン画面中央（`<div class="login-logo" id="login-brand-logo">`）
-- favicon（`<link rel="icon" href="assets/logo.png">`）
-- Apple touch icon（`<link rel="apple-touch-icon" href="assets/logo.png">`）
-
-**キャッシュ注意**: ロゴ変更後もブラウザキャッシュで旧ロゴが残ることがある。シークレットウィンドウで確認 or スーパーリロード（Cmd+Shift+R）。
-
-**ブランド名の変更**: `js/config.js` の `BRAND.appName` を書き換える（ログイン画面タイトル、ロゴ画像が無い時のフォールバック表示に使用）。
+- 設定場所: アプリにログイン → **管理者設定 > ブランディング**
+- 保存先: Firestore `config/branding`（ロゴ・タイトル・テーマ色）
+- 反映: 保存後にリロードで全テナント横断ではなく当該テナントのみに適用される
 
 ### 12-4. 初期管理者設定
 後で Firestore に直接作成する（Step 15）。
