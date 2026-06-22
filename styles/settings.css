@@ -308,9 +308,11 @@ body.no-edit-metrics #metrics-save-btn { display: none; }
 }
 textarea.metric-label-input {
   resize: none;
-  overflow: hidden;
+  /* overflow: hidden だと高さが少しでも足りない時に空白行が見切れるため、
+     auto にしてスクロール可能に。通常時は rows が合っているのでスクロールは出ない。 */
+  overflow-y: auto;
   line-height: 1.35;
-  max-height: calc(1.35em * 5 + 14px); /* 5 行 + 上下 padding */
+  max-height: calc(1.35em * 5 + 16px);
   width: 100%;
   box-sizing: border-box;
 }

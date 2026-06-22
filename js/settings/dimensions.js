@@ -36,7 +36,7 @@ export function renderDimsDoc() {
         <div class="metrics-doc-row dim-row" data-dim-idx="${i}" data-drag-key="${i}" draggable="true">
           <div class="dim-row-head">
             <span class="drag-handle" data-drag-handle title="ドラッグで並び替え">⋮⋮</span>
-            <div class="field-col"><label class="field-label">名称</label><textarea class="metric-label-input" data-dim-label draggable="false" rows="1" placeholder="表示名 (Enter で改行・最大5行)">${escapeHtml(d.label)}</textarea></div>
+            <div class="field-col"><label class="field-label">名称</label><textarea class="metric-label-input" data-dim-label draggable="false" rows="${Math.max(1, Math.min(5, String(d.label || '').split('\n').length))}" placeholder="表示名 (Enter で改行・最大5行)"></textarea></div>
             <button type="button" class="metric-del" data-dim-remove="${i}" title="削除">×</button>
           </div>
           <div class="dim-row-grid">
@@ -67,14 +67,21 @@ export function renderDimsDoc() {
       <button type="button" class="metrics-add-btn" id="dims-add-btn">+ ディメンションを追加</button>
     </div>
   `;
-  // 名称 textarea の初期高さを scrollHeight に合わせる (5 行までの auto-resize)
-  el.querySelectorAll('textarea.metric-label-input').forEach(autosizeLabel);
+  // textarea の値は innerHTML 経由だと HTML5 仕様で先頭の \n 1 個が strip される。
+  // ここで明示的に DOM の value を代入することで、先頭改行 / 連続改行 / 末尾改行を全て保持する。
+  el.querySelectorAll('.dim-row[data-dim-idx]').forEach(row => {
+    const idx = +row.dataset.dimIdx;
+    const def = defs[idx];
+    const ta = row.querySelector('[data-dim-label]');
+    if (ta && def) ta.value = def.label || '';
+  });
 }
 
-// 名称 textarea を内容に合わせて自動リサイズ (5 行を上限とする CSS と組み合わせる)
+// 名称 textarea の rows を内容の改行数に合わせる。入力中 (input イベント) から呼ばれる。
+// 初期描画は HTML テンプレ側で rows 属性を計算してあるので、ここでは扱わない。
 function autosizeLabel(el) {
-  el.style.height = 'auto';
-  el.style.height = el.scrollHeight + 'px';
+  const lines = (el.value || '').split('\n').length;
+  el.rows = Math.max(1, Math.min(5, lines));
 }
 
 export function setupDimensionsEvents() {

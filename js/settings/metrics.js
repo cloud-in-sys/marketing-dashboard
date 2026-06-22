@@ -31,7 +31,7 @@ export function renderMetricsDoc() {
     return `<div class="metrics-doc-row" data-def-idx="${i}" data-drag-key="${i}" draggable="true">
       <div class="metrics-doc-row-head">
         <span class="drag-handle" data-drag-handle title="ドラッグで並び替え (同じ種類の中でのみ)">⋮⋮</span>
-        <div class="field-col"><label class="field-label">名称</label><textarea class="metric-label-input" data-def-label draggable="false" rows="1" placeholder="表示名 (Enter で改行・最大5行)">${escapeHtml(m.label)}</textarea></div>
+        <div class="field-col"><label class="field-label">名称</label><textarea class="metric-label-input" data-def-label draggable="false" rows="${Math.max(1, Math.min(5, String(m.label || '').split('\n').length))}" placeholder="表示名 (Enter で改行・最大5行)"></textarea></div>
         <div class="field-col"><label class="field-label">キー</label><input type="text" class="metric-key-input" data-def-key draggable="false" value="${escapeHtml(m.key)}" placeholder="key"></div>
         <div class="field-col"><label class="field-label">書式</label><select class="metric-fmt-select" data-def-fmt draggable="false">
           ${fmtOptions.map(o => `<option value="${o.v}"${m.fmt===o.v?' selected':''}>${o.l}</option>`).join('')}
@@ -199,14 +199,21 @@ export function renderMetricsDoc() {
       <button type="button" class="metrics-add-btn admin-only" data-add-type="derived">+ 派生メトリクスを追加</button>
     </div>
   `;
-  // 名称 textarea の初期高さを scrollHeight に合わせる
-  el.querySelectorAll('textarea.metric-label-input').forEach(autosizeLabel);
+  // textarea の値は innerHTML 経由だと HTML5 仕様で先頭の \n 1 個が strip される。
+  // ここで明示的に DOM の value を代入することで、先頭改行 / 連続改行 / 末尾改行を全て保持する。
+  el.querySelectorAll('.metrics-doc-row[data-def-idx]').forEach(row => {
+    const idx = +row.dataset.defIdx;
+    const def = defs[idx];
+    const ta = row.querySelector('[data-def-label]');
+    if (ta && def) ta.value = def.label || '';
+  });
 }
 
-// 名称 textarea を内容に合わせて自動リサイズ (5 行を上限とする CSS と組み合わせる)
+// 名称 textarea の rows を内容の改行数に合わせる。入力中 (input イベント) から呼ばれる。
+// 初期描画は HTML テンプレ側で rows 属性を計算してあるので、ここでは扱わない。
 function autosizeLabel(el) {
-  el.style.height = 'auto';
-  el.style.height = el.scrollHeight + 'px';
+  const lines = (el.value || '').split('\n').length;
+  el.rows = Math.max(1, Math.min(5, lines));
 }
 
 export function setupMetricsEvents() {
