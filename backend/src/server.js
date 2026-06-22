@@ -16,8 +16,10 @@ import configRoutes from './routes/config.js';
 import presetsRoutes from './routes/presets.js';
 import googleRoutes, { oauthCallback } from './routes/google.js';
 import snapshotsRoutes from './routes/snapshots.js';
+import aggregateRoutes from './routes/aggregate.js';
 import batchRoutes from './routes/batch.js';
 import groupsRoutes from './routes/groups.js';
+import brandingRoutes, { getBrandingPublic } from './routes/branding.js';
 
 const app = new Hono();
 
@@ -76,6 +78,9 @@ app.get('/api/google/auth/callback', oauthCallback);
 // Batch endpoints: OIDC-authenticated (Cloud Scheduler), not Firebase ID token.
 app.route('/api/batch', batchRoutes);
 
+// ログイン画面でも参照するため、ブランディング GET は public
+app.get('/api/branding', getBrandingPublic);
+
 // App Check: 段階ロールアウト用
 // APP_CHECK_ENFORCE=true で強制(トークン無し/無効なら 401)。
 // それ以外はログのみ(Enforce モードに切替前の様子見期間用)。
@@ -109,7 +114,9 @@ app.route('/api/config', configRoutes);
 app.route('/api/presets', presetsRoutes);
 app.route('/api/google', googleRoutes);
 app.route('/api/snapshots', snapshotsRoutes);
+app.route('/api/aggregate', aggregateRoutes);
 app.route('/api/groups', groupsRoutes);
+app.route('/api/branding', brandingRoutes);
 
 // Error handler
 app.onError(errorHandler);

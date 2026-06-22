@@ -1,7 +1,8 @@
 import { S } from './state.js';
 import { escapeHtml } from './utils.js';
-import { aggregate } from './aggregate.js';
+import { aggregate } from './aggregate/aggregate.js';
 import { formatMetricValue } from './chart.js';
+import { getBackendCardAgg } from './aggregate/aggregateCache.js';
 
 // ===== KPIカード =====
 // 期間フィルタ用のヘルパー: 日付フィルタの field を特定してその月一覧を抽出
@@ -76,11 +77,17 @@ export function renderCards(rows) {
     grid.innerHTML = '<div class="cards-empty">右上の「+ カード」からカードを追加できます</div>';
     return;
   }
-  // フィルタなしの全体集計はキャッシュ。期間カードはその都度。
+  // フィルタなしの全体集計はキャッシュ。期間カードは backend prefetch があればそれを使い、
+  // なければローカル applyCardFilter + aggregate にフォールバック。
   const fullAgg = aggregate(rows);
   grid.innerHTML = S.CARDS.map(card => {
     const mode = card.filterMode || 'follow';
-    const agg = mode === 'follow' ? fullAgg : aggregate(applyCardFilter(rows, card));
+    let agg;
+    if (mode === 'follow') {
+      agg = fullAgg;
+    } else {
+      agg = getBackendCardAgg(rows, card.id) || aggregate(applyCardFilter(rows, card));
+    }
     const mdef = S.METRIC_DEFS.find(m => m.key === card.metric);
     const val = mdef ? formatMetricValue(mdef, agg[card.metric] || 0) : '—';
     const subDef = S.METRIC_DEFS.find(m => m.key === card.subMetric);

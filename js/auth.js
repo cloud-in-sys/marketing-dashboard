@@ -1,8 +1,6 @@
-// Firebase Auth (Google SSO) wrapper. Keeps same exported surface as the
-// previous localStorage-based auth module where possible.
-
-import { S, VIEWER_PERMS } from './state.js';
-import { signInWithGoogle, signInWithEmail, sendPasswordReset, signOutUser, onAuthChange, consumeGoogleRedirectResult } from './firebaseClient.js';
+// Firebase Auth (Google SSO) wrapper.
+import { S, VIEWER_PERMS, PERM_GROUPS, PERM_DEFS } from './state.js';
+import { signInWithGoogle, signOutUser, onAuthChange, consumeGoogleRedirectResult } from './firebaseClient.js';
 
 export function getCurrentUser() {
   return S.USERS.find(u => u.uid === S.CURRENT_USER)
@@ -12,6 +10,22 @@ export function getCurrentUser() {
 export function hasPerm(key) {
   const u = getCurrentUser();
   return !!(u.isAdmin || u.perms?.[key]);
+}
+
+// ロール判定 (settings/users.js getUserRole と一致するロジック):
+// operator = 非 admin かつ「settings 以外の全 perms 持ち」かつ「settings perms 全部なし」
+const _SETTINGS_PERMS = PERM_GROUPS.find(g => g.group === 'settings')?.perms.map(p => p.key) || [];
+const _NON_SETTINGS_PERMS = PERM_DEFS.filter(p => !_SETTINGS_PERMS.includes(p.key)).map(p => p.key);
+export function isOperator(user) {
+  const u = user || getCurrentUser();
+  if (!u || u.isAdmin) return false;
+  if (!u.perms) return false;
+  return _NON_SETTINGS_PERMS.every(k => u.perms[k]) && _SETTINGS_PERMS.every(k => !u.perms[k]);
+}
+// データソース作成権限: admin または operator のみ。
+export function canCreateSource(user) {
+  const u = user || getCurrentUser();
+  return !!u && (u.isAdmin || isOperator(u));
 }
 
 export function renderCurrentUserLabel() {
@@ -40,7 +54,7 @@ export function applyPermissionUI() {
     'viewSources','manageSources','connectAccount',
     'viewPresets','viewCustom','addCustom','savePreset',
     'editCustom','editPreset','deleteCustom','deletePreset',
-    'editMetrics','editFilters','editDefaults','editDimensions','manageUsers','manageGroups',
+    'editMetrics','editFilters','editDefaults','editDimensions','manageUsers','manageGroups','manageBranding',
   ];
   const camelToKebab = s => s.replace(/([A-Z])/g, '-$1').toLowerCase();
   for (const k of keys) {
@@ -48,6 +62,8 @@ export function applyPermissionUI() {
     const ok = u.isAdmin || u.perms?.[k];
     document.body.classList.toggle(cls, !ok);
   }
+  // ロール (operator) 由来の追加クラス: 一般ユーザーには「データソース作成」を出さない
+  document.body.classList.toggle('no-create-source', !canCreateSource(u));
 }
 
 export function showLogin() {
@@ -89,33 +105,13 @@ export async function signIn() {
   }
 }
 
-export async function signInEmailPassword(email, password) {
-  try {
-    await signInWithEmail(email, password);
-  } catch (e) {
-    showAuthError(e);
-  }
-}
-
-export async function resetPassword(email) {
-  try {
-    await sendPasswordReset(email);
-    return true;
-  } catch (e) {
-    showAuthError(e);
-    return false;
-  }
-}
-
 function showAuthError(e) {
   const errEl = document.getElementById('login-error');
   if (!errEl) return;
   const code = e?.code || '';
   let msg = e?.message || 'ログインに失敗しました';
-  if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) {
-    msg = 'メールアドレスまたはパスワードが違います';
-  } else if (code.includes('email-not-verified')) {
-    msg = e.message; // 「確認メールを送信しました…」の文言そのまま使う
+  if (code.includes('popup-closed') || code.includes('cancelled-popup')) {
+    msg = 'ログインがキャンセルされました';
   } else if (code.includes('too-many-requests')) {
     msg = '試行回数が多すぎます。しばらくしてから再度お試しください';
   } else if (code.includes('network-request-failed')) {

@@ -1,21 +1,34 @@
 // ===== Drag-reorder helper =====
 export function makeSortable(container, onReorder) {
   let dragKey = null;
+  // dragstart の e.target は draggable な祖先 (= 行) で、実際のクリック子要素では
+  // ない。ハンドル限定 drag を実現するため、mousedown でクリック起点を記録する。
+  let mousedownTarget = null;
   const axis = container.dataset.sortAxis || 'y';
   const clearMarks = () => {
     container.querySelectorAll('[data-drag-key]').forEach(el => {
       el.classList.remove('dragging', 'drop-before', 'drop-after', 'drop-left', 'drop-right');
     });
   };
+  container.addEventListener('mousedown', e => { mousedownTarget = e.target; }, true);
   container.addEventListener('dragstart', e => {
     const item = e.target.closest('[data-drag-key]');
     if (!item || !container.contains(item)) return;
+    // 行内に [data-drag-handle] があれば、mousedown 起点がハンドル領域内
+    // でない場合は drag を弾く。ハンドル指定が無い (旧式の row 全体 draggable)
+    // 場合は従来通り全域許可。
+    if (item.querySelector('[data-drag-handle]')) {
+      if (!mousedownTarget || !mousedownTarget.closest || !mousedownTarget.closest('[data-drag-handle]')) {
+        e.preventDefault();
+        return;
+      }
+    }
     dragKey = item.dataset.dragKey;
     item.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
     try { e.dataTransfer.setData('text/plain', dragKey); } catch (_) {}
   });
-  container.addEventListener('dragend', () => { clearMarks(); dragKey = null; });
+  container.addEventListener('dragend', () => { clearMarks(); dragKey = null; mousedownTarget = null; });
   container.addEventListener('dragover', e => {
     if (dragKey == null) return;
     e.preventDefault();
