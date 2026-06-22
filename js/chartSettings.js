@@ -35,7 +35,7 @@ export function renderChartSettingsPanel() {
       ${(S.DIMENSIONS || []).map(d => `<option value="${d.key}"${c.bucket === d.key ? ' selected' : ''}>${escapeHtml(d.label)}</option>`).join('')}
     </select>`;
   const y1Select = `
-    <select data-panel-role="metric">${S.METRIC_DEFS.map(m => `<option value="${m.key}"${m.key === c.metric ? ' selected' : ''}>${escapeHtml(m.label)}</option>`).join('')}</select>`;
+    <select data-panel-role="metric"><option value=""${!c.metric ? ' selected' : ''}>— 未選択 —</option>${S.METRIC_DEFS.map(m => `<option value="${m.key}"${m.key === c.metric ? ' selected' : ''}>${escapeHtml(m.label)}</option>`).join('')}</select>`;
 
   // 折れ線系(line / area / combo の折れ線)でドット表示オプションを出す
   const hasDots = c.type === 'line' || c.type === 'area' || c.type === 'combo';
@@ -84,13 +84,13 @@ export function renderChartSettingsPanel() {
     </label>
 
     <label class="chart-settings-field">
-      <span class="chart-settings-label">${c.type === 'combo' ? 'Y軸（第1メトリクス）' : 'Y軸（メトリクス）'}</span>
+      <span class="chart-settings-label">${(c.type === 'combo' || c.type === 'line') ? 'Y軸（第1メトリクス）' : 'Y軸（メトリクス）'}</span>
       ${y1Select}
     </label>
 
-    ${c.type === 'combo' ? `
+    ${(c.type === 'combo' || c.type === 'line') ? `
     <div class="chart-settings-field">
-      <span class="chart-settings-label">折れ線（第2メトリクス以降）</span>
+      <span class="chart-settings-label">${c.type === 'combo' ? '折れ線（第2メトリクス以降）' : '追加の折れ線（同じY軸）'}</span>
       <div class="combo-lines">
         ${getComboLines(c).map((l, idx) => `
           <div class="combo-line" data-line-idx="${idx}">

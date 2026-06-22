@@ -184,6 +184,37 @@ body.no-edit-metrics #metrics-save-btn { display: none; }
   flex-direction: column;
   gap: 10px;
 }
+.metrics-doc-hint {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 0 6px;
+  line-height: 1.5;
+}
+.metrics-doc-hint code {
+  background: var(--panel-2);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+.metrics-doc-warning {
+  margin: 12px 16px 0;
+  padding: 10px 14px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-left: 4px solid #f97316;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #7c2d12;
+  line-height: 1.6;
+}
+.metrics-doc-warning strong { display: block; margin-bottom: 4px; color: #c2410c; }
+.metrics-doc-warning ul { margin: 6px 0 0; padding-left: 18px; }
+.metrics-doc-warning code {
+  background: rgba(0,0,0,0.06);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+}
 .metrics-doc-box .metrics-doc-section {
   font-size: 11px;
   font-weight: 700;
@@ -245,7 +276,7 @@ body.no-edit-metrics #metrics-save-btn { display: none; }
 }
 .metrics-doc-row-head {
   display: grid;
-  grid-template-columns: 1fr 160px 110px 28px;
+  grid-template-columns: auto 1fr 160px 110px 28px;
   gap: 10px;
   align-items: end;
 }
@@ -274,6 +305,16 @@ body.no-edit-metrics #metrics-save-btn { display: none; }
   font-size: 13px;
   font-family: inherit;
   background: #ffffff;
+}
+textarea.metric-label-input {
+  resize: none;
+  /* overflow: hidden だと高さが少しでも足りない時に空白行が見切れるため、
+     auto にしてスクロール可能に。通常時は rows が合っているのでスクロールは出ない。 */
+  overflow-y: auto;
+  line-height: 1.35;
+  max-height: calc(1.35em * 5 + 16px);
+  width: 100%;
+  box-sizing: border-box;
 }
 .metric-label-input { font-weight: 700; }
 .metric-key-input {
@@ -320,9 +361,81 @@ body.no-edit-metrics #metrics-save-btn { display: none; }
 }
 body.is-admin .admin-hidden { display: none; }
 body:not(.is-admin) .admin-only { display: none !important; }
-body.no-manage-users.no-manage-groups .sidebar-group[data-group="users"] { display: none; }
+body.no-manage-users.no-manage-groups.no-manage-branding .sidebar-group[data-group="users"] { display: none; }
 body.no-manage-users #open-settings { display: none; }
 body.no-manage-groups #open-groups { display: none; }
+body.no-manage-branding #open-branding { display: none; }
+body.no-manage-branding #branding-save-btn { display: none; }
+body.no-manage-branding .branding-form input,
+body.no-manage-branding .branding-form button { pointer-events: none; opacity: 0.6; }
+body:not(.no-manage-branding) .non-admin-note.no-manage-branding { display: none; }
+
+/* ===== Branding form ===== */
+.branding-form { padding: 16px 18px; display: flex; flex-direction: column; gap: 18px; }
+.branding-row { display: flex; flex-direction: column; gap: 6px; }
+.branding-row > label { font-size: 13px; font-weight: 700; color: var(--text); }
+.branding-row > label small { font-weight: 400; color: var(--muted); margin-left: 6px; }
+.branding-row input[type="text"] {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #ffffff;
+  width: 100%;
+  box-sizing: border-box;
+}
+.branding-row input[type="text"]:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+.branding-image-row { display: flex; align-items: flex-start; gap: 14px; }
+.branding-image-controls { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 6px; min-width: 0; }
+.branding-image-actions { display: flex; gap: 8px; align-items: center; }
+.branding-image-preview {
+  width: 96px; height: 64px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  background: #f8fafc;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.branding-image-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.branding-image-empty { color: var(--muted); font-size: 11px; }
+.branding-image-size {
+  position: absolute;
+  bottom: -16px;
+  left: 0;
+  font-size: 10px;
+  color: var(--muted);
+}
+.branding-image-preview { position: relative; }
+.branding-image-broken { background: #fef2f2; color: var(--danger); font-size: 11px; }
+.branding-image-broken::before { content: '読み込めません'; }
+.branding-gradient { display: flex; align-items: center; gap: 8px; }
+.branding-gradient input[type="color"] {
+  width: 38px; height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0;
+  cursor: pointer;
+}
+.branding-gradient-preview {
+  flex: 1; height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.branding-row select {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #ffffff;
+}
+.disabled-link { opacity: 0.5; pointer-events: none; }
 body.no-edit-metrics #open-metrics-doc { display: none; }
 body.no-edit-filters #open-filters-doc { display: none; }
 body.no-edit-defaults #open-defaults-doc { display: none; }
@@ -339,11 +452,32 @@ body.no-edit-dimensions .dims-doc input,
 body.no-edit-dimensions .dims-doc select,
 body.no-edit-dimensions .dims-doc .metric-del { pointer-events: none; opacity: 0.6; }
 
+/* ドラッグ並び替え用ハンドル (metrics / dims rows) */
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 36px;
+  color: var(--muted);
+  cursor: grab;
+  user-select: none;
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: -3px;
+  align-self: end;
+  padding-bottom: 4px;
+  border-radius: 4px;
+  transition: background 0.12s, color 0.12s;
+}
+.drag-handle:hover { color: var(--text); background: var(--panel-2); }
+.drag-handle:active { cursor: grabbing; }
+
 /* ===== SETTINGS VIEWS: DIMS & DEFAULTS ROW ===== */
 .dim-row { gap: 12px; }
 .dim-row-head {
   display: grid;
-  grid-template-columns: 1fr 28px;
+  grid-template-columns: auto 1fr 28px;
   gap: 10px;
   align-items: end;
 }
@@ -1199,11 +1333,60 @@ body.no-refresh-snapshot .admin-refresh { display: none !important; }
   gap: 12px;
 }
 .metrics-syntax-help-section {
-  padding: 18px 20px;
+  padding: 0;
   background: #ffffff;
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  /* flex item の default min-width: auto だと内容に押し出されてはみ出る → 0 で強制縮小可能に */
+  min-width: 0;
+  overflow: hidden;
+}
+.metrics-syntax-help-section code {
+  /* 長い識別子 (例: total(revenue)) が単独のセル幅をはみ出さないように */
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.metrics-syntax-help-section > summary {
+  padding: 12px 18px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+  border-left: 3px solid var(--primary);
+  border-radius: 0 8px 8px 8px;
+  list-style: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.metrics-syntax-help-section > summary::-webkit-details-marker { display: none; }
+.metrics-syntax-help-section > summary::before {
+  content: '▸';
+  font-size: 10px;
+  color: var(--muted);
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+.metrics-syntax-help-section[open] > summary::before { transform: rotate(90deg); }
+.metrics-syntax-help-section[open] > summary {
+  border-bottom: 1px solid var(--border);
+  border-radius: 0 8px 0 0;
+  margin-bottom: 14px;
+}
+.metrics-syntax-help-section > *:not(summary) {
+  display: none;
+}
+.metrics-syntax-help-section[open] > *:not(summary) {
+  display: revert;
+  margin-left: 20px;
+  margin-right: 20px;
+}
+.metrics-syntax-help-section[open] > .metrics-help-table-wrap {
+  display: block;
+}
+.metrics-syntax-help-section[open] > *:not(summary):last-child {
+  margin-bottom: 18px;
 }
 .metrics-syntax-help-section h4 {
   font-size: 13px;
@@ -1226,16 +1409,25 @@ body.no-refresh-snapshot .admin-refresh { display: none !important; }
   color: var(--text);
   font-weight: 700;
 }
+.metrics-help-table-wrap {
+  max-width: calc(100% - 40px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #ffffff;
+  -webkit-overflow-scrolling: touch;
+}
 .metrics-syntax-help-section table {
   width: 100%;
+  min-width: 680px;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 13px;
-  margin: 8px 0 4px;
+  margin: 0;
   background: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
+  border: 0;
 }
 .metrics-syntax-help-section th {
   text-align: left;
@@ -1254,14 +1446,14 @@ body.no-refresh-snapshot .admin-refresh { display: none !important; }
   vertical-align: top;
   color: var(--text);
   line-height: 1.5;
+  /* 長い式例 (例: revenue / ad_cost - total(revenue) / total(ad_cost)) で
+     セルが折り畳みカードの幅をはみ出さないように、必要に応じて折り返す。
+     全ての使い方セクション (基本/集計関数/WHERE/演算子/today/parent.total/算術/sparkline) 共通。 */
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .metrics-syntax-help-section tr:last-child td { border-bottom: none; }
 .metrics-syntax-help-section tr:hover td { background: #fafbfc; }
-/* 1列目(演算子/関数)はモノスペース風に強調 */
-.metrics-syntax-help-section td:first-child code,
-.metrics-syntax-help-section td:first-child {
-  white-space: nowrap;
-}
 .metrics-syntax-help-section code {
   background: #f1f5f9;
   padding: 2px 6px;

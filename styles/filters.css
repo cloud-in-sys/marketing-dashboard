@@ -218,11 +218,14 @@ body.settings-mode .filters-bar { display: none; }
   border-radius: 5px;
   user-select: none;
   line-height: 1;
+  min-width: 0;
+  box-sizing: border-box;
 }
 .ms-option:hover { background: var(--panel-2); }
 .ms-option input[type="checkbox"] {
   -webkit-appearance: none; appearance: none;
-  width: 16px; min-width: 16px; height: 16px; margin: 0; flex-shrink: 0;
+  flex: 0 0 16px;
+  width: 16px; height: 16px; margin: 0;
   border: 1.5px solid var(--border); border-radius: 4px;
   background: #fff; display: inline-grid; place-content: center; cursor: pointer;
 }
@@ -233,8 +236,24 @@ body.settings-mode .filters-bar { display: none; }
 }
 .ms-option input[type="checkbox"]:checked { border-color: var(--primary); background: var(--primary-soft); }
 .ms-option input[type="checkbox"]:checked::before { transform: scale(1); }
-.ms-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms-option span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .ms-option.checked { background: var(--primary-soft); color: var(--primary-600); font-weight: 600; }
+
+/* Floating menu: body 直下に出した時の上書き。位置/幅/高さは inline style で指定。 */
+.ms-menu.ms-menu-floating {
+  position: fixed;
+  top: auto;
+  left: auto;
+  right: auto;
+  min-width: 0;
+  z-index: 9999;
+}
 
 /* ===== METRIC CHIPS ===== */
 .chip-row {

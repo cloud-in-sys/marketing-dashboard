@@ -3,60 +3,40 @@ import { on, emit } from './events.js';
 import { S,
   initStateFromServer, saveState, saveCustomTabs, saveViewOrder,
   syncCurrentTabState, getPresets, setPresets,
-  loadSourceMethod } from './state.js';
+  loadSourceMethod, flushUserStateNow } from './state.js';
+import { flushConfigNow } from './persistence.js';
 import { escapeHtml, hexToSoft } from './utils.js';
 import { showModal } from './modal.js';
 import { makeSortable } from './sortable.js';
-import { applyFilters, renderFilters } from './filters.js';
+import { applyFilters, renderFilters, closeFloatingMs } from './filters/index.js';
 import * as sheets from './sheets.js';
 import { renderChart } from './chart.js';
 import { renderCards } from './cardsRender.js';
 import { renderTable } from './table.js';
-import { groupRows } from './dimensions.js';
-import { dimLabel } from './dimensions.js';
-import { renderCurrentUserLabel, applyPermissionUI, hideLogin, observeAuth, signIn, signInEmailPassword, resetPassword, logout } from './auth.js';
-import { seedDefaultPresets, renderPresets, loadPresetIntoGlobals, renderTabPresetSelect,
+import { groupRows } from './aggregate/dimensions.js';
+import { dimLabel } from './aggregate/dimensions.js';
+import { renderCurrentUserLabel, applyPermissionUI, hideLogin, observeAuth, signIn, logout } from './auth.js';
+import { seedDefaultPresets, renderPresets, loadPresetIntoGlobals, applyPresetFilters, renderTabPresetSelect,
   enterPresetEdit, syncPresetEdit, deletePreset, savePresetPrompt,
   loadTabState, initTabStates, setExitSettingsMode as setExitSettingsModePresets } from './presets.js';
-import { loadCustomTabs, renderCustomTabs, loadViewOrder, renderViewNav, applyView, highlightActiveView,
+import { renderCustomTabs, renderViewNav, applyView, highlightActiveView,
   setExitSettingsMode as setExitSettingsModeTabs } from './tabs.js';
 import { setupSettingsEvents, exitSettingsMode } from './settings.js';
-import { BRAND, THEME } from './config.js';
-import { renderSourceNav, loadSnapshotIfNeeded } from './sources.js';
+import { FEATURES } from './config.js';
+import { getBackendFollowFilteredRows } from './aggregate/aggregateCache.js';
+import { renderSourceNav, loadSnapshotIfNeeded, getCurrentLoadVersion } from './sources.js';
+import { dlog } from './config.js';
 import { loadState } from './sidebar.js';
 import './cards.js';
 import './chartsUI.js';
+import './tableSettings.js';
 import './thresholds.js';
 import './sidebar.js';
 import './csvExport.js';
+import { prefetchAggregates } from './aggregate/aggregateBackend.js';
 
-// ===== ブランド/テーマ適用 (各プロジェクトの app-config.js から差し替え) =====
-// 画像が無い/読込失敗時は "LOGO" プレースホルダを表示 (設定漏れを視認しやすく)
-(function applyBrandAndTheme() {
-  const alt = escapeHtml(BRAND.appName);
-  // ヘッダーロゴ
-  const headerEl = document.getElementById('brand-logo');
-  if (headerEl) {
-    headerEl.innerHTML = `
-      <img class="brand-logo-img" src="${BRAND.logoUrl}" alt="${alt}" onerror="this.outerHTML='<span class=&quot;brand-logo-fallback&quot;>LOGO</span>'">
-      <span class="logo-text">Marketing Metrics<em>DASHBOARD</em></span>
-    `;
-  }
-  // ログイン画面ロゴ
-  const loginEl = document.getElementById('login-brand-logo');
-  if (loginEl) {
-    loginEl.innerHTML = `<img class="login-brand-logo-img" src="${BRAND.logoUrl}" alt="${alt}" onerror="this.outerHTML='<span class=&quot;login-brand-logo-fallback&quot;>LOGO</span>'">`;
-  }
-  // favicon / Apple Touch Icon を BRAND.faviconUrl で差し替え
-  if (BRAND.faviconUrl) {
-    document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(link => {
-      link.href = BRAND.faviconUrl;
-    });
-  }
-  // テーマ(色) を CSS カスタムプロパティとして反映
-  const root = document.documentElement;
-  if (THEME.headerGradient) root.style.setProperty('--header-gradient', THEME.headerGradient);
-})();
+// ブランド/テーマの初期適用。public GET なので未認証 (ログイン画面表示中) でも取得できる。
+import('./branding.js').then(({ fetchAndApplyBranding }) => fetchAndApplyBranding());
 
 // ===== Wire up circular dep breakers =====
 setExitSettingsModePresets(exitSettingsMode);
@@ -87,15 +67,56 @@ function renderChips() {
   }).join('');
 }
 
+// バックエンド集計の失敗時に画面上部へ赤バナーを出す。view-header の直下に挿入。
+function showAggregateError(message) {
+  let el = document.getElementById('aggregate-error');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'aggregate-error';
+    el.style.cssText = 'background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:8px 14px;margin:6px 12px;border-radius:6px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:12px;';
+    const header = document.querySelector('.view-header');
+    (header?.parentNode || document.body).insertBefore(el, header?.nextSibling || null);
+  }
+  el.innerHTML = `<span>集計エラー: ${(message || '不明').toString().replace(/[<>&]/g, '')} — ページをリロードしてください</span><button type="button" onclick="location.reload()" style="background:#991b1b;color:#fff;border:0;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">リロード</button>`;
+  el.style.display = '';
+}
+function clearAggregateError() {
+  const el = document.getElementById('aggregate-error');
+  if (el) el.style.display = 'none';
+}
+
 // ===== MAIN RENDER =====
-function render() {
-  let rows = applyFilters(S.RAW);
-  if (S.CURRENT_FILTER) rows = rows.filter(S.CURRENT_FILTER);
+// render() は async (prefetchAggregates を await するため)。
+// race guard 2 段構え:
+//   renderVersion: 同じ source 内で連続呼び出しが起きた時、最新だけ描画
+//   sourceVersion: prefetch 中に source が切替わったら結果を捨てる
+// 最後に render() が使った rows 参照を保持。resize や軽い再描画で
+// 同じ参照を渡すと WeakMap キャッシュにヒットして集計 API を再発火しない。
+let lastRenderedRows = null;
+let renderVersion = 0;
+async function render() {
+  const myVersion = ++renderVersion;
+  const sourceAtStart = S.CURRENT_SOURCE;
+  const loadVersionAtStart = getCurrentLoadVersion();
+  const useBackend = FEATURES.useBackendAggregate;
+  // useBackend ON: S.RAW を持たないので applyFilters は走らせない (空配列を参照キーとして使う)。
+  // useBackend OFF: 従来通りローカルでフィルタ後の rows を作る。
+  let rows;
+  if (useBackend) {
+    rows = [];
+  } else {
+    rows = applyFilters(S.RAW);
+    if (S.CURRENT_FILTER) rows = rows.filter(S.CURRENT_FILTER);
+  }
+  // lastRenderedRows は描画が成功してからセットする (try ブロックの最後)。
+  // abort / 例外 / discard された rows は resize 用に保存しない。
   const dims = S.SELECTED_DIMS.length ? S.SELECTED_DIMS : ['action_date'];
-  const groups = groupRows(rows, dims);
-  renderCards(rows);
-  renderChart(rows);
-  renderTable(groups);
+  dlog('render start', { sid: sourceAtStart, view: S.CURRENT_VIEW, dims, filterCount: Object.keys(S.FILTER_VALUES || {}).length });
+  // ===== 1) SHELL を先に更新 (data なしで決まる UI 部分) =====
+  // タブ切替の体感を即時にするため、prefetch を待たずに以下を先に反映:
+  //   タイトル / クラム / アクセント色 / ソースアイコン
+  // カード/グラフ/表/対象行数は data に依存するので後段。その間は .aggregating
+  // クラスでデータ領域を視覚的に「読み込み中」状態にする。
   const titleEl = document.getElementById('view-title');
   const crumbEl = document.getElementById('view-crumb');
   const headerEl = document.querySelector('.view-header');
@@ -116,15 +137,83 @@ function render() {
     crumb = '\u30ab\u30b9\u30bf\u30e0';
     accent = tab?.color || '#64748b';
   }
-  titleEl.textContent = title;
-  crumbEl.textContent = crumb;
+  if (titleEl) titleEl.textContent = title;
+  if (crumbEl) crumbEl.textContent = crumb;
   if (headerEl) {
     headerEl.style.setProperty('--tab-accent', accent);
     headerEl.style.setProperty('--tab-accent-soft', hexToSoft(accent));
   }
-  document.getElementById('row-count').textContent = rows.length.toLocaleString();
   renderHeaderSourceIcon();
-  saveState();
+
+  // ===== 2) DATA 取得中はデータ領域をロード表示 =====
+  if (useBackend) {
+    document.body.classList.add('aggregating');
+    // 旧値が見えると「数字が動いている」ように感じるので、
+    // ロード中は「読み込み中...」を表示 (CSS .aggregating でオレンジ点滅)。
+    const rcEl = document.getElementById('row-count');
+    if (rcEl) rcEl.textContent = '読み込み中...';
+  }
+
+  // try/finally で .aggregating の解除を保証 (例外 / abort / 早期 return でも残らない)。
+  // ただし「自分が最新でなくなった」ケースは後続 render が制御するため触らない。
+  let didPaint = false;
+  try {
+    // FEATURES.useBackendAggregate ON のとき: 集計をバックエンドへ投げてキャッシュにロード。
+    // ローカル経路 (useBackend=false) では結果は常に ok。
+    const prefetchResult = await prefetchAggregates(rows);
+    if (myVersion !== renderVersion) {
+      dlog('render discard: newer render started');
+      return;  // 後続 render が .aggregating を制御
+    }
+    if (S.CURRENT_SOURCE !== sourceAtStart || getCurrentLoadVersion() !== loadVersionAtStart) {
+      dlog('render discard: source switched during prefetch');
+      return;
+    }
+    // abort された (前回 in-flight が新 render で取り消された) ケース: エラーバナーは出さず静かに撤退
+    if (useBackend && prefetchResult && prefetchResult.aborted) {
+      dlog('render discard: prefetch aborted');
+      return;
+    }
+    if (useBackend && prefetchResult && prefetchResult.ok === false) {
+      showAggregateError(prefetchResult.error);
+      return;
+    }
+    clearAggregateError();
+
+    // ===== 3) DATA 描画 (集計結果が揃ったので一気に置換) =====
+    const groups = groupRows(rows, dims);
+    // sparkline メトリクス用の時系列キャッシュを構築 (renderTable 前に必要)
+    const { prepareSparklineSeries } = await import('./sparkline.js');
+    prepareSparklineSeries(rows, dims);
+    renderCards(rows);
+    renderChart(rows);
+    renderTable(groups);
+    didPaint = true;
+    // 描画成功後に rows を保存 → resize 時の renderChart で参照される。
+    // abort/失敗/discard の場合はここに到達しないので、前回成功時の rows が残り続け、
+    // resize 時のチャート再描画は最後に正常表示された状態を維持する。
+    lastRenderedRows = rows;
+
+    // 「対象行数」は追従フィルタ (ヘッダ multi-select + 日付) 適用後の行数を表示する。
+    // タブの WHERE 式 (view filter) や card filter は含めない (= followFilteredRows)。
+    const displayRows = useBackend ? (getBackendFollowFilteredRows(rows) ?? 0) : rows.length;
+    document.getElementById('row-count').textContent = displayRows.toLocaleString();
+    dlog('render end', { sid: sourceAtStart, displayRows });
+    saveState();
+  } finally {
+    // 自分が最新でない (後続 render が走っている) なら触らない。
+    // それ以外は確定状態 (描画成功 or 中断) → 必ず .aggregating を外す。
+    if (myVersion === renderVersion) {
+      document.body.classList.remove('aggregating');
+      // 描画していない (discard 等) なら row-count の「読み込み中...」も残らないよう、
+      // 直近成功した render の値か空に戻す。ただし最新 render が描画していれば
+      // didPaint=true で既に確定値が入っているので、ここは else 分岐のみ。
+      if (!didPaint && useBackend) {
+        const rcEl = document.getElementById('row-count');
+        if (rcEl && rcEl.textContent === '読み込み中...') rcEl.textContent = '—';
+      }
+    }
+  }
 }
 
 function renderHeaderSourceIcon() {
@@ -145,6 +234,7 @@ function renderHeaderSourceIcon() {
 // ===== Register event bus listeners =====
 on('render', render);
 on('renderChips', renderChips);
+on('renderFilters', renderFilters);
 
 // ===== INITIALIZATION =====
 setupSettingsEvents();
@@ -162,11 +252,14 @@ document.getElementById('custom-nav').addEventListener('click', e => {
     const tabName = tab ? tab.label : key;
     showModal({title: '\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u3092\u524a\u9664', body: `\u300c${tabName}\u300d\u3092\u524a\u9664\u3057\u307e\u3059\u304b\uff1f\u3053\u306e\u64cd\u4f5c\u306f\u53d6\u308a\u6d88\u305b\u307e\u305b\u3093\u3002`, okText: '\u524a\u9664', danger: true}).then(ok => {
       if (!ok) return;
+      const wasCurrent = S.CURRENT_VIEW === key;
+      // \u524a\u9664\u5bfe\u8c61\u304c\u73fe\u5728\u306e\u30bf\u30d6\u306a\u3089\u3001syncCurrentTabState \u304c orphan \u3068\u3057\u3066\u518d\u633f\u5165\u3057\u306a\u3044\u3088\u3046\u5148\u306b\u5207\u308a\u66ff\u3048\u308b
+      if (wasCurrent) S.CURRENT_VIEW = 'summary_daily';
       S.CUSTOM_TABS = S.CUSTOM_TABS.filter(t => t.key !== key);
       delete S.TAB_STATES[key];
       saveCustomTabs();
-      if (S.CURRENT_VIEW === key) applyView('summary_daily');
-      else renderCustomTabs();
+      if (wasCurrent) applyView('summary_daily');
+      renderCustomTabs();
     });
     return;
   }
@@ -183,7 +276,7 @@ document.getElementById('custom-nav').addEventListener('input', e => {
   renderCustomTabs();
 });
 document.getElementById('add-custom-tab').addEventListener('click', async () => {
-  const label = await showModal({title: '\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u3092\u8ffd\u52a0', body: '\u30bf\u30d6\u306e\u540d\u524d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', input: true, placeholder: '\u4f8b: \u81ea\u5206\u7528\u306e\u5206\u6790', okText: '\u6b21\u3078'});
+  const label = await showModal({title: '\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u3092\u8ffd\u52a0', body: '\u30bf\u30d6\u306e\u540d\u524d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', input: true, placeholder: '\u4f8b: \u81ea\u5206\u7528\u306e\u5206\u6790', okText: '\u6b21\u3078', noEnter: true});
   if (!label) return;
   const ok = await showModal({title: '\u4f5c\u6210\u306e\u78ba\u8a8d', body: `\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u300c${label}\u300d\u3092\u4f5c\u6210\u3057\u307e\u3059\u304b\uff1f`, okText: '\u4f5c\u6210'});
   if (!ok) return;
@@ -315,18 +408,30 @@ chartsGrid.addEventListener('mousemove', e => {
 chartsGrid.addEventListener('mouseleave', hideAllChartTooltips);
 
 // ===== RESIZE =====
+// チャート SVG だけ再描画 (テーブル/カードは寸法変化で再構成不要)。
+// 重要: ここで emit('render') すると render() → prefetchAggregates() となり、
+// cache miss 時にバックエンド集計 API が発火してしまう。resize で API 課金は
+// 完全に不要なので、保存済み rows 参照を使って renderChart() だけ呼び直す。
+// rows 参照は WeakMap キャッシュのキーなので、同じ参照なら必ず cache hit。
 let resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
-    const rows = applyFilters(S.RAW).filter(r => !S.CURRENT_FILTER || S.CURRENT_FILTER(r));
-    renderChart(rows);
+    if (lastRenderedRows !== null) renderChart(lastRenderedRows);
   }, 120);
 });
 
 // ===== FILTERS, PANELS, FILE =====
+// 外側クリックで floating multi-select を閉じる (Escape は filters/floatingMenu.js 側で処理)。
 document.addEventListener('click', () => {
-  document.querySelectorAll('.ms-menu').forEach(m => m.classList.add('hidden'));
+  closeFloatingMs();
+});
+
+// ページを閉じる/隠す前に保留中の保存を best-effort で flush。
+// fetch keepalive で unload 中も送信を継続する (auth ヘッダ含むので backend は受理可能)。
+window.addEventListener('pagehide', () => {
+  flushConfigNow({ keepalive: true });
+  flushUserStateNow({ keepalive: true });
 });
 
 // ===== FILTERS TOGGLE =====
@@ -391,6 +496,8 @@ document.getElementById('tab-preset').addEventListener('change', async e => {
   tab.presetName = list[idx].name;
   saveCustomTabs();
   loadPresetIntoGlobals(list[idx]);
+  applyPresetFilters(list[idx]);
+  renderFilters();
   syncCurrentTabState();
   renderChips();
   emit('renderThresholds');
@@ -469,34 +576,14 @@ document.getElementById('preset-color-picker').addEventListener('input', e => {
 // ===== INITIALIZATION SEQUENCE =====
 // Wire login/logout buttons
 document.getElementById('login-google-btn')?.addEventListener('click', () => signIn());
-document.getElementById('login-form')?.addEventListener('submit', e => {
-  e.preventDefault();
-  const id = document.getElementById('login-id').value.trim();
-  const pw = document.getElementById('login-pw').value;
-  if (!id || !pw) return;
-  signInEmailPassword(id, pw);
-});
-document.getElementById('login-forgot-btn')?.addEventListener('click', async () => {
-  const email = await showModal({
-    title: 'パスワードリセット',
-    body: '登録済みのメールアドレスを入力してください。リセット用メールをお送りします。',
-    input: true,
-    defaultValue: document.getElementById('login-id').value.trim(),
-    placeholder: 'user@example.com',
-    okText: '送信',
-  });
-  if (!email) return;
-  const ok = await resetPassword(email);
-  if (ok) {
-    await showModal({title: '送信しました', body: `${email} にリセット用メールを送りました。届かない場合は迷惑メールフォルダも確認してください。`, okText: 'OK', cancelText: ''});
-  }
-});
 document.getElementById('header-logout')?.addEventListener('click', () => logout());
 
 // After user signs in, load data from backend and render.
 observeAuth({
   onReady: async () => {
     await initStateFromServer();
+    // テナント全体のブランディングを Firestore から取得して反映
+    import('./branding.js').then(({ fetchAndApplyBranding }) => fetchAndApplyBranding());
     // Hydrate Google connection state from backend (shared by sheets+bq)
     await sheets.refreshConnectionState();
     renderFilters();
@@ -505,9 +592,7 @@ observeAuth({
     hideLogin();
 
     renderSourceNav();
-    loadViewOrder();
     renderViewNav();
-    loadCustomTabs();
     loadState();
     seedDefaultPresets();
     initTabStates();

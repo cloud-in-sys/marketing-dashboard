@@ -105,6 +105,27 @@
   min-height: 600px;
   box-shadow: var(--shadow-sm);
 }
+
+/* ===== Table fullscreen ===== */
+/* 全画面表示: ツールバー + テーブルだけを画面いっぱいに表示する。 */
+.table-area.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  /* header(10) より上、chart/table-settings-panel(50) や modal(2000) より下 */
+  z-index: 40;
+  background: var(--panel, #f8fafc);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.table-area.is-fullscreen .table-wrap {
+  flex: 1;
+  max-height: none;
+  min-height: 0;
+}
+/* 全画面中は body のスクロールを止める */
+body.table-fullscreen { overflow: hidden; }
 table {
   border-collapse: separate;
   border-spacing: 0;
@@ -115,10 +136,12 @@ table {
 thead th {
   position: sticky;
   top: 0;
-  background: linear-gradient(180deg, #eef2ff 0%, #e0e7ff 100%);
-  color: var(--primary-600);
+  /* テーブル設定の「全体」で --header-bg / --header-color / --header-vertical-align を設定可能 */
+  background: var(--header-bg, linear-gradient(180deg, #eef2ff 0%, #e0e7ff 100%));
+  color: var(--header-color, var(--primary-600));
   font-weight: 700;
   text-align: right;
+  vertical-align: var(--header-vertical-align, middle);
   padding: 0.9em 1.15em;
   border-bottom: 2px solid var(--primary-soft);
   border-right: 1px solid var(--border-strong);
@@ -181,7 +204,18 @@ tbody td {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--text);
+  /* デフォルト文字色は data 列。テーブル設定の「全体」で --data-color を設定すると変わる。
+     group-col (dim) は下のルールで --dim-color に置き換わる。 */
+  color: var(--data-color, var(--text));
+}
+/* sparkline セルは SVG が中央寄りで見えるように padding を圧縮 */
+tbody td.sparkline-cell, thead td.sparkline-cell {
+  padding: 4px 6px;
+  text-align: center;
+}
+tbody td.sparkline-cell svg, thead td.sparkline-cell svg {
+  display: inline-block;
+  vertical-align: middle;
 }
 tbody td:last-child { border-right: none; }
 
@@ -291,7 +325,8 @@ tbody td.group-col {
   text-align: left;
   background: #ffffff;
   font-weight: 600;
-  color: var(--primary-600);
+  /* デフォルト dim 文字色。テーブル設定の「全体」で --dim-color を設定すると変わる。 */
+  color: var(--dim-color, var(--primary-600));
   border-right: 1px solid var(--border);
 }
 tbody td.col-frozen {
@@ -302,12 +337,17 @@ tbody td.col-frozen {
 .pivot-parent-row td.col-frozen:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
   background: linear-gradient(180deg, #eef2ff 0%, #e8ecf8 100%);
 }
-tbody tr:nth-child(even) td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: #fafbfc; }
-tbody tr:nth-child(even) td.group-col:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: #fafbfc; }
-tbody tr:nth-child(even) td.col-frozen:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: #fafbfc; }
-tbody tr:hover td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--primary-soft); }
-tbody tr:hover td.group-col:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: #c7d2fe; color: var(--primary-600); }
-tbody tr:hover td.col-frozen:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: #c7d2fe; }
+/* データ行 (集計じゃない 1 件ごと) の背景: テーブル設定の「全体 > 第N ディメンション」で --leaf-bg */
+.pivot-leaf-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--leaf-bg, #ffffff);
+}
+/* 単一ディメンション (= leaf も parent も無く tr 直下) の場合は tr のみで、偶奇交互の薄い背景を出す */
+tbody tr:not(.pivot-leaf-row):not(.pivot-parent-row):not(.total-row):nth-child(even) td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--leaf-bg, #fafbfc); }
+tbody tr:not(.pivot-leaf-row):not(.pivot-parent-row):not(.total-row):nth-child(odd) td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--leaf-bg, #ffffff); }
+/* Hover 背景 (データ行・通常行向け)。親行 hover は depth ルールの後に置く (下方参照)。 */
+tbody tr:hover td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--hover-bg, var(--primary-soft)); }
+tbody tr:hover td.group-col:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--hover-bg, #c7d2fe); }
+tbody tr:hover td.col-frozen:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--hover-bg, #c7d2fe); }
 tbody tr:hover td.cell-blue { background: rgba(37, 99, 235, 0.22); }
 tbody tr:hover td.cell-red { background: rgba(239, 68, 68, 0.22); }
 tbody tr:hover td.cell-yellow { background: rgba(245, 158, 11, 0.28); }
@@ -337,6 +377,7 @@ tbody tr:hover td.cell-yellow { background: rgba(245, 158, 11, 0.28); }
   color: #ffffff;
   border-color: var(--primary);
 }
+/* デフォルト 親行 bg (depth-N の上書きが無いとき) */
 .pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
   background: linear-gradient(180deg, #eef2ff 0%, #e8ecf8 100%);
 }
@@ -344,23 +385,413 @@ tbody tr:hover td.cell-yellow { background: rgba(245, 158, 11, 0.28); }
   font-weight: 700;
   border-bottom: 2px solid var(--primary-soft);
 }
-.pivot-parent-row:hover td:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
-  background: linear-gradient(180deg, #dbeafe 0%, #d0d8f0 100%);
-}
 .pivot-parent-cell {
   white-space: nowrap;
 }
 .pivot-parent-label {
   font-weight: 700;
-  color: var(--primary-600);
+  /* td (group-col) の color を継承。デフォルトは --dim-color = var(--primary-600)。
+     列ごとデータ設定で inline color を td に当てた場合もこの span に反映される。 */
+  color: inherit;
+}
+/* type:'image' / type:'link' のディメンションはクリック可能な <a> でラップされる */
+.dim-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.dim-link:hover { opacity: 0.75; }
+.dim-link:hover .dim-link-label { text-decoration: underline; }
+.dim-link-label {
+  color: var(--primary-600, #2563eb);
+  word-break: break-all;
+}
+/* type:'image' のディメンション (URL カラム) はピボットセルに <img> を出す */
+.dim-image {
+  max-height: 40px;
+  max-width: 120px;
+  object-fit: contain;
+  vertical-align: middle;
+  border-radius: 3px;
+  background: #f1f5f9;
+}
+.dim-image-broken {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  background: #fee2e2;
+  position: relative;
+}
+.dim-image-broken::after {
+  content: '×';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #dc2626;
+  font-size: 14px;
 }
 /* Depth-based styling for multi-level hierarchy */
+/* 階層別 親行 bg (テーブル設定の「全体 > 第N ディメンション」で --depth-N-bg を上書き) */
+.pivot-depth-0.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-0-bg, linear-gradient(180deg, #eef2ff 0%, #e8ecf8 100%));
+}
 .pivot-depth-1.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
-  background: linear-gradient(180deg, #f1f5f9 0%, #edf0f5 100%);
+  background: var(--depth-1-bg, linear-gradient(180deg, #f1f5f9 0%, #edf0f5 100%));
 }
 .pivot-depth-2.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
-  background: #f8fafc;
+  background: var(--depth-2-bg, #f8fafc);
+}
+.pivot-depth-3.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-3-bg, #fafbfc);
+}
+.pivot-depth-4.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-4-bg, #ffffff);
+}
+/* 深さ N の親行では、N より浅い (= dim-idx < N) ディメンション列を色付けせず透明に。
+   Excel ピボット風: 「第N ディメンション」階層の色は、その列以降にだけ適用される。 */
+.pivot-depth-1.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
+.pivot-depth-2.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-2.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
+.pivot-depth-3.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-3.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-3.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
+.pivot-depth-4.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-4.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-4.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-4.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
+
+/* データ行も親行と同じパターンで、自分の階層より前の dim 列は色を抜く。
+   .pivot-leaf-row.pivot-depth-N の N より小さい data-dim-idx の cell を transparent に。 */
+.pivot-leaf-row.pivot-depth-1 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
+.pivot-leaf-row.pivot-depth-2 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-2 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
+.pivot-leaf-row.pivot-depth-3 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-3 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-3 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
+.pivot-leaf-row.pivot-depth-4 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-4 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-4 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-4 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
+
+/* 固定列の場合、stairstep の transparent だと横スクロール時にメトリクス側のセルが透けてしまう。
+   各 dim 列の depth-N-bg で塗りつぶして透過を防ぐ (非固定列は従来どおり transparent)。 */
+.pivot-depth-1.pivot-parent-row td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-2.pivot-parent-row td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-3.pivot-parent-row td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-4.pivot-parent-row td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-1 td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-2 td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-3 td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-4 td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-0-bg, linear-gradient(180deg, #eef2ff 0%, #e8ecf8 100%));
+}
+.pivot-depth-2.pivot-parent-row td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-3.pivot-parent-row td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-4.pivot-parent-row td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-2 td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-3 td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-4 td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-1-bg, linear-gradient(180deg, #f1f5f9 0%, #edf0f5 100%));
+}
+.pivot-depth-3.pivot-parent-row td.col-frozen[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-4.pivot-parent-row td.col-frozen[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-3 td.col-frozen[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-4 td.col-frozen[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-2-bg, #f8fafc);
+}
+.pivot-depth-4.pivot-parent-row td.col-frozen[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row.pivot-depth-4 td.col-frozen[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-3-bg, #fafbfc);
+}
+
+/* 親行・データ行の hover: depth-N と transparent ルールの後に置くことで cascade で勝つ。
+   メトリクス列 + 前列の透明 dim 列の両方を hover 色で塗る。 */
+.pivot-parent-row:hover td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row:hover td:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--hover-bg, var(--primary-soft));
+}
+.pivot-parent-row:hover td[data-dim-idx]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-leaf-row:hover td[data-dim-idx]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--hover-bg, var(--primary-soft));
 }
 .pivot-leaf-row td {
   font-size: 0.96em;
+}
+
+/* ===== Total row (テーブル設定で表示切替。<thead> の2行目として配置) ===== */
+thead .total-row td {
+  /* テーブル設定の「全体 > 総計行」で --total-bg / --total-color / 装飾系を上書き可能 */
+  background: var(--total-bg, linear-gradient(180deg, #eef2ff 0%, #e0e7ff 100%));
+  color: var(--total-color, var(--text));
+  font-weight: var(--total-font-weight, 700);
+  font-style: var(--total-font-style, normal);
+  text-decoration: var(--total-text-decoration, none);
+  font-size: var(--total-font-size, 0.95em);
+  text-align: var(--total-text-align, right);
+  vertical-align: var(--total-vertical-align, middle);
+  padding: 0.7em 1.15em;
+  border-bottom: 2px solid var(--primary);
+  border-right: 1px solid var(--border);
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: nowrap;
+  position: sticky;
+  /* 1 行目 thead th の下に貼り付く。高さは zoom で変動するので
+     runtime で table に --head-row1-h を設定する (table.js 内)。 */
+  top: var(--head-row1-h, 38px);
+  z-index: 2;
+}
+thead .total-row td.total-label {
+  color: var(--total-color, var(--primary-600));
+  text-align: var(--total-text-align, left);
+  vertical-align: var(--total-vertical-align, middle);
+  padding-left: 12px;
+}
+/* 総計行の frozen 列は z-index を上げて、横スクロール時にメトリクスが透けないように */
+thead .total-row td.col-frozen { z-index: 4; }
+
+/* ===== Table settings panel ===== */
+.table-settings-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.table-settings-field input[type="checkbox"] { margin: 0; }
+.table-settings-section { margin-top: 8px; }
+.table-settings-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--primary-600);
+  margin-bottom: 8px;
+  padding: 4px 4px 0;
+}
+.table-settings-metric-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  margin-bottom: 8px;
+}
+.table-settings-metric-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.table-settings-metric-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+/* フィルタ行: select + value 入力 + ショートカット */
+.table-settings-metric-controls select,
+.table-settings-metric-controls input[type="text"] {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 12px;
+  font-family: inherit;
+  background: #ffffff;
+}
+.table-settings-metric-controls input[type="text"] { width: 80px; }
+.table-settings-metric-controls input[type="text"]:disabled { background: #f1f5f9; opacity: 0.6; }
+.table-settings-color-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.table-settings-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.table-settings-color input[type="color"] {
+  width: 28px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0;
+  cursor: pointer;
+}
+/* 指定なし時: 白背景 + 赤い斜め線で「未設定」を視覚化 */
+.table-settings-color.is-default {
+  position: relative;
+}
+.table-settings-color.is-default input[type="color"] {
+  background: #ffffff;
+}
+.table-settings-color.is-default::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 28px;
+  height: 22px;
+  transform: translateY(-50%);
+  border-radius: 4px;
+  pointer-events: none;
+  background: linear-gradient(
+    to top right,
+    transparent calc(50% - 1px),
+    #ef4444 calc(50% - 1px),
+    #ef4444 calc(50% + 1px),
+    transparent calc(50% + 1px)
+  );
+}
+.table-settings-default-tag {
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0.7;
+  font-style: italic;
+}
+.table-settings-default-tag.is-hidden {
+  visibility: hidden;
+}
+.table-settings-clear {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+  font-size: 14px;
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.table-settings-clear:hover:not(:disabled) {
+  background: var(--border);
+  color: var(--text);
+}
+.table-settings-clear:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+.table-settings-deco {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+.table-settings-deco:has(input:checked) {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary-600);
+}
+.table-settings-deco input[type="checkbox"],
+.table-settings-deco input[type="radio"] { display: none; }
+.table-settings-align-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.table-settings-align span {
+  font-size: 12px;
+  line-height: 1;
+  min-width: 12px;
+  text-align: center;
+}
+.table-settings-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.table-settings-size input[type="number"] {
+  width: 44px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  text-align: right;
+  font-family: inherit;
+}
+/* パネル本体: details を多く開いた時にスクロールできるようにする */
+#table-settings-body {
+  flex: 1;
+  min-height: 0;
+}
+.table-settings-field-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 10px 0 4px;
+}
+
+/* ===== Collapsible sections (details) ===== */
+.table-settings-section {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  background: var(--panel);
+  overflow: hidden;
+  /* flex column の body 内で縮められて中身が見えなくなるのを防ぐ */
+  flex-shrink: 0;
+}
+.table-settings-section > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--panel-2);
+  border-bottom: 1px solid transparent;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.table-settings-section > summary::-webkit-details-marker { display: none; }
+.table-settings-section > summary::before {
+  content: '▶';
+  font-size: 9px;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+.table-settings-section[open] > summary::before {
+  transform: rotate(90deg);
+}
+.table-settings-section[open] > summary {
+  border-bottom-color: var(--border);
+  background: linear-gradient(180deg, var(--panel-2) 0%, var(--panel) 100%);
+}
+.table-settings-section-body {
+  padding: 12px 14px;
+}
+.table-settings-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }

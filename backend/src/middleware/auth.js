@@ -1,6 +1,27 @@
 import { auth, db } from '../firebase.js';
 import { ADMIN_PERMS, VIEWER_PERMS } from '../utils/perms.js';
 
+// 短 TTL のユーザープロフィールキャッシュ (Cloud Run インスタンス内、60 秒)。
+// 集計 / options / columns / config など API が多発するとリクエストごとの
+// users/{uid} 読み込みが Firestore のコストになるので、ここで間引く。
+// インスタンス内のみなので別インスタンスで作られた変更が即時反映されないが、
+// 60 秒以内に admin 権限変更が即座に反映される必要は通常ない。
+const USER_CACHE_TTL_MS = 60 * 1000;
+const userCache = new Map();  // uid -> { user, expireAt }
+function userCacheGet(uid) {
+  const e = userCache.get(uid);
+  if (!e) return null;
+  if (Date.now() > e.expireAt) { userCache.delete(uid); return null; }
+  return e.user;
+}
+function userCacheSet(uid, user) {
+  userCache.set(uid, { user, expireAt: Date.now() + USER_CACHE_TTL_MS });
+}
+export function invalidateUserCache(uid) {
+  if (uid) userCache.delete(uid);
+  else userCache.clear();
+}
+
 // Verify Firebase ID token from Authorization: Bearer <token>
 export async function authMiddleware(c, next) {
   const header = c.req.header('Authorization') || '';
@@ -14,14 +35,23 @@ export async function authMiddleware(c, next) {
     return c.json({ error: 'Invalid token' }, 401);
   }
 
-  // メール/パスワード認証のユーザーはメール確認済みを必須にする。
-  // Google SSO は provider 側で email_verified=true を保証しているので素通し。
-  // firebase 側の `firebase.identities.email` が存在してかつ `email_verified=false` なら拒否。
-  if (decoded.firebase?.sign_in_provider === 'password' && decoded.email_verified === false) {
+  // Google SSO のみを受け入れる (email/password 等は UI から廃止済み)。
+  // 仮に password / その他プロバイダで Auth を作っても、ここで弾く。
+  if (decoded.firebase?.sign_in_provider && decoded.firebase.sign_in_provider !== 'google.com') {
     return c.json({
-      error: 'メールアドレスの確認が完了していません。受信メールのリンクをクリックしてください。',
-      code: 'email_not_verified',
+      error: 'Google アカウントでログインしてください。',
+      code: 'unsupported_provider',
     }, 403);
+  }
+
+  // 60 秒キャッシュ: 同 uid のリクエスト連発で Firestore を毎回叩かない。
+  // 新規作成 / 移行 / patch のパスはキャッシュ更新後に通常通り走る。
+  const cachedUser = userCacheGet(decoded.uid);
+  if (cachedUser) {
+    c.set('user', cachedUser);
+    c.set('uid', decoded.uid);
+    await next();
+    return;
   }
 
   // Load/create user profile in Firestore
@@ -45,9 +75,7 @@ export async function authMiddleware(c, next) {
       };
       await userRef.set(user);
     } else {
-      // Check if an existing doc has this email (admin pre-registered the user
-      // via email/password flow, but they chose to sign in with Google).
-      // In that case, migrate the doc to the new UID.
+      // admin が事前登録した pending_* doc にメール一致するものがあれば、新 UID へ移行。
       const email = decoded.email || '';
       if (email) {
         const byEmail = await db.collection('users').where('email', '==', email).limit(1).get();
@@ -56,6 +84,7 @@ export async function authMiddleware(c, next) {
           user = { ...prev.data(), uid: decoded.uid, photoURL: decoded.picture || prev.data().photoURL || '' };
           await userRef.set(user);
           await prev.ref.delete();
+          userCacheSet(decoded.uid, user);
           c.set('user', user);
           c.set('uid', decoded.uid);
           await next();
@@ -81,6 +110,7 @@ export async function authMiddleware(c, next) {
     }
   }
 
+  userCacheSet(decoded.uid, user);
   c.set('user', user);
   c.set('uid', decoded.uid);
   await next();

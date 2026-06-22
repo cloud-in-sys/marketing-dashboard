@@ -162,46 +162,50 @@ echo -n "GOCSPX-xxxx-あなたのクライアントシークレット" | \
 2. **Google** 有効化（サポートメール: `{{ADMIN_EMAIL}}`）
 3. **メール/パスワード** 有効化
 
-## Step 12: コードをコピーして設定変更
+## Step 12: テナント定義を作成
+
+> **重要**: フォルダの複製（旧 `cp -R`）はもう不要。1つのコードベースから複数テナントへ
+> 撃ち分ける方式に移行済み。テナントごとの差は `deploy/tenants/<tenant>.env` に集約され、
+> `app-config.js` / `.firebaserc` / backend env は `deploy/deploy.sh` が自動生成する。
+> 詳細は [deploy/README.md](deploy/README.md) を参照。
+
+### 12-1. テナント定義ファイルを作成
 
 ```bash
-cp -R /path/to/original/dashboard /path/to/new/dashboard
-cd /path/to/new/dashboard
+cp deploy/tenants/_example.env deploy/tenants/{{TENANT}}.env
 ```
 
-### 12-1. `.firebaserc` 作成
-```json
-{"projects":{"default":"{{PROJECT_ID}}"}}
+`{{TENANT}}.env` を編集し、Step 4 で取得した値を記入する:
+
+```sh
+TENANT={{TENANT}}
+PROJECT_ID={{PROJECT_ID}}
+PROJECT_NUMBER={{PROJECT_NUMBER}}
+REGION={{REGION}}
+API_KEY=xxx                              # Step 4 の apiKey
+APP_ID={{APP_ID}}
+APP_NAME={{PROJECT_NAME}}
+APP_CHECK_SITE_KEY=                       # App Check 未使用なら空
+GOOGLE_OAUTH_CLIENT_ID=xxx.apps.googleusercontent.com
+USE_BACKEND_AGGREGATE=true
 ```
 
-### 12-2. `firebase.json` 更新
-`rewrites` 内の `serviceId` を確認（`dashboard-backend` のまま、変更不要）
+`{{TENANT}}.env`（実値）は gitignore される。`_example.env` テンプレのみコミットされる。
 
-### 12-3. `js/config.js` 更新
-```javascript
-export const FIREBASE_CONFIG = {
-  apiKey: 'xxx',         // Step 4 で取得した値
-  authDomain: '{{PROJECT_ID}}.firebaseapp.com',
-  projectId: '{{PROJECT_ID}}',
-  appId: '{{APP_ID}}',
-};
-export const API_BASE = '';
-export const APP_CHECK_SITE_KEY = '';  // 必要なら設定
-export const BRAND = {
-  logoUrl: 'assets/logo.png',
-  appName: '{{APP_NAME}}',
-};
+### 12-2. （参考）生成内容の確認
+
+`firebase.json` の `rewrites` 内 `serviceId` は `dashboard-backend` のまま変更不要。
+`app-config.js` / `.firebaserc` は `deploy.sh` 実行時に上記 `.env` から生成されるため、手で作成しない。
+内容を事前に確認したい場合:
+
+```bash
+./deploy/deploy.sh {{TENANT}} all --dry-run
 ```
 
-### 12-4. `backend/.env` 作成
-```
-GCP_PROJECT_ID={{PROJECT_ID}}
-SNAPSHOT_BUCKET={{PROJECT_ID}}-snapshots
-GOOGLE_OAUTH_CLIENT_ID=519497398571-xxx.apps.googleusercontent.com
-OAUTH_REDIRECT_URI=https://dashboard-backend-{{PROJECT_NUMBER}}.{{REGION}}.run.app/api/google/auth/callback
-```
+> 注: フロントの Firebase 設定は `app-config.js`（`window.__APP_CONFIG__`）に集約されている。
+> `js/config.js` はそれを読むだけなので直接編集は不要。
 
-### 12-5. ロゴ差し替え
+### 12-3. ロゴ差し替え
 ブランドロゴを会社ごとに差し替える。
 
 **配置場所**: `assets/logo.png`（このファイル1つだけ置き換えればOK）
@@ -235,28 +239,31 @@ cp /path/to/new-logo.png assets/logo.png
 
 **ブランド名の変更**: `js/config.js` の `BRAND.appName` を書き換える（ログイン画面タイトル、ロゴ画像が無い時のフォールバック表示に使用）。
 
-### 12-6. 初期管理者設定
+### 12-4. 初期管理者設定
 後で Firestore に直接作成する（Step 15）。
 
-## Step 13: Firestore セキュリティルール デプロイ
+## Step 13-14: デプロイ（firestore / hosting / backend）
+
+`deploy.sh` がテナント定義から `app-config.js` / `.firebaserc` を生成し、`firestore` ルール・
+`hosting`・`backend`（Cloud Run）を該当プロジェクトへデプロイする。全コマンドに `--project` が
+明示されるため誤プロジェクトへの誤爆を防げる。
 
 ```bash
-firebase deploy --only firestore:rules --project={{PROJECT_ID}}
+# まず dry-run で生成物と実行コマンドを確認（何もデプロイしない）
+./deploy/deploy.sh {{TENANT}} all --dry-run
+
+# hosting だけ先に出して表示・ログインを確認
+./deploy/deploy.sh {{TENANT}} hosting
+
+# 問題なければ firestore と backend も
+./deploy/deploy.sh {{TENANT}} firestore
+./deploy/deploy.sh {{TENANT}} backend
+# あるいは一括
+./deploy/deploy.sh {{TENANT}} all
 ```
 
-## Step 14: バックエンド初回デプロイ
-
-```bash
-cd backend
-
-gcloud run deploy dashboard-backend \
-  --source . \
-  --region {{REGION}} \
-  --project {{PROJECT_ID}} \
-  --allow-unauthenticated \
-  --service-account "dashboard-backend@{{PROJECT_ID}}.iam.gserviceaccount.com" \
-  --set-env-vars "GCP_PROJECT_ID={{PROJECT_ID}},SNAPSHOT_BUCKET={{PROJECT_ID}}-snapshots,GOOGLE_OAUTH_CLIENT_ID=xxx,OAUTH_REDIRECT_URI=https://dashboard-backend-{{PROJECT_NUMBER}}.{{REGION}}.run.app/api/google/auth/callback,NODE_ENV=production"
-```
+> backend デプロイには `GOOGLE_OAUTH_CLIENT_ID` が必要（`{{TENANT}}.env` に記入）。
+> 個別 target やフラグの詳細は [deploy/README.md](deploy/README.md) を参照。
 
 ## Step 15: 初期管理者ユーザーを Firestore に作成
 
@@ -265,13 +272,21 @@ Firebase Console → Authentication で管理者アカウントを作成（Step 
 1. <https://console.firebase.google.com/project/{{PROJECT_ID}}/firestore/data>
 2. コレクション `users` を作成
 3. ドキュメントID = UID
-4. フィールド:
+4. フィールド（**全て必須**。`createdAt` 等が欠けるとバックエンドの `users` 一覧API が `orderBy('createdAt')` で除外し、ユーザー管理画面に表示されない）:
    ```
-   name: "{{管理者名}}"
-   email: "{{ADMIN_EMAIL}}"
+   uid: "{{UID}}" (string, ドキュメントIDと同じ値)
+   email: "{{ADMIN_EMAIL}}" (string)
+   name: "{{管理者名}}" (string)
+   photoURL: "" (string, 空でOK)
    isAdmin: true (boolean)
-   perms: {} (map, 空でOK)
+   perms: {} (map, 空でOK ※isAdmin=true なら全権限扱い)
+   createdAt: "2026-01-01T00:00:00.000Z" (string, ISO8601 形式の現在時刻)
    ```
+
+   コンソール画面での型指定:
+   - `uid`, `email`, `name`, `photoURL`, `createdAt` → `string`
+   - `isAdmin` → `boolean`
+   - `perms` → `map`
 
 ## Step 16: フロントエンドデプロイ
 

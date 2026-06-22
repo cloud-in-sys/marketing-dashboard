@@ -146,12 +146,16 @@ export function setupDefaultsEvents() {
       S.CURRENT_VIEW = S.VIEW_ORDER[0] || 'summary_daily';
     }
 
-    // Delete orphan builtin presets (not referenced by any view)
+    // Delete orphan builtin presets (not referenced by any view) and dedupe by name
     const referenced = new Set(Object.values(S.VIEWS).map(v => v.presetName));
     const latestPresets = getPresets();
+    const seenBuiltinNames = new Set();
     const cleaned = latestPresets.filter(p => {
       if (!p.builtin) return true;
-      return referenced.has(p.name);
+      if (!referenced.has(p.name)) return false;       // 孤立 (参照無し)
+      if (seenBuiltinNames.has(p.name)) return false;  // 同名重複
+      seenBuiltinNames.add(p.name);
+      return true;
     });
     setPresets(cleaned);
     renderPresets();

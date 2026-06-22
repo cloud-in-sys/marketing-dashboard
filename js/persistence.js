@@ -23,29 +23,17 @@ export function queueConfigPatch(patch) {
   configTimer = setTimeout(flushConfigNow, CONFIG_DEBOUNCE_MS);
 }
 
-export async function flushConfigNow() {
+export async function flushConfigNow(opts) {
   if (configTimer) { clearTimeout(configTimer); configTimer = null; }
   if (!currentSid || Object.keys(pendingConfig).length === 0) return;
   const sid = currentSid;
   const patch = pendingConfig;
   pendingConfig = {};
   try {
-    await api.patchConfig(sid, patch);
+    await api.patchConfig(sid, patch, opts);
   } catch (e) {
     console.warn('[persistence] config patch failed', e);
     // Re-queue on failure
     Object.assign(pendingConfig, patch);
   }
 }
-
-// Flush on page unload so we don't lose edits
-window.addEventListener('beforeunload', () => {
-  if (configTimer) clearTimeout(configTimer);
-  if (currentSid && Object.keys(pendingConfig).length) {
-    // Best-effort sync beacon. May or may not succeed depending on auth header.
-    try {
-      const blob = new Blob([JSON.stringify(pendingConfig)], { type: 'application/json' });
-      navigator.sendBeacon(`/api/config/${currentSid}?beacon=1`, blob);
-    } catch (e) {}
-  }
-});

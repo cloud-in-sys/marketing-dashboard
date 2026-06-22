@@ -3,6 +3,7 @@ import { escapeHtml } from '../utils.js';
 import { showModal } from '../modal.js';
 import { hasPerm } from '../auth.js';
 import { emit } from '../events.js';
+import { makeSortable } from '../sortable.js';
 
 // ----- DIRTY FLAGS -----
 export function markDimsDirty() {
@@ -23,39 +24,86 @@ export function renderDimsDoc() {
     {v: 'month',      l: '月 (YYYY-MM)'},
     {v: 'dow',        l: '曜日'},
     {v: 'expression', l: '計算式'},
+    {v: 'image',      l: '画像 (URL カラム)'},
+    {v: 'link',       l: 'リンク (URL カラム)'},
   ];
   el.innerHTML = `
     <div class="metrics-doc-box">
       ${defs.map((d, i) => {
         const isExpr = d.type === 'expression';
+        const isImage = d.type === 'image';
         return `
-        <div class="metrics-doc-row dim-row" data-dim-idx="${i}">
+        <div class="metrics-doc-row dim-row" data-dim-idx="${i}" data-drag-key="${i}" draggable="true">
           <div class="dim-row-head">
-            <div class="field-col"><label class="field-label">名称</label><input type="text" class="metric-label-input" data-dim-label value="${escapeHtml(d.label)}" placeholder="表示名"></div>
+            <span class="drag-handle" data-drag-handle title="ドラッグで並び替え">⋮⋮</span>
+            <div class="field-col"><label class="field-label">名称</label><textarea class="metric-label-input" data-dim-label draggable="false" rows="${Math.max(1, Math.min(5, String(d.label || '').split('\n').length))}" placeholder="表示名 (Enter で改行・最大5行)"></textarea></div>
             <button type="button" class="metric-del" data-dim-remove="${i}" title="削除">×</button>
           </div>
           <div class="dim-row-grid">
             <div class="dim-field">
               <label>種類</label>
-              <select class="dim-type-select" data-dim-type>
+              <select class="dim-type-select" data-dim-type draggable="false">
                 ${typeOpts.map(o => `<option value="${o.v}"${d.type===o.v?' selected':''}>${o.l}</option>`).join('')}
               </select>
             </div>
             <div class="dim-field dim-field-source">
               <label>${isExpr ? '計算式' : 'データカラム'}</label>
               ${isExpr
-                ? `<input type="text" class="metric-formula-input" data-dim-expr value="${escapeHtml(d.expression || '')}" placeholder="例: r.operator + ' / ' + r.media">`
-                : `<input type="text" class="metric-key-input wide" data-dim-field value="${escapeHtml(d.field || '')}" placeholder="データカラム名">`}
+                ? `<input type="text" class="metric-formula-input" data-dim-expr draggable="false" value="${escapeHtml(d.expression || '')}" placeholder="例: r.operator + ' / ' + r.media">`
+                : `<input type="text" class="metric-key-input wide" data-dim-field draggable="false" value="${escapeHtml(d.field || '')}" placeholder="データカラム名">`}
             </div>
+            ${isImage ? `
+            <div class="dim-field">
+              <label>画像の高さ (px)</label>
+              <input type="number" class="metric-key-input" data-dim-image-height draggable="false" min="8" max="400" value="${d.imageHeight != null ? d.imageHeight : ''}" placeholder="40">
+            </div>
+            <div class="dim-field">
+              <label>画像の幅 (px)</label>
+              <input type="number" class="metric-key-input" data-dim-image-width draggable="false" min="8" max="600" value="${d.imageWidth != null ? d.imageWidth : ''}" placeholder="120">
+            </div>` : ''}
           </div>
         </div>`;
       }).join('') || '<div class="preset-empty">ディメンションがありません</div>'}
       <button type="button" class="metrics-add-btn" id="dims-add-btn">+ ディメンションを追加</button>
     </div>
   `;
+  // textarea の値は innerHTML 経由だと HTML5 仕様で先頭の \n 1 個が strip される。
+  // ここで明示的に DOM の value を代入することで、先頭改行 / 連続改行 / 末尾改行を全て保持する。
+  el.querySelectorAll('.dim-row[data-dim-idx]').forEach(row => {
+    const idx = +row.dataset.dimIdx;
+    const def = defs[idx];
+    const ta = row.querySelector('[data-dim-label]');
+    if (ta && def) ta.value = def.label || '';
+  });
+}
+
+// 名称 textarea の rows を内容の改行数に合わせる。入力中 (input イベント) から呼ばれる。
+// 初期描画は HTML テンプレ側で rows 属性を計算してあるので、ここでは扱わない。
+function autosizeLabel(el) {
+  const lines = (el.value || '').split('\n').length;
+  el.rows = Math.max(1, Math.min(5, lines));
 }
 
 export function setupDimensionsEvents() {
+  // ----- DIMS DRAG-REORDER -----
+  // dims-doc は持続する親要素。中身は renderDimsDoc で innerHTML 置換されるが、
+  // makeSortable は親に delegate でリスナを張るので 1 度だけ呼べばよい。
+  // data-drag-key には配列インデックスを使う (key 入力欄が無いので index で安定)。
+  makeSortable(document.getElementById('dims-doc'), (fromStr, toStr, before) => {
+    if (!hasPerm('editDimensions')) return;
+    const from = +fromStr, to = +toStr;
+    const defs = S.DIMENSIONS_DRAFT;
+    if (!defs || from === to || isNaN(from) || isNaN(to)) return;
+    if (from < 0 || from >= defs.length || to < 0 || to >= defs.length) return;
+    const item = defs[from];
+    defs.splice(from, 1);
+    const toAdjusted = (from < to) ? to - 1 : to;
+    const insertAt = before ? toAdjusted : toAdjusted + 1;
+    defs.splice(insertAt, 0, item);
+    markDimsDirty();
+    renderDimsDoc();
+  });
+
   // ----- DIMS HELP -----
   document.getElementById('dims-help-btn').addEventListener('click', async () => {
     const html = `
@@ -66,7 +114,9 @@ export function setupDimensionsEvents() {
         <code>日付</code> — 日付として扱う（YYYY-MM-DD)<br>
         <code>月 (YYYY-MM)</code> — 日付の先頭7文字を抽出<br>
         <code>曜日</code> — 日付から曜日(日/月/火/...)に変換<br>
-        <code>計算式</code> — 任意のJS式で行から値を算出
+        <code>計算式</code> — 任意のJS式で行から値を算出<br>
+        <code>画像 (URL カラム)</code> — データカラムの値を画像 URL とみなし、ピボット列にサムネを表示。クリックで URL を新規タブで開く。サイズは「画像の高さ・幅 (px)」で指定可能 (未指定なら 40×120px)<br>
+        <code>リンク (URL カラム)</code> — データカラムの値を URL として表示。クリックで新規タブで開く
       </div>
       <div class="ref-section-title">計算式で使える要素</div>
       <div class="metrics-doc-info-grid">
@@ -103,9 +153,22 @@ export function setupDimensionsEvents() {
     const defs = S.DIMENSIONS_DRAFT || [];
     const def = defs[idx];
     if (!def) return;
-    if (e.target.matches('[data-dim-label]')) def.label = e.target.value;
+    if (e.target.matches('[data-dim-label]')) {
+      // 5 行上限: 超えたら切り詰めてカーソルを末尾に
+      const lines = e.target.value.split('\n');
+      if (lines.length > 5) e.target.value = lines.slice(0, 5).join('\n');
+      def.label = e.target.value;
+      autosizeLabel(e.target);
+    }
     else if (e.target.matches('[data-dim-field]')) def.field = e.target.value;
     else if (e.target.matches('[data-dim-expr]')) def.expression = e.target.value;
+    else if (e.target.matches('[data-dim-image-height]')) {
+      const v = e.target.value;
+      def.imageHeight = v === '' ? null : Math.max(8, Math.min(400, Number(v) || 40));
+    } else if (e.target.matches('[data-dim-image-width]')) {
+      const v = e.target.value;
+      def.imageWidth = v === '' ? null : Math.max(8, Math.min(600, Number(v) || 120));
+    }
     markDimsDirty();
   });
   document.getElementById('dims-doc').addEventListener('change', e => {
@@ -164,6 +227,8 @@ export function setupDimensionsEvents() {
     }
     const ok = await showModal({title: 'ディメンション定義を保存', body: '変更内容を保存しますか？', okText: '保存'});
     if (!ok) return;
+    // モーダル待ち中に権限が剥がれた可能性に備えて再チェック
+    if (!hasPerm('editDimensions')) return;
     S.DIMENSIONS = JSON.parse(JSON.stringify(defs));
     S.DIM_EXPR_CACHE.clear();
     saveDimensions();

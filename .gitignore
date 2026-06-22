@@ -2,8 +2,13 @@
 .claude/
 
 # Per-company deployment config (contains Firebase keys)
+# app-config.js / .firebaserc は deploy/deploy.sh が生成する成果物
 app-config.js
 .firebaserc
+
+# テナント定義（実値）。_example.env テンプレのみコミットする
+deploy/tenants/*.env
+!deploy/tenants/_example.env
 
 # Backend
 backend/node_modules

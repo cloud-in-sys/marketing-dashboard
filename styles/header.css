@@ -1,32 +1,41 @@
 /* ===== HEADER ===== */
+/* ブランディング設定 (config/branding) で以下のカスタムプロパティを上書き可能:
+   --header-gradient      : 背景 (グラデーション or 単色)
+   --header-text-color    : 文字色 (タイトル/メタ/ユーザー情報)
+   --header-accent-color  : 装飾色 (枠線・バッジ背景の元色)。color-mix で半透明化。
+                            白ヘッダー時は暗い色 (#1e293b 等) を指定すると枠線が見える。 */
 .app-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 12px 20px;
-  background: var(--header-gradient, linear-gradient(135deg, #1a0b2e 20%, #5b1e8b 30%, #c2185b 100%));
+  background: var(--header-gradient, linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #1e3a8a 100%));
   border-bottom: 1px solid #1e293b;
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.18);
   position: sticky;
   top: 0;
   z-index: 10;
 }
-.app-header .logo-text { color: #ffffff; }
-.app-header .logo-text em { color: #94a3b8; }
-.app-header .icon-btn { color: #cbd5e1; border-color: transparent; }
-.app-header .icon-btn:hover { background: rgba(255, 255, 255, 0.1); color: #ffffff; border-color: rgba(255, 255, 255, 0.15); }
-.app-header .meta {
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+.app-header .logo-text       { color: var(--header-text-color, #ffffff); }
+.app-header .logo-text em    { color: var(--header-text-color, #cbd5e1); opacity: 0.75; }
+.app-header .icon-btn        { color: var(--header-text-color, #e2e8f0); border-color: transparent; }
+.app-header .icon-btn:hover  {
+  background: color-mix(in srgb, var(--header-accent-color, #ffffff) 10%, transparent);
+  color: var(--header-text-color, #ffffff);
+  border-color: color-mix(in srgb, var(--header-accent-color, #ffffff) 15%, transparent);
 }
-.app-header .meta span { color: #ffffff; }
+.app-header .meta {
+  background: color-mix(in srgb, var(--header-accent-color, #ffffff) 8%, transparent);
+  color: var(--header-text-color, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--header-accent-color, #ffffff) 12%, transparent);
+}
+.app-header .meta span       { color: var(--header-text-color, #ffffff); }
 .source-method-icon-mini {
   display: inline-flex;
   align-items: center;
   margin-left: 12px;
   padding-left: 12px;
-  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  border-left: 1px solid color-mix(in srgb, var(--header-accent-color, #ffffff) 15%, transparent);
   vertical-align: middle;
 }
 .source-method-icon-mini:empty { display: none; }
@@ -35,27 +44,27 @@
   align-items: center;
   gap: 4px;
   padding: 2px 6px;
-  background: rgba(255, 255, 255, 0.12);
+  background: color-mix(in srgb, var(--header-accent-color, #ffffff) 12%, transparent);
   border-radius: 4px;
   font-size: 12px;
   line-height: 1;
 }
 .src-icon svg { display: block; }
 .app-header .header-user {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: color-mix(in srgb, var(--header-accent-color, #ffffff) 8%, transparent);
+  border-color: color-mix(in srgb, var(--header-accent-color, #ffffff) 12%, transparent);
 }
-.app-header .header-user-name { color: #ffffff; }
-.app-header .header-user-role { color: #ffffff; }
+.app-header .header-user-name { color: var(--header-text-color, #ffffff); }
+.app-header .header-user-role { color: var(--header-text-color, #cbd5e1); opacity: 0.85; }
 .app-header .header-logout {
   background: transparent;
-  border-color: rgba(255, 255, 255, 0.2);
-  color: #ffffff;
+  border-color: color-mix(in srgb, var(--header-accent-color, #ffffff) 15%, transparent);
+  color: var(--header-text-color, #e2e8f0);
 }
 .app-header .header-logout:hover {
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.15);
   border-color: rgba(239, 68, 68, 0.5);
-  color: #fca5a5;
+  color: #b91c1c;
 }
 .header-left {
   display: flex;
@@ -67,15 +76,15 @@
   position: relative;
   margin-left: 8px;
   padding-left: 12px;
-  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  border-left: 1px solid color-mix(in srgb, var(--header-accent-color, #ffffff) 15%, transparent);
 }
 .source-dropdown-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+  background: color-mix(in srgb, var(--header-accent-color, #ffffff) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--header-accent-color, #ffffff) 12%, transparent);
+  color: var(--header-text-color, #ffffff);
   padding: 6px 12px;
   border-radius: 8px;
   font-size: 13px;
@@ -85,8 +94,8 @@
   transition: background 0.15s, border-color 0.15s;
 }
 .source-dropdown-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--header-accent-color, #ffffff) 14%, transparent);
+  border-color: color-mix(in srgb, var(--header-accent-color, #ffffff) 20%, transparent);
 }
 .source-dropdown-icon { flex-shrink: 0; display: block; }
 .source-dropdown-caret { font-size: 10px; opacity: 0.8; }
@@ -196,6 +205,9 @@
 body.no-manage-sources #open-source-settings { display: none !important; }
 body.no-manage-sources #add-source { display: none !important; }
 body.no-manage-sources .source-dropdown-footer { display: none !important; }
+/* データソース作成は admin / operator のみ。viewer (一般) は perms に manageSources
+   があっても作成ボタンを出さない (バックエンド側でも拒否される)。 */
+body.no-create-source #add-source { display: none !important; }
 /* ソース設定画面: manageSources が無い人は操作系を全て隠す */
 body.no-manage-sources .source-manage-actions { display: none !important; }
 body.no-manage-sources .source-method-grid { pointer-events: none; opacity: 0.6; }
@@ -240,12 +252,27 @@ body.no-manage-sources #bq-query-input { pointer-events: none; background: var(-
   max-width: 240px;
   object-fit: contain;
   display: block;
-  filter: brightness(0) invert(1);
+}
+/* ロゴ塗りつぶし表示: ブランディング設定で「ロゴの色」を指定すると、不可視 <img> で
+   本来のサイズ (aspect ratio + max-width) を取りつつ、その上にマスク + background-color
+   の overlay span を絶対位置で重ねる。 */
+.brand-logo-wrap {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+}
+.brand-logo-sizer { visibility: hidden; }
+.brand-logo-tinted {
+  position: absolute;
+  inset: 0;
+  background-color: var(--logo-color, currentColor);
+  -webkit-mask: var(--logo-mask) left center / contain no-repeat;
+          mask: var(--logo-mask) left center / contain no-repeat;
 }
 .brand-logo-fallback {
   font-size: 16px;
   font-weight: 800;
-  color: #ffffff;
+  color: var(--header-text-color, #ffffff);
   letter-spacing: 0.08em;
 }
 .logo-text {

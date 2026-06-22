@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <title>Marketing Metrics Dashboard</title>
-<link rel="icon" type="image/png" href="assets/favicon.png">
-<link rel="apple-touch-icon" href="assets/favicon.png">
+<!-- favicon / apple-touch-icon は js/branding.js が Firestore のブランディング設定から動的に挿入 -->
+
 <link rel="stylesheet" href="styles/base.css">
 <link rel="stylesheet" href="styles/header.css">
 <link rel="stylesheet" href="styles/sidebar.css">
@@ -26,16 +26,7 @@
       <div class="login-checking-text">認証情報を確認しています...</div>
     </div>
     <div class="login-body hidden" id="login-body">
-    <form id="login-form" class="login-form">
-      <label>メールアドレス</label>
-      <input type="email" id="login-id" autocomplete="username" required>
-      <label>パスワード</label>
-      <input type="password" id="login-pw" autocomplete="current-password" required>
-      <div class="login-error hidden" id="login-error"></div>
-      <button type="submit" class="login-btn">ログイン</button>
-      <button type="button" class="login-forgot" id="login-forgot-btn">パスワードをお忘れですか？</button>
-    </form>
-    <div class="login-divider"><span>または</span></div>
+    <div class="login-error hidden" id="login-error"></div>
     <button type="button" class="login-google-btn" id="login-google-btn">
       <svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true">
         <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -128,13 +119,14 @@
   </div>
   <div class="sidebar-group" data-group="users">
     <div class="nav-title group-title">
-      <span class="group-toggle">ユーザー管理</span>
+      <span class="group-toggle">管理者設定</span>
       <span class="group-caret">▾</span>
     </div>
     <div class="group-body">
       <nav class="nav">
         <button type="button" class="nav-item settings-item" id="open-settings">ユーザー一覧</button>
         <button type="button" class="nav-item settings-item" id="open-groups">グループ管理</button>
+        <button type="button" class="nav-item settings-item" id="open-branding">ブランディング</button>
       </nav>
     </div>
   </div>
@@ -213,6 +205,16 @@
     </aside>
     <div id="chart-settings-backdrop" class="chart-settings-backdrop hidden"></div>
 
+    <!-- テーブル設定サイドパネル -->
+    <aside id="table-settings-panel" class="chart-settings-panel hidden" aria-hidden="true">
+      <div class="chart-settings-head">
+        <div class="chart-settings-title">テーブル設定</div>
+        <button type="button" class="chart-settings-close" id="table-settings-close" aria-label="閉じる">×</button>
+      </div>
+      <div class="chart-settings-body" id="table-settings-body"></div>
+    </aside>
+    <div id="table-settings-backdrop" class="chart-settings-backdrop hidden"></div>
+
     <div class="panel collapsible" data-panel="dim">
       <div class="panel-head">
         <div class="panel-title">ディメンション</div>
@@ -265,9 +267,11 @@
       </div>
     </div>
 
-    <div class="table-toolbar hidden" id="table-toolbar"></div>
-    <div class="table-wrap">
-      <table id="data-table"></table>
+    <div class="table-area" id="table-area">
+      <div class="table-toolbar hidden" id="table-toolbar"></div>
+      <div class="table-wrap">
+        <table id="data-table"></table>
+      </div>
     </div>
   </section>
 
@@ -388,8 +392,8 @@
   <section class="settings-view hidden" id="settings-view">
     <div class="view-header">
       <div class="view-title-wrap">
-        <div class="view-crumb">設定</div>
-        <h2>ユーザー管理</h2>
+        <div class="view-crumb">管理者設定</div>
+        <h2>ユーザー一覧</h2>
       </div>
       <div class="view-actions">
         <button type="button" class="save-btn admin-only" id="add-user-btn">+ ユーザーを追加</button>
@@ -427,7 +431,7 @@
   <section class="settings-view hidden" id="groups-view">
     <div class="view-header">
       <div class="view-title-wrap">
-        <div class="view-crumb">ユーザー管理</div>
+        <div class="view-crumb">管理者設定</div>
         <h2>グループ管理</h2>
       </div>
       <div class="view-actions admin-only">
@@ -440,6 +444,25 @@
         <div class="panel-title">グループ一覧</div>
       </div>
       <div class="groups-list" id="groups-list"></div>
+    </div>
+  </section>
+
+  <section class="settings-view hidden" id="branding-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">管理者設定</div>
+        <h2>ブランディング</h2>
+      </div>
+      <div class="view-actions">
+        <button type="button" class="preset-save-btn" id="branding-save-btn" style="display:inline-block">変更を保存</button>
+      </div>
+    </div>
+    <div class="non-admin-note no-manage-branding">権限のあるユーザーのみがブランディングを変更できます。</div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">アプリの外観</div>
+      </div>
+      <div class="branding-form" id="branding-form"></div>
     </div>
   </section>
 

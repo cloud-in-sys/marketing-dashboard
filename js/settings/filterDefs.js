@@ -2,7 +2,7 @@ import { S, saveFilterDefs } from '../state.js';
 import { escapeHtml } from '../utils.js';
 import { showModal } from '../modal.js';
 import { hasPerm } from '../auth.js';
-import { renderFilters } from '../filters.js';
+import { renderFilters } from '../filters/index.js';
 import { emit } from '../events.js';
 
 // ----- DIRTY FLAGS -----

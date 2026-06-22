@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { db } from '../firebase.js';
 import { requirePerm } from '../middleware/auth.js';
 import { httpError } from '../middleware/error.js';
+import { invalidateSourceAccessCache } from '../aggregate/sourceAccess.js';
 
 // グループ: ユーザーが所属する「テナント」を表す単純な名前付きレコード。
 // - 行フィルタや可視性のロジックは sources 側で定義する
@@ -70,6 +71,7 @@ app.put('/:gid', requirePerm('manageGroups'), async c => {
 
   if (!Object.keys(patch).length) return c.json({ ok: true });
   await groupsCol().doc(gid).update(patch);
+  invalidateSourceAccessCache();  // sourceFilters 変更を即時反映
   return c.json({ ok: true });
 });
 
@@ -88,6 +90,7 @@ app.delete('/:gid', requirePerm('manageGroups'), async c => {
   sources.docs.forEach(d => batch.update(d.ref, { allowedGroupIds: FieldValue.arrayRemove(gid) }));
   batch.delete(groupsCol().doc(gid));
   await batch.commit();
+  invalidateSourceAccessCache();
   return c.json({ ok: true });
 });
 

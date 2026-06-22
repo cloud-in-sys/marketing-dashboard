@@ -16,16 +16,13 @@ export const API_BASE = window.__APP_CONFIG__?.apiBase ?? '';
 export const APP_CHECK_SITE_KEY = window.__APP_CONFIG__?.appCheckSiteKey
   || '6Lc517csAAAAAHZWV6QwFoZTCWv92rMdXH8QjyNt';
 
-// 各社で差し替え可能なブランド設定。assets/ にロゴ・アイコン画像を置いて、ここで参照する。
-// runtime 上書きは window.__APP_CONFIG__.brand = { ... } で可能。
-export const BRAND = Object.assign({
-  logoUrl: 'assets/logo.png',          // ヘッダー/ログイン画面のロゴ画像
-  faviconUrl: 'assets/favicon.png',    // ブラウザタブ/Apple Touch Icon
-  appName: 'logo',                     // ロゴ画像の alt 属性 (画像が読めない時の代替テキスト)
-}, window.__APP_CONFIG__?.brand || {});
+// 機能フラグ。
+export const FEATURES = Object.assign({
+  useBackendAggregate: false,
+  debugLog: false,  // true で console.debug('[debug] ...') を出す
+}, window.__APP_CONFIG__?.features || {});
 
-// テーマ(色)。CSS カスタムプロパティとして DOM に流し込まれる。
-// runtime 上書きは window.__APP_CONFIG__.theme = { ... } で可能。
-export const THEME = Object.assign({
-  headerGradient: 'linear-gradient(135deg, #1a0b2e 20%, #5b1e8b 30%, #c2185b 100%)',
-}, window.__APP_CONFIG__?.theme || {});
+// デバッグログ (FEATURES.debugLog=true でのみ出力)。本番でうるさい時はフラグで黙らせる。
+export function dlog(...args) {
+  if (FEATURES.debugLog) console.debug('[dashboard]', ...args);
+}

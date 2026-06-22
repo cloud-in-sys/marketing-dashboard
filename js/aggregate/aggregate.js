@@ -1,4 +1,5 @@
-import { S, DEFAULT_BASE_FORMULAS, DEFAULT_FORMULAS } from './state.js';
+import { S, DEFAULT_BASE_FORMULAS, DEFAULT_FORMULAS } from '../state.js';
+import { getBackendTotals } from './aggregateCache.js';
 
 // ===== Aggregation =====
 // 統一モデル: どの計算式も「集計関数 + 算術 + メトリクス参照」を自由に混ぜられる。
@@ -207,7 +208,27 @@ function tokenizeWhere(str) {
       if (i < str.length) buf += str[i++];
       continue;
     }
-    if (ch === '(') { flush(); tokens.push({ type: 'LPAREN' }); i++; continue; }
+    if (ch === '(') {
+      // 識別子直後の '(' は関数呼び出し (例: today()) として CLAUSE に含める
+      if (buf.length > 0 && /[a-zA-Z0-9_]$/.test(buf)) {
+        let depth = 1, j = i + 1, inS = false, inD = false;
+        while (j < str.length && depth > 0) {
+          const c = str[j];
+          if (!inS && !inD) {
+            if (c === '(') depth++;
+            else if (c === ')') depth--;
+            else if (c === "'") inS = true;
+            else if (c === '"') inD = true;
+          } else if (inS && c === "'") inS = false;
+          else if (inD && c === '"') inD = false;
+          j++;
+        }
+        buf += str.slice(i, j);
+        i = j;
+        continue;
+      }
+      flush(); tokens.push({ type: 'LPAREN' }); i++; continue;
+    }
     if (ch === ')') { flush(); tokens.push({ type: 'RPAREN' }); i++; continue; }
     const rest = str.slice(i);
     const am = /^\s+and\s+/i.exec(rest);
@@ -299,7 +320,15 @@ function evalAst(node, row, today) {
 
 // 式から集計関数呼び出しを抽出 → placeholder で置換した式と spec マップを返す
 function liftFormula(formula) {
-  if (liftCache.has(formula)) return liftCache.get(formula);
+  const cacheKey = formula;
+  if (liftCache.has(cacheKey)) return liftCache.get(cacheKey);
+
+  // parent(metric) / total(metric) を識別子化: __parent_metric__ / __total_metric__
+  // (compileLifted の identifier→ctx 書き換えで自然に ctx.__parent_metric__ になる)
+  // ctx 側で渡せばその値が、未設定なら undefined → コンパイル後の try/catch で 0 にフォールバック。
+  formula = String(formula)
+    .replace(/\bparent\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)/g, '__parent_$1__')
+    .replace(/\btotal\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)/g, '__total_$1__');
 
   let nextId = 0;
   const specs = {};
@@ -342,7 +371,7 @@ function liftFormula(formula) {
   }
 
   const out = { lifted: result, specs };
-  liftCache.set(formula, out);
+  liftCache.set(cacheKey, out);
   return out;
 }
 
@@ -422,6 +451,23 @@ export function parseBaseFormula(formula) {
   return { ...specs[firstPh], lifted, specs };
 }
 
+// 基礎メトリクスとして妥当か (= 「単一の集計関数だけ」かを判定)。
+// 比率/割り算/引き算など複数の集計を組み合わせる式は基礎ではなく派生で書くべき。
+// 多重ディメンションのピボット親行で sumAggs が base を素朴に合算するため、
+// 基礎に非線形な式が入ると親行の値がデタラメになる (CTR が 1477.98% になる等)。
+//
+// 許可: sum(col) / count() / avg(col) / sum(col) where x='広告' / sum(col where x='広告')
+// 拒否: sum(a)/sum(b)、sum(a)-sum(b)、sum(a)*100、定数、メトリクス参照のみ など
+export function isPureBaseFormula(formula) {
+  const f = String(formula || '').trim();
+  if (!f) return false;
+  const { lifted, specs } = liftFormula(f);
+  const phKeys = Object.keys(specs);
+  if (phKeys.length !== 1) return false;
+  // lift 後に残るのが placeholder それ自体だけなら純粋な集計
+  return lifted.trim() === phKeys[0];
+}
+
 // liftされた式をJS関数にコンパイル。識別子は ctx.X に書き換え。
 function compileLifted(formula) {
   if (compiledLiftedCache.has(formula)) return compiledLiftedCache.get(formula);
@@ -445,6 +491,9 @@ export function evalFormula(formula, ctx) {
 const _aggregateCache = new WeakMap();
 
 export function aggregate(rows) {
+  // バックエンド集計の prefetch 済み結果があればそれを返す (ブラウザ側の重い計算をスキップ)。
+  const backend = getBackendTotals(rows);
+  if (backend) return backend;
   ensureKeyCache();
   const today = todayStr();
   const cached = _aggregateCache.get(rows);
@@ -454,6 +503,11 @@ export function aggregate(rows) {
   const ctxBase = { __proto__: null, min: Math.min, max: Math.max, abs: Math.abs, pow: Math.pow, sqrt: Math.sqrt, round: Math.round, Math };
 
   const evalKey = (key, formula) => {
+    // sparkline(...) は通常の数式ではないので評価をスキップ (描画は別経路)
+    if (/^\s*sparkline\s*\(/i.test(String(formula || ''))) {
+      a[key] = NaN;
+      return;
+    }
     const { lifted, specs } = liftFormula(String(formula || ''));
     const aggValues = {};
     for (const ph of Object.keys(specs)) {

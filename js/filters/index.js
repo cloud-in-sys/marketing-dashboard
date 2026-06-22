@@ -1,6 +1,10 @@
-import { S } from './state.js';
-import { escapeHtml, getOptions } from './utils.js';
-import { emit } from './events.js';
+import { S } from '../state.js';
+import { escapeHtml, getOptions } from '../utils.js';
+import { emit } from '../events.js';
+import { closeFloatingMs, toggleFloatingMs } from './floatingMenu.js';
+
+// closeFloatingMs は main.js 等が直接参照するので re-export する。
+export { closeFloatingMs };
 
 // 日付値を YYYY-MM-DD に正規化(時刻部分や '/' を吸収)
 function normDate(v) {
@@ -54,13 +58,15 @@ export function applyFilters(rows) {
 export function renderFilters() {
   const el = document.getElementById('filters');
   if (!el) return;
+  // 再描画前に floating menu が body 直下に残らないよう必ず閉じる。
+  closeFloatingMs();
   if (!S.FILTER_CONDITIONS) S.FILTER_CONDITIONS = {};
   el.innerHTML = S.FILTER_DEFS.map(f => {
     if (f.type === 'multi') {
       return `<div><label>${escapeHtml(f.label)}</label>
         <div class="ms" data-filter-id="${f.id}">
           <button type="button" class="ms-btn"><span class="ms-label">すべて</span><span class="ms-caret">▾</span></button>
-          <div class="ms-menu hidden">
+          <div class="ms-menu hidden" data-filter-id="${f.id}">
             <div class="ms-section">
               <button type="button" class="ms-section-toggle" data-toggle="condition">▶ 条件でフィルタ</button>
               <div class="ms-condition hidden" data-section="condition">
@@ -116,16 +122,15 @@ export function renderFilters() {
 }
 
 export function setupMSDynamic(f) {
-  const root = document.querySelector(`[data-filter-id="${f.id}"]`);
+  const root = document.querySelector(`.ms[data-filter-id="${f.id}"]`);
   if (!root || !root.classList.contains('ms')) return;
   const btn = root.querySelector('.ms-btn');
   const menu = root.querySelector('.ms-menu');
 
-  // メニュー開閉
+  // メニュー開閉 (body 直下に floating で表示する)
   btn.addEventListener('click', e => {
     e.stopPropagation();
-    document.querySelectorAll('.ms-menu').forEach(m => { if (m !== menu) m.classList.add('hidden'); });
-    menu.classList.toggle('hidden');
+    toggleFloatingMs(root, menu, btn);
   });
   menu.addEventListener('click', e => e.stopPropagation());
 
@@ -166,7 +171,7 @@ export function setupMSDynamic(f) {
   // 値フィルタ: チェックボックス
   menu.addEventListener('change', e => {
     const cb = e.target.closest('input[type=checkbox]');
-    if (!cb || cb.classList.contains('ms-cond-op')) return;
+    if (!cb) return;
     const set = S.FILTER_VALUES[f.id];
     if (cb.checked) set.add(cb.value);
     else set.delete(cb.value);
@@ -177,7 +182,7 @@ export function setupMSDynamic(f) {
 
   // 全選択/クリア
   root.querySelector('[data-ms-all]').addEventListener('click', () => {
-    getOptions(S.RAW, f.field).forEach(v => S.FILTER_VALUES[f.id].add(v));
+    (S.FILTER_OPTIONS?.[f.field] || getOptions(S.RAW, f.field)).forEach(v => S.FILTER_VALUES[f.id].add(v));
     renderMSDynamic(f);
     emit('render');
   });
@@ -201,22 +206,25 @@ export function setupMSDynamic(f) {
 }
 
 export function renderMSDynamic(f) {
-  const root = document.querySelector(`[data-filter-id="${f.id}"]`);
-  if (!root) return;
-  const menu = root.querySelector('.ms-options');
-  const opts = getOptions(S.RAW, f.field);
+  // .ms-menu は body に moved されている場合があるので .ms-menu[data-filter-id] で取る。
+  const menu = document.querySelector(`.ms-menu[data-filter-id="${f.id}"]`);
+  if (!menu) return;
+  const optsEl = menu.querySelector('.ms-options');
+  if (!optsEl) return;
+  const opts = (S.FILTER_OPTIONS?.[f.field] || getOptions(S.RAW, f.field));
   const set = S.FILTER_VALUES[f.id] || new Set();
-  menu.innerHTML = opts.length
+  optsEl.innerHTML = opts.length
     ? opts.map(v => {
         const checked = set.has(v);
-        return `<label class="ms-option${checked ? ' checked' : ''}"><input type="checkbox" value="${escapeHtml(v)}"${checked ? ' checked' : ''}><span>${escapeHtml(v)}</span></label>`;
+        const esc = escapeHtml(v);
+        return `<label class="ms-option${checked ? ' checked' : ''}"><input type="checkbox" value="${esc}"${checked ? ' checked' : ''}><span title="${esc}">${esc}</span></label>`;
       }).join('')
     : '<div class="add-menu-empty">データなし</div>';
   updateMSLabelDyn(f);
 }
 
 export function updateMSLabelDyn(f) {
-  const root = document.querySelector(`[data-filter-id="${f.id}"]`);
+  const root = document.querySelector(`.ms[data-filter-id="${f.id}"]`);
   if (!root) return;
   const label = root.querySelector('.ms-label');
   const set = S.FILTER_VALUES[f.id] || new Set();
@@ -233,6 +241,12 @@ export function updateMSLabelDyn(f) {
   }
 }
 
+// populateFilters は source 切替時に呼ぶことを想定した「全フィルタを空に初期化」関数。
+// 値を確実にクリアするため intentionally に Set.clear() する。
+// ユーザー値の保存と復元はこの後段で行う (presets.js applyPresetFilters / loadTabState)。
+//
+// バックグラウンド fetch (filter options 到着後) からはここを呼ばないこと。
+// 代わりに renderMSDynamic(f) を直接呼べば値を維持したまま UI だけ再描画される。
 export function populateFilters() {
   S.FILTER_DEFS.forEach(f => {
     if (f.type === 'multi') {

@@ -8,16 +8,19 @@ function nextColor() {
 }
 
 // ===== EVENT HANDLERS: CHARTS =====
+// 新規作成時にメトリクスは未選択。ハードコード ('ad_cost' 等) は metric key が
+// 任意命名のテナントで存在せず初期表示が空になる UX バグを起こすので避ける。
+// ユーザーはチャートを追加した直後に設定パネルからメトリクスを選ぶ。
 document.getElementById('add-main-chart').addEventListener('click', () => {
-  S.CHARTS.push({id: S.CHART_ID_SEQ++, metric: 'ad_cost', type: 'bar', size: 'main', color: nextColor(), bucket: 'auto', name: ''});
+  S.CHARTS.push({id: S.CHART_ID_SEQ++, metric: '', type: 'bar', size: 'main', color: nextColor(), bucket: 'auto', name: ''});
   emit('render');
 });
 document.getElementById('add-sub-chart').addEventListener('click', () => {
-  S.CHARTS.push({id: S.CHART_ID_SEQ++, metric: 'clicks', type: 'line', size: 'sub', color: nextColor(), bucket: 'auto', name: ''});
+  S.CHARTS.push({id: S.CHART_ID_SEQ++, metric: '', type: 'line', size: 'sub', color: nextColor(), bucket: 'auto', name: ''});
   emit('render');
 });
 document.getElementById('add-mini-chart').addEventListener('click', () => {
-  S.CHARTS.push({id: S.CHART_ID_SEQ++, metric: 'mcv', type: 'bar', size: 'mini', color: nextColor(), bucket: 'auto', name: ''});
+  S.CHARTS.push({id: S.CHART_ID_SEQ++, metric: '', type: 'bar', size: 'mini', color: nextColor(), bucket: 'auto', name: ''});
   emit('render');
 });
 
