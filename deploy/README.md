@@ -11,7 +11,7 @@
 
 | 引数 | 説明 |
 |---|---|
-| `<tenant>` | `deploy/tenants/<tenant>.env` のテナント名（例: `forpeple`, `marketing`） |
+| `<tenant>` | `deploy/tenants/<tenant>.env` のテナント名（例: `acme`） |
 | `[target]` | `hosting` / `firestore` / `backend` / `all`（省略時 `all`） |
 | `--dry-run` | 生成内容と実行予定コマンドを表示するだけで deploy しない |
 | `--yes` / `-y` | 確認プロンプトをスキップ |
@@ -20,13 +20,13 @@
 
 ```bash
 # まず dry-run で生成物とコマンドを確認（何もデプロイしない）
-./deploy/deploy.sh forpeple all --dry-run
+./deploy/deploy.sh acme all --dry-run
 
 # hosting だけ先に出して動作確認
-./deploy/deploy.sh forpeple hosting
+./deploy/deploy.sh acme hosting
 
 # 問題なければ全部
-./deploy/deploy.sh forpeple all
+./deploy/deploy.sh acme all
 ```
 
 `deploy.sh` は実行時に、テナント定義からリポジトリルートの `app-config.js` と `.firebaserc` を**生成**してから、
@@ -35,7 +35,7 @@
 ## 新テナントの追加
 
 GCP プロジェクト自体の初期構築（プロジェクト作成・API 有効化・IAM・Firestore 作成など）は
-[../SETUP_NEW_TENANT.md](../SETUP_NEW_TENANT.md) の Step 1〜11 を参照。その後:
+[../docs/setup-new-tenant.md](../docs/setup-new-tenant.md) の Step 1〜11 を参照。その後:
 
 ```bash
 cp deploy/tenants/_example.env deploy/tenants/<新テナント名>.env

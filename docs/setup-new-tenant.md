@@ -167,7 +167,7 @@ echo -n "GOCSPX-xxxx-あなたのクライアントシークレット" | \
 > **重要**: フォルダの複製（旧 `cp -R`）はもう不要。1つのコードベースから複数テナントへ
 > 撃ち分ける方式に移行済み。テナントごとの差は `deploy/tenants/<tenant>.env` に集約され、
 > `app-config.js` / `.firebaserc` / backend env は `deploy/deploy.sh` が自動生成する。
-> 詳細は [deploy/README.md](deploy/README.md) を参照。
+> 詳細は [deploy/README.md](../deploy/README.md) を参照。
 
 ### 12-1. テナント定義ファイルを作成
 
@@ -237,7 +237,7 @@ USE_BACKEND_AGGREGATE=true
 ```
 
 > backend デプロイには `GOOGLE_OAUTH_CLIENT_ID` が必要（`{{TENANT}}.env` に記入）。
-> 個別 target やフラグの詳細は [deploy/README.md](deploy/README.md) を参照。
+> 個別 target やフラグの詳細は [deploy/README.md](../deploy/README.md) を参照。
 
 ## Step 15: 初期管理者ユーザーを Firestore に作成
 
