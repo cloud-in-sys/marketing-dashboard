@@ -1,7 +1,7 @@
 // ===== Chart UI events (split out of main.js) =====
 import { emit } from './events.js';
 import { S, PALETTE, saveState } from './state.js';
-import { openChartSettings, closeChartSettings } from './chartSettings.js';
+import { openChartSettings, closeChartSettings, renderChartSettingsPanel } from './chartSettings.js';
 
 function nextColor() {
   return PALETTE[S.CHARTS.length % PALETTE.length];
@@ -114,6 +114,10 @@ function onPanelClick(e) {
 document.getElementById('chart-settings-body').addEventListener('change', onPanelChange);
 document.getElementById('chart-settings-body').addEventListener('input', onPanelChange);
 document.getElementById('chart-settings-body').addEventListener('click', onPanelClick);
+// ピッカー閉じた瞬間に遅延 render を流す (ピッカー open 中に chart.js 側で skip された再 render を回収)。
+document.addEventListener('dashboard-picker-closed', () => {
+  if (S.CHART_SETTINGS_ID != null && S.CHARTS.some(c => c.id === S.CHART_SETTINGS_ID)) renderChartSettingsPanel();
+});
 document.getElementById('chart-settings-close').addEventListener('click', closeChartSettings);
 document.getElementById('chart-settings-backdrop').addEventListener('click', closeChartSettings);
 document.addEventListener('keydown', e => {

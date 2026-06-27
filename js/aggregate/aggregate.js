@@ -52,6 +52,15 @@ function ensureKeyCache() {
 export function baseMetricKeys() { ensureKeyCache(); return cachedBaseKeys; }
 export function derivedMetricKeys() { ensureKeyCache(); return cachedDerivedKeys; }
 
+// メトリクスの式が parent() / total() を含むか。
+// これらの関数はピボットテーブルの階層集計でのみ意味を持つので、
+// カード/グラフ設定 UI で警告を出すための判定に使う。
+const RE_PARENT_TOTAL = /\b(parent|total)\s*\(/;
+export function metricUsesHierarchy(metricKey) {
+  const f = (S.METRIC_FORMULAS && S.METRIC_FORMULAS[metricKey]) ?? DEFAULT_FORMULAS[metricKey] ?? '';
+  return RE_PARENT_TOTAL.test(String(f));
+}
+
 function num(v) { const n = +v; return n === n ? n : 0; }
 
 // ===== Date utilities (today() 用) =====

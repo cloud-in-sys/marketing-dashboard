@@ -46,11 +46,44 @@ function dimValue(row, key, dimMap) {
   }
   const raw = row[def.field] || '';
   if (def.type === 'month') return String(raw).slice(0, 7);
+  if (def.type === 'week') {
+    return computeWeekRange(raw, def.weekStart);
+  }
   if (def.type === 'dow') {
     const dt = new Date(raw);
     return isNaN(dt) ? '' : DOW_LABELS[dt.getDay()];
   }
   return raw;
+}
+
+// YYYY-MM-DD を [年, 月(1-12), 日] にパース (new Date(str) の UTC ずれを回避)。
+// 月/日の範囲も検証して、'2024-13-45' のような不正値が new Date のオーバーフロー経由で
+// 別月の週ラベルに化けないようにする。
+function parseYMD(raw) {
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(String(raw));
+  if (!m) return null;
+  const y = +m[1], mo = +m[2], d = +m[3];
+  if (mo < 1 || mo > 12) return null;
+  if (d < 1 || d > 31) return null;
+  const dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return [y, mo, d];
+}
+function pad2(n) { return n < 10 ? '0' + n : String(n); }
+function fmtYMD(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+
+// 週の開始曜日 (0=日..6=土、デフォルト 1=月) を起点に YYYY-MM-DD〜YYYY-MM-DD を返す。
+function computeWeekRange(raw, weekStart) {
+  const ymd = parseYMD(raw);
+  if (!ymd) return '';
+  const ws = (weekStart != null && weekStart >= 0 && weekStart <= 6) ? Number(weekStart) : 1;
+  const dt = new Date(ymd[0], ymd[1] - 1, ymd[2]);
+  const offset = (dt.getDay() - ws + 7) % 7;
+  const start = new Date(dt);
+  start.setDate(dt.getDate() - offset);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return `${fmtYMD(start)}〜${fmtYMD(end)}`;
 }
 
 function dimSort(key, a, b, dimMap) {

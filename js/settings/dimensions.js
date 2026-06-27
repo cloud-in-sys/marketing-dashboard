@@ -1,4 +1,5 @@
 import { S, saveDimensions } from '../state.js';
+import { flushConfigNow } from '../persistence.js';
 import { escapeHtml } from '../utils.js';
 import { showModal } from '../modal.js';
 import { hasPerm } from '../auth.js';
@@ -21,17 +22,30 @@ export function renderDimsDoc() {
   const typeOpts = [
     {v: 'value',      l: 'そのまま値'},
     {v: 'date',       l: '日付'},
+    {v: 'week',       l: '週 (YYYY-MM-DD〜YYYY-MM-DD)'},
     {v: 'month',      l: '月 (YYYY-MM)'},
     {v: 'dow',        l: '曜日'},
     {v: 'expression', l: '計算式'},
     {v: 'image',      l: '画像 (URL カラム)'},
     {v: 'link',       l: 'リンク (URL カラム)'},
   ];
+  // 週ディメンション用: 週の開始曜日 (0=日, 1=月, ..., 6=土)
+  const weekStartOpts = [
+    {v: 1, l: '月曜始まり'},
+    {v: 0, l: '日曜始まり'},
+    {v: 2, l: '火曜始まり'},
+    {v: 3, l: '水曜始まり'},
+    {v: 4, l: '木曜始まり'},
+    {v: 5, l: '金曜始まり'},
+    {v: 6, l: '土曜始まり'},
+  ];
   el.innerHTML = `
     <div class="metrics-doc-box">
       ${defs.map((d, i) => {
         const isExpr = d.type === 'expression';
         const isImage = d.type === 'image';
+        const isWeek = d.type === 'week';
+        const ws = (d.weekStart != null) ? Number(d.weekStart) : 1;
         return `
         <div class="metrics-doc-row dim-row" data-dim-idx="${i}" data-drag-key="${i}" draggable="true">
           <div class="dim-row-head">
@@ -60,6 +74,13 @@ export function renderDimsDoc() {
             <div class="dim-field">
               <label>画像の幅 (px)</label>
               <input type="number" class="metric-key-input" data-dim-image-width draggable="false" min="8" max="600" value="${d.imageWidth != null ? d.imageWidth : ''}" placeholder="120">
+            </div>` : ''}
+            ${isWeek ? `
+            <div class="dim-field">
+              <label>週の開始曜日</label>
+              <select class="dim-type-select" data-dim-week-start draggable="false">
+                ${weekStartOpts.map(o => `<option value="${o.v}"${ws===o.v?' selected':''}>${o.l}</option>`).join('')}
+              </select>
             </div>` : ''}
           </div>
         </div>`;
@@ -112,6 +133,7 @@ export function setupDimensionsEvents() {
       <div class="ref-syntax">
         <code>そのまま値</code> — データカラムの値をそのまま使う<br>
         <code>日付</code> — 日付として扱う（YYYY-MM-DD)<br>
+        <code>週</code> — 日付を週単位にまとめる。表示は <code>YYYY-MM-DD〜YYYY-MM-DD</code>。週の開始曜日 (日〜土) は各ディメンションで個別に指定可能<br>
         <code>月 (YYYY-MM)</code> — 日付の先頭7文字を抽出<br>
         <code>曜日</code> — 日付から曜日(日/月/火/...)に変換<br>
         <code>計算式</code> — 任意のJS式で行から値を算出<br>
@@ -181,8 +203,19 @@ export function setupDimensionsEvents() {
     if (!def) return;
     if (e.target.matches('[data-dim-type]')) {
       def.type = e.target.value;
+      if (def.type === 'week') {
+        if (def.weekStart == null) def.weekStart = 1;
+      } else {
+        // type が week 以外に変わったら weekStart は不要 — 残すと再度 week にした時に古い値が再利用される。
+        delete def.weekStart;
+      }
       markDimsDirty();
       renderDimsDoc();
+    } else if (e.target.matches('[data-dim-week-start]')) {
+      const n = Number(e.target.value);
+      def.weekStart = (n >= 0 && n <= 6) ? n : 1;
+      markDimsDirty();
+      emit('renderChips');
     }
   });
   document.getElementById('dims-doc').addEventListener('click', async e => {
@@ -236,6 +269,13 @@ export function setupDimensionsEvents() {
     S.SELECTED_DIMS = S.SELECTED_DIMS.filter(k => validKeys.has(k));
     clearDimsDirty();
     emit('renderChips');
+    // backend PATCH 完了を待ってから aggregate API を叩く。古い config での集計を回避。
+    try {
+      await flushConfigNow();
+    } catch (e) {
+      await showModal({title: '保存に失敗しました', body: `サーバーへの保存に失敗しました。ネットワーク接続を確認してもう一度お試しください。\n\n${e?.message || e}`, okText: 'OK', cancelText: ''});
+      return;
+    }
     emit('render');
     await showModal({title: '保存完了', body: 'ディメンション定義を保存しました', okText: 'OK', cancelText: ''});
   });

@@ -1,6 +1,6 @@
 import { S } from './state.js';
 import { escapeHtml } from './utils.js';
-import { aggregate } from './aggregate/aggregate.js';
+import { aggregate, metricUsesHierarchy } from './aggregate/aggregate.js';
 import { formatMetricValue } from './chart.js';
 import { getBackendCardAgg } from './aggregate/aggregateCache.js';
 
@@ -158,9 +158,10 @@ export function renderCardSettingsPanel() {
         <span class="chart-settings-label">メトリクス</span>
         <select data-card-panel-role="metric">
           <option value="">— 選択してください —</option>
-          ${S.METRIC_DEFS.map(m => `<option value="${m.key}"${c.metric === m.key ? ' selected' : ''}>${escapeHtml(m.label)}</option>`).join('')}
+          ${S.METRIC_DEFS.map(m => `<option value="${m.key}"${c.metric === m.key ? ' selected' : ''}>${escapeHtml(m.label)}${metricUsesHierarchy(m.key) ? ' (⚠ ピボット専用)' : ''}</option>`).join('')}
         </select>
       </label>
+      ${c.metric && metricUsesHierarchy(c.metric) ? '<div class="card-settings-warning">⚠ このメトリクスは <code>parent()</code> / <code>total()</code> を使っています。カードではピボット階層がないため、表示値が意図と異なる可能性があります。</div>' : ''}
     </div>
     <div class="card-settings-section">
       <div class="card-settings-section-title">サブ（任意）</div>
@@ -172,7 +173,7 @@ export function renderCardSettingsPanel() {
         <span class="chart-settings-label">メトリクス</span>
         <select data-card-panel-role="subMetric">
           <option value="">— なし —</option>
-          ${S.METRIC_DEFS.map(m => `<option value="${m.key}"${c.subMetric === m.key ? ' selected' : ''}>${escapeHtml(m.label)}</option>`).join('')}
+          ${S.METRIC_DEFS.map(m => `<option value="${m.key}"${c.subMetric === m.key ? ' selected' : ''}>${escapeHtml(m.label)}${metricUsesHierarchy(m.key) ? ' (⚠ ピボット専用)' : ''}</option>`).join('')}
         </select>
       </label>
     </div>
@@ -190,23 +191,23 @@ export function renderCardSettingsPanel() {
     </div>
     <div class="card-settings-section">
       <div class="card-settings-section-title">配色</div>
-      <label class="chart-settings-field">
+      <div class="chart-settings-field">
         <span class="chart-settings-label">背景色</span>
-        <input type="color" data-card-panel-role="bgColor" value="${c.bgColor || '#ffffff'}">
-      </label>
+        <dashboard-color-picker data-card-panel-role="bgColor" value="${c.bgColor || '#ffffff'}"></dashboard-color-picker>
+      </div>
       <div class="chart-settings-row">
-        <label class="chart-settings-field" style="flex:1">
+        <div class="chart-settings-field" style="flex:1">
           <span class="chart-settings-label">表示名</span>
-          <input type="color" data-card-panel-role="labelColor" value="${c.labelColor || c.textColor || '#64748b'}">
-        </label>
-        <label class="chart-settings-field" style="flex:1">
+          <dashboard-color-picker data-card-panel-role="labelColor" value="${c.labelColor || c.textColor || '#64748b'}"></dashboard-color-picker>
+        </div>
+        <div class="chart-settings-field" style="flex:1">
           <span class="chart-settings-label">集計結果</span>
-          <input type="color" data-card-panel-role="valueColor" value="${c.valueColor || c.textColor || '#0f172a'}">
-        </label>
-        <label class="chart-settings-field" style="flex:1">
+          <dashboard-color-picker data-card-panel-role="valueColor" value="${c.valueColor || c.textColor || '#0f172a'}"></dashboard-color-picker>
+        </div>
+        <div class="chart-settings-field" style="flex:1">
           <span class="chart-settings-label">サブ表示</span>
-          <input type="color" data-card-panel-role="subColor" value="${c.subColor || c.textColor || '#64748b'}">
-        </label>
+          <dashboard-color-picker data-card-panel-role="subColor" value="${c.subColor || c.textColor || '#64748b'}"></dashboard-color-picker>
+        </div>
       </div>
       <button type="button" class="card-color-reset" data-card-panel-role="resetColors">既定色に戻す</button>
     </div>

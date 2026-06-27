@@ -103,9 +103,9 @@ export function renderBrandingForm() {
     <div class="branding-row">
       <label>ヘッダーの色 <small>(3 色のグラデーション。左から右へ)</small></label>
       <div class="branding-gradient">
-        <input type="color" data-branding-stop="0" value="${stops[0]}"${disabled}>
-        <input type="color" data-branding-stop="1" value="${stops[1]}"${disabled}>
-        <input type="color" data-branding-stop="2" value="${stops[2]}"${disabled}>
+        <dashboard-color-picker data-branding-stop="0" value="${stops[0]}"${disabled}></dashboard-color-picker>
+        <dashboard-color-picker data-branding-stop="1" value="${stops[1]}"${disabled}></dashboard-color-picker>
+        <dashboard-color-picker data-branding-stop="2" value="${stops[2]}"${disabled}></dashboard-color-picker>
         <div class="branding-gradient-preview" style="background:${gradientFromStops(stops)}"></div>
       </div>
     </div>
@@ -113,7 +113,7 @@ export function renderBrandingForm() {
     <div class="branding-row">
       <label>ヘッダーの文字色 <small>(タイトル / メタ情報 / ユーザーラベル)</small></label>
       <div class="branding-gradient">
-        <input type="color" data-branding="headerTextColor" value="${draft.headerTextColor || '#ffffff'}"${disabled}>
+        <dashboard-color-picker data-branding="headerTextColor" value="${draft.headerTextColor || '#ffffff'}"${disabled}></dashboard-color-picker>
         <button type="button" class="link-btn" data-branding-clear="headerTextColor" title="指定なしに戻す"${disabled}>×</button>
         <small style="color:var(--muted)">${draft.headerTextColor ? '指定中: ' + draft.headerTextColor : '指定なし (デフォルト)'}</small>
       </div>
@@ -122,7 +122,7 @@ export function renderBrandingForm() {
     <div class="branding-row">
       <label>ヘッダーの装飾色 <small>(枠線・バッジ背景。白ヘッダー時は暗い色を指定)</small></label>
       <div class="branding-gradient">
-        <input type="color" data-branding="headerAccentColor" value="${draft.headerAccentColor || '#ffffff'}"${disabled}>
+        <dashboard-color-picker data-branding="headerAccentColor" value="${draft.headerAccentColor || '#ffffff'}"${disabled}></dashboard-color-picker>
         <button type="button" class="link-btn" data-branding-clear="headerAccentColor" title="指定なしに戻す"${disabled}>×</button>
         <small style="color:var(--muted)">${draft.headerAccentColor ? '指定中: ' + draft.headerAccentColor : '指定なし (デフォルト = 白)'}</small>
       </div>
@@ -131,7 +131,7 @@ export function renderBrandingForm() {
     <div class="branding-row">
       <label>ロゴの色 <small>(指定なし: 画像そのまま / 指定: その色で塗りつぶし)</small></label>
       <div class="branding-gradient">
-        <input type="color" data-branding="logoColor" value="${draft.logoColor || '#ffffff'}"${disabled}>
+        <dashboard-color-picker data-branding="logoColor" value="${draft.logoColor || '#ffffff'}"${disabled}></dashboard-color-picker>
         <button type="button" class="link-btn" data-branding-clear="logoColor" title="指定なしに戻す"${disabled}>×</button>
         <small style="color:var(--muted)">${draft.logoColor ? '指定中: ' + draft.logoColor : '指定なし (画像本来の色)'}</small>
       </div>
@@ -173,13 +173,19 @@ export function setupBrandingEvents() {
   form.addEventListener('input', e => {
     if (!hasPerm('manageBranding')) return;
     const t = e.target;
-    if (t.dataset.branding) {
+    // dashboard-color-picker は Shadow DOM を使っていないので、内部の <input.dcp-hex>
+    // からも input/change がそのまま bubble する。data-branding はホスト要素にしか無いので
+    // closest() でホストに辿ってから処理する。
+    const pickerHost = t.closest && t.closest('dashboard-color-picker[data-branding]');
+    if (pickerHost) {
+      draft[pickerHost.dataset.branding] = pickerHost.value;
+      markDirty();
+      applyBranding(draft);
+    } else if (t.dataset.branding) {
       draft[t.dataset.branding] = t.value;
       markDirty();
       // テキスト入力 (title/subtitle/alt) はライブプレビューしない
       //   ヘッダーやブラウザタブが即時更新されると「保存済み」と勘違いされやすいため。
-      //   色ピッカーは視覚選択なのでライブプレビューする。
-      if (t.type === 'color') applyBranding(draft);
     } else if (t.dataset.brandingStop != null) {
       const stops = [
         form.querySelector('[data-branding-stop="0"]').value,

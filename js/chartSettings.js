@@ -1,6 +1,7 @@
 import { S } from './state.js';
 import { escapeHtml } from './utils.js';
 import { getComboLines } from './chart.js';
+import { metricUsesHierarchy } from './aggregate/aggregate.js';
 
 // ===== グラフ設定サイドパネル =====
 export function openChartSettings(chartId) {
@@ -35,7 +36,7 @@ export function renderChartSettingsPanel() {
       ${(S.DIMENSIONS || []).map(d => `<option value="${d.key}"${c.bucket === d.key ? ' selected' : ''}>${escapeHtml(d.label)}</option>`).join('')}
     </select>`;
   const y1Select = `
-    <select data-panel-role="metric"><option value=""${!c.metric ? ' selected' : ''}>— 未選択 —</option>${S.METRIC_DEFS.map(m => `<option value="${m.key}"${m.key === c.metric ? ' selected' : ''}>${escapeHtml(m.label)}</option>`).join('')}</select>`;
+    <select data-panel-role="metric"><option value=""${!c.metric ? ' selected' : ''}>— 未選択 —</option>${S.METRIC_DEFS.map(m => `<option value="${m.key}"${m.key === c.metric ? ' selected' : ''}>${escapeHtml(m.label)}${metricUsesHierarchy(m.key) ? ' (⚠ ピボット専用)' : ''}</option>`).join('')}</select>`;
 
   // 折れ線系(line / area / combo の折れ線)でドット表示オプションを出す
   const hasDots = c.type === 'line' || c.type === 'area' || c.type === 'combo';
@@ -96,9 +97,9 @@ export function renderChartSettingsPanel() {
           <div class="combo-line" data-line-idx="${idx}">
             <select data-panel-role="line-metric" data-line-idx="${idx}">
               <option value="">— 未選択 —</option>
-              ${S.METRIC_DEFS.map(m => `<option value="${m.key}"${l.metric === m.key ? ' selected' : ''}>${escapeHtml(m.label)}</option>`).join('')}
+              ${S.METRIC_DEFS.map(m => `<option value="${m.key}"${l.metric === m.key ? ' selected' : ''}>${escapeHtml(m.label)}${metricUsesHierarchy(m.key) ? ' (⚠ ピボット専用)' : ''}</option>`).join('')}
             </select>
-            <input type="color" data-panel-role="line-color" data-line-idx="${idx}" value="${l.color || '#ef4444'}">
+            <dashboard-color-picker data-panel-role="line-color" data-line-idx="${idx}" value="${l.color || '#ef4444'}"></dashboard-color-picker>
             <button type="button" class="combo-line-remove" data-panel-role="line-remove" data-line-idx="${idx}" aria-label="削除">×</button>
           </div>
         `).join('')}
@@ -116,16 +117,16 @@ export function renderChartSettingsPanel() {
     </label>` : ''}
 
     ${c.type === 'combo' ? `
-    <label class="chart-settings-field">
+    <div class="chart-settings-field">
       <span class="chart-settings-label">棒の色</span>
-      <input type="color" data-panel-role="color" value="${c.color || '#2563eb'}">
-    </label>` : ''}
+      <dashboard-color-picker data-panel-role="color" value="${c.color || '#2563eb'}"></dashboard-color-picker>
+    </div>` : ''}
 
     ${c.type !== 'stacked' && c.type !== 'combo' ? `
-    <label class="chart-settings-field">
+    <div class="chart-settings-field">
       <span class="chart-settings-label">色</span>
-      <input type="color" class="chart-color" data-panel-role="color" value="${c.color || '#2563eb'}">
-    </label>` : ''}
+      <dashboard-color-picker class="chart-color" data-panel-role="color" value="${c.color || '#2563eb'}"></dashboard-color-picker>
+    </div>` : ''}
 
     ${dotControls}
     ${labelControls}

@@ -276,7 +276,7 @@ body.no-edit-metrics #metrics-save-btn { display: none; }
 }
 .metrics-doc-row-head {
   display: grid;
-  grid-template-columns: auto 1fr 160px 110px 28px;
+  grid-template-columns: auto minmax(0, 1fr) 400px 110px 28px;
   gap: 10px;
   align-items: end;
 }
@@ -483,7 +483,7 @@ body.no-edit-dimensions .dims-doc .metric-del { pointer-events: none; opacity: 0
 }
 .dim-row-grid {
   display: grid;
-  grid-template-columns: 180px 1fr;
+  grid-template-columns: 360px 1fr;
   gap: 10px;
 }
 .dim-field {

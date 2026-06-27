@@ -219,7 +219,7 @@ export async function prefetchAggregates(rows) {
     viewFilterExpr,
     baseFmls: JSON.stringify(S.BASE_FORMULAS || {}),
     derivedFmls: JSON.stringify(S.METRIC_FORMULAS || {}),
-    dimDefs: JSON.stringify((S.DIMENSIONS || []).map(d => [d.key, d.field, d.type, d.expression || ''])),
+    dimDefs: JSON.stringify((S.DIMENSIONS || []).map(d => [d.key, d.field, d.type, d.expression || '', d.weekStart ?? ''])),
   });
 
   // 1) cache hit (フロント側 TTL 5分)

@@ -1,4 +1,5 @@
 // ===== Dashboard - ES Module Entry Point =====
+import './colorPicker.js'; // <dashboard-color-picker> カスタム要素を登録 (各設定パネルで使用)
 import { on, emit } from './events.js';
 import { S,
   initStateFromServer, saveState, saveCustomTabs, saveViewOrder,
@@ -17,9 +18,9 @@ import { groupRows } from './aggregate/dimensions.js';
 import { dimLabel } from './aggregate/dimensions.js';
 import { renderCurrentUserLabel, applyPermissionUI, hideLogin, observeAuth, signIn, logout } from './auth.js';
 import { seedDefaultPresets, renderPresets, loadPresetIntoGlobals, applyPresetFilters, renderTabPresetSelect,
-  enterPresetEdit, syncPresetEdit, deletePreset, savePresetPrompt,
+  enterPresetEdit, syncPresetEdit, deletePreset, duplicatePreset, savePresetPrompt,
   loadTabState, initTabStates, setExitSettingsMode as setExitSettingsModePresets } from './presets.js';
-import { renderCustomTabs, renderViewNav, applyView, highlightActiveView,
+import { renderCustomTabs, renderViewNav, applyView, highlightActiveView, toggleCustomTabGroup, listCustomTabGroups,
   setExitSettingsMode as setExitSettingsModeTabs } from './tabs.js';
 import { setupSettingsEvents, exitSettingsMode } from './settings.js';
 import { FEATURES } from './config.js';
@@ -245,6 +246,13 @@ document.getElementById('view-nav').addEventListener('click', e => {
   if (btn) applyView(btn.dataset.view);
 });
 document.getElementById('custom-nav').addEventListener('click', e => {
+  // グループ ヘッダー: 折りたたみトグル
+  const groupBtn = e.target.closest('[data-group-toggle]');
+  if (groupBtn) {
+    toggleCustomTabGroup(groupBtn.dataset.groupToggle);
+    renderCustomTabs();
+    return;
+  }
   const del = e.target.closest('[data-del-custom]');
   if (del) {
     const key = del.dataset.delCustom;
@@ -253,27 +261,82 @@ document.getElementById('custom-nav').addEventListener('click', e => {
     showModal({title: '\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u3092\u524a\u9664', body: `\u300c${tabName}\u300d\u3092\u524a\u9664\u3057\u307e\u3059\u304b\uff1f\u3053\u306e\u64cd\u4f5c\u306f\u53d6\u308a\u6d88\u305b\u307e\u305b\u3093\u3002`, okText: '\u524a\u9664', danger: true}).then(ok => {
       if (!ok) return;
       const wasCurrent = S.CURRENT_VIEW === key;
-      // \u524a\u9664\u5bfe\u8c61\u304c\u73fe\u5728\u306e\u30bf\u30d6\u306a\u3089\u3001syncCurrentTabState \u304c orphan \u3068\u3057\u3066\u518d\u633f\u5165\u3057\u306a\u3044\u3088\u3046\u5148\u306b\u5207\u308a\u66ff\u3048\u308b
-      if (wasCurrent) S.CURRENT_VIEW = 'summary_daily';
+      // \u524a\u9664\u524d\u306b CURRENT_VIEW \u3092\u4e00\u6642\u7684\u306b\u5916\u3057\u3066\u304a\u304f\u3002\u3053\u308c\u306b\u3088\u308a applyView \u5185\u306e
+      // syncCurrentTabState() \u304c\u300c\u73fe\u5728\u306e\u30bf\u30d6\u306e globals \u3092\u4fdd\u5b58\u3059\u308b\u300d\u51e6\u7406\u3092\u5b9f\u884c\u3057\u3066\u3082\u3001
+      // \u524a\u9664\u6e08\u307f\u30bf\u30d6\u306e\u672a\u4fdd\u5b58\u5909\u66f4\u304c\u30d5\u30a9\u30fc\u30eb\u30d0\u30c3\u30af\u5148\u306e\u30bf\u30d6\u3092\u7834\u58ca\u3057\u306a\u3044\u3002
+      if (wasCurrent) S.CURRENT_VIEW = null;
       S.CUSTOM_TABS = S.CUSTOM_TABS.filter(t => t.key !== key);
       delete S.TAB_STATES[key];
       saveCustomTabs();
-      if (wasCurrent) applyView('summary_daily');
-      renderCustomTabs();
+      if (wasCurrent) {
+        // \u30d5\u30a9\u30fc\u30eb\u30d0\u30c3\u30af\u5148: summary_daily \u2192 \u4efb\u610f\u306e builtin \u2192 \u6b8b\u30ab\u30b9\u30bf\u30e0\u306e\u5148\u982d
+        const fallbackKey = S.VIEWS['summary_daily']
+          ? 'summary_daily'
+          : Object.keys(S.VIEWS)[0] || S.CUSTOM_TABS[0]?.key;
+        if (fallbackKey) {
+          applyView(fallbackKey);
+        } else {
+          renderCustomTabs();
+        }
+      } else {
+        renderCustomTabs();
+      }
     });
     return;
   }
   const btn = e.target.closest('[data-custom]');
   if (btn) applyView(btn.dataset.custom);
 });
+// \u30c0\u30c3\u30b7\u30e5\u30dc\u30fc\u30c9\u4e0a\u90e8\u306e\u7de8\u96c6\u30dc\u30bf\u30f3 (view-tab-edit) \u30af\u30ea\u30c3\u30af\u3067\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u3092\u7de8\u96c6 (\u540d\u524d + \u30b0\u30eb\u30fc\u30d7)\u3002
+// \u6a19\u6e96\u30bf\u30d6\u306f\u30ea\u30cd\u30fc\u30e0\u4e0d\u53ef\u306a\u306e\u3067\u30dc\u30bf\u30f3\u81ea\u4f53\u304c CSS \u3067\u975e\u8868\u793a\u3002
+document.getElementById('view-tab-edit').addEventListener('click', async () => {
+  const tab = S.CUSTOM_TABS.find(t => t.key === S.CURRENT_VIEW);
+  if (!tab) return;
+  const existingGroups = listCustomTabGroups();
+  const datalistOptions = existingGroups.map(g => `<option value="${escapeHtml(g)}">`).join('');
+  const html = `
+    <div class="tab-edit-form">
+      <label class="tab-edit-row">
+        <span class="tab-edit-label">\u30bf\u30d6\u540d</span>
+        <input type="text" id="modal-tab-name" value="${escapeHtml(tab.label)}" placeholder="${escapeHtml(tab.label)}">
+      </label>
+      <label class="tab-edit-row">
+        <span class="tab-edit-label">\u30b0\u30eb\u30fc\u30d7 <small>(\u7a7a\u6b04\u3067\u672a\u30b0\u30eb\u30fc\u30d7\u306b)</small></span>
+        <input type="text" id="modal-tab-group" value="${escapeHtml(tab.group || '')}" list="modal-existing-groups" placeholder="\u4f8b: \u55b6\u696d">
+        <datalist id="modal-existing-groups">${datalistOptions}</datalist>
+      </label>
+    </div>
+  `;
+  const ok = await showModal({title: '\u30bf\u30d6\u3092\u7de8\u96c6', body: html, html: true, okText: '\u4fdd\u5b58'});
+  if (!ok) return;
+  const newName = (document.getElementById('modal-tab-name')?.value || '').trim();
+  const newGroup = (document.getElementById('modal-tab-group')?.value || '').trim();
+  if (!newName) return;
+  const labelChanged = newName !== tab.label;
+  const groupChanged = (tab.group || '') !== newGroup;
+  if (!labelChanged && !groupChanged) return;
+  tab.label = newName;
+  if (newGroup) tab.group = newGroup;
+  else delete tab.group;
+  saveCustomTabs();
+  renderCustomTabs();
+  document.getElementById('view-title').textContent = newName;
+});
 document.getElementById('custom-nav').addEventListener('input', e => {
   const picker = e.target.closest('[data-color-key]');
   if (!picker) return;
   const tab = S.CUSTOM_TABS.find(t => t.key === picker.dataset.colorKey);
   if (!tab) return;
-  tab.color = picker.value;
+  const newColor = picker.value;
+  tab.color = newColor;
+  // 再 render すると picker 自体が作り直されてドラッグ中の操作が奪われるので、
+  // CSS 変数だけ in-place で更新する。保存 (debounced) は実行。
+  const item = picker.closest('.custom-tab-item');
+  if (item) {
+    item.style.setProperty('--tab-color', newColor);
+    item.style.setProperty('--tab-color-soft', hexToSoft(newColor));
+  }
   saveCustomTabs();
-  renderCustomTabs();
 });
 document.getElementById('add-custom-tab').addEventListener('click', async () => {
   const label = await showModal({title: '\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u3092\u8ffd\u52a0', body: '\u30bf\u30d6\u306e\u540d\u524d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', input: true, placeholder: '\u4f8b: \u81ea\u5206\u7528\u306e\u5206\u6790', okText: '\u6b21\u3078', noEnter: true});
@@ -467,6 +530,8 @@ document.getElementById('preset-exit-btn').addEventListener('click', async () =>
   applyView(S.CUSTOM_TABS[0]?.key || 'summary_daily');
 });
 document.getElementById('preset-list').addEventListener('click', e => {
+  const dup = e.target.closest('.preset-dup');
+  if (dup) { duplicatePreset(+dup.dataset.idx); return; }
   const del = e.target.closest('.preset-del');
   if (del) { deletePreset(+del.dataset.idx); return; }
   const name = e.target.closest('.preset-name');
@@ -517,12 +582,19 @@ makeSortable(document.getElementById('view-nav'), (from, to, before) => {
   renderViewNav();
 });
 makeSortable(document.getElementById('custom-nav'), (from, to, before) => {
-  const fromIdx = S.CUSTOM_TABS.findIndex(t => t.key === from);
-  if (fromIdx < 0) return;
-  const [moved] = S.CUSTOM_TABS.splice(fromIdx, 1);
-  let toIdx = S.CUSTOM_TABS.findIndex(t => t.key === to);
+  const fromTab = S.CUSTOM_TABS.find(t => t.key === from);
+  const toTab = S.CUSTOM_TABS.find(t => t.key === to);
+  if (!fromTab || !toTab) return;
+  // 別グループにドロップしたらグループ移動も合わせて行う (group も書き換え)。
+  if ((fromTab.group || '') !== (toTab.group || '')) {
+    if (toTab.group) fromTab.group = toTab.group;
+    else delete fromTab.group;
+  }
+  const fromIdx = S.CUSTOM_TABS.indexOf(fromTab);
+  S.CUSTOM_TABS.splice(fromIdx, 1);
+  let toIdx = S.CUSTOM_TABS.indexOf(toTab);
   if (!before) toIdx += 1;
-  S.CUSTOM_TABS.splice(toIdx, 0, moved);
+  S.CUSTOM_TABS.splice(toIdx, 0, fromTab);
   saveCustomTabs();
   renderCustomTabs();
 });

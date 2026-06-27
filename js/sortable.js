@@ -14,6 +14,12 @@ export function makeSortable(container, onReorder) {
   container.addEventListener('dragstart', e => {
     const item = e.target.closest('[data-drag-key]');
     if (!item || !container.contains(item)) return;
+    // インタラクティブ要素 (color picker) 起点の drag は弾く。data-drag-handle が
+    // 無い container で picker クリックが drag に化けるのを防ぐ保険。
+    if (mousedownTarget && mousedownTarget.closest && mousedownTarget.closest('dashboard-color-picker')) {
+      e.preventDefault();
+      return;
+    }
     // 行内に [data-drag-handle] があれば、mousedown 起点がハンドル領域内
     // でない場合は drag を弾く。ハンドル指定が無い (旧式の row 全体 draggable)
     // 場合は従来通り全域許可。

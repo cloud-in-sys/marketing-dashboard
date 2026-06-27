@@ -19,6 +19,7 @@ import { S } from './state.js';
 import { escapeHtml } from './utils.js';
 import { emit, on } from './events.js';
 import { dimLabel } from './aggregate/dimensions.js';
+import { isAnyColorPickerOpen } from './colorPicker.js';
 
 function ensureConfig() {
   if (!S.TABLE_CONFIG) S.TABLE_CONFIG = {};
@@ -129,10 +130,10 @@ function colorField(label, role, val, fallback) {
   const tagCls = 'table-settings-default-tag' + (isDefault ? '' : ' is-hidden');
   const labelCls = 'table-settings-color' + (isDefault ? ' is-default' : '');
   return `<span class="table-settings-color-wrap">
-    <label class="${labelCls}">
+    <span class="${labelCls}">
       <span>${label} <span class="${tagCls}">(指定なし)</span></span>
-      <input type="color" data-table-role="${role}" value="${val || fallback || '#ffffff'}">
-    </label>
+      <dashboard-color-picker data-table-role="${role}" value="${val || fallback || '#ffffff'}"></dashboard-color-picker>
+    </span>
     <button type="button" class="table-settings-clear" data-table-role="clear:${role}" title="指定なしに戻す" aria-label="クリア"${isDefault ? ' disabled' : ''}>×</button>
   </span>`;
 }
@@ -140,6 +141,17 @@ function colorField(label, role, val, fallback) {
 function colorControls(style, roleNs, defaults = { color: '#334155', bgColor: '#ffffff' }) {
   return colorField('文字', `${roleNs}.color`, style.color, defaults.color)
        + colorField('背景', `${roleNs}.bgColor`, style.bgColor, defaults.bgColor);
+}
+
+function syncColorFieldUi(el, hasValue) {
+  const wrap = el.closest('.table-settings-color-wrap');
+  if (!wrap) return;
+  const label = wrap.querySelector('.table-settings-color');
+  const tag = wrap.querySelector('.table-settings-default-tag');
+  const clear = wrap.querySelector('.table-settings-clear');
+  if (label) label.classList.toggle('is-default', !hasValue);
+  if (tag) tag.classList.toggle('is-hidden', hasValue);
+  if (clear) clear.disabled = !hasValue;
 }
 
 // セクションの open 状態は innerHTML 再構築で消えるので、再描画前に記録 → 後で復元。
@@ -213,6 +225,21 @@ export function renderTableSettingsPanel() {
           ${defField('文字', 'table.headerColor', t.headerColor, '#2563eb')}
         </div>
         <div class="table-settings-inline">
+          <span class="table-settings-align-group">
+            <label class="table-settings-deco table-settings-align" title="左揃え">
+              <input type="radio" name="table.headerAlign" data-table-role="table.headerAlign" value="left"${t.headerAlign === 'left' ? ' checked' : ''}>
+              <span>←</span>
+            </label>
+            <label class="table-settings-deco table-settings-align" title="中央揃え">
+              <input type="radio" name="table.headerAlign" data-table-role="table.headerAlign" value="center"${t.headerAlign === 'center' ? ' checked' : ''}>
+              <span>↔</span>
+            </label>
+            <label class="table-settings-deco table-settings-align" title="右揃え">
+              <input type="radio" name="table.headerAlign" data-table-role="table.headerAlign" value="right"${t.headerAlign === 'right' ? ' checked' : ''}>
+              <span>→</span>
+            </label>
+            <button type="button" class="table-settings-clear" data-table-role="clear:table.headerAlign" title="配置を指定なしに戻す" aria-label="クリア"${t.headerAlign ? '' : ' disabled'}>×</button>
+          </span>
           <span class="table-settings-align-group">
             <label class="table-settings-deco table-settings-align" title="上揃え">
               <input type="radio" name="table.headerVAlign" data-table-role="table.headerVAlign" value="top"${t.headerVAlign === 'top' ? ' checked' : ''}>
@@ -454,6 +481,7 @@ function onPanelChange(e) {
   else if (el.type === 'number') value = el.value === '' ? null : Number(el.value);
   else value = el.value;
   setField(bucket, key, field, value);
+  if (el.tagName === 'DASHBOARD-COLOR-PICKER') syncColorFieldUi(el, !!value);
   emit('render');
 }
 
@@ -556,6 +584,12 @@ document.addEventListener('keydown', e => {
 });
 on('render', () => {
   const panel = document.getElementById('table-settings-panel');
+  // カラーピッカーがドラッグ中だと再 render で picker DOM が破棄されるのでスキップ。
+  if (panel && !panel.classList.contains('hidden') && !isAnyColorPickerOpen()) renderTableSettingsPanel();
+});
+// ピッカー閉じた瞬間に遅延 render を流す (ピッカー open 中に skip された再 render を回収)。
+document.addEventListener('dashboard-picker-closed', () => {
+  const panel = document.getElementById('table-settings-panel');
   if (panel && !panel.classList.contains('hidden')) renderTableSettingsPanel();
 });
 
@@ -606,6 +640,7 @@ export function buildTableStyle() {
   if (t.totalAlign)     parts.push(`--total-text-align:${t.totalAlign}`);
   if (t.totalVAlign)    parts.push(`--total-vertical-align:${t.totalVAlign}`);
   if (t.headerVAlign)   parts.push(`--header-vertical-align:${t.headerVAlign}`);
+  if (t.headerAlign)    parts.push(`--header-text-align:${t.headerAlign}`);
   for (let i = 0; i < 8; i++) {
     if (t['depthBg' + i]) parts.push(`--depth-${i}-bg:${t['depthBg' + i]}`);
   }

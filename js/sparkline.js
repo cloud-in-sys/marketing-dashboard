@@ -81,14 +81,19 @@ function splitTopLevelComma(s) {
 // 分母 max は opts.max 指定があればそれを、無ければ全行の最大値を自動で使う。
 // series は無くても _rowAgg + _innerFormula があれば描画可能。
 export function renderSparklineSVG(series, opts = {}, width = 100, height = 28) {
+  // opts.width / opts.height で式から個別に上書き可能。安全のため範囲をクランプ。
+  //   width:  20 〜 400 (デフォルト 110)
+  //   height: 10 〜 100 (デフォルト 28)
+  const finalWidth  = clampSize(opts.width,  width,  20, 400);
+  const finalHeight = clampSize(opts.height, height, 10, 100);
   const hasRowAgg = opts._rowAgg && opts._innerFormula;
   const hasSeries = Array.isArray(series) && series.length > 0;
   if (!hasRowAgg && !hasSeries) {
-    return `<svg width="${width}" height="${height}"></svg>`;
+    return `<svg width="${finalWidth}" height="${finalHeight}"></svg>`;
   }
   const pad = 2;
-  const w = width - pad * 2;
-  const h = height - pad * 2;
+  const w = finalWidth - pad * 2;
+  const h = finalHeight - pad * 2;
   // 色は allow-list で検証 (SVG 属性インジェクション防止)。
   //   - hex: #rgb / #rrggbb / #rrggbbaa
   //   - CSS named color: 英字のみ、最大 20 文字
@@ -119,7 +124,15 @@ export function renderSparklineSVG(series, opts = {}, width = 100, height = 28) 
   if (fillW > 0) {
     body += `<rect x="${pad}" y="${yTop.toFixed(2)}" width="${fillW.toFixed(2)}" height="${barH.toFixed(2)}" fill="${color}" rx="2"/>`;
   }
-  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" shape-rendering="crispEdges">${body}</svg>`;
+  return `<svg width="${finalWidth}" height="${finalHeight}" viewBox="0 0 ${finalWidth} ${finalHeight}" preserveAspectRatio="none" shape-rendering="crispEdges">${body}</svg>`;
+}
+
+// 数値オプションを既定値にフォールバックしつつ [min, max] にクランプ。
+// 0 と「0 より大きいが min 未満」の挙動を揃えるため、min 未満は全てフォールバック扱い。
+function clampSize(v, fallback, min, max) {
+  const n = Number(v);
+  if (!isFinite(n) || n < min) return fallback;
+  return Math.min(max, Math.round(n));
 }
 
 // ===== series データ参照 =====

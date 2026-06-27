@@ -245,6 +245,22 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+.card-settings-warning {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #92400e;
+  background: #fef3c7;
+  border-left: 3px solid #f59e0b;
+  padding: 6px 8px;
+  margin-top: 6px;
+  border-radius: 3px;
+}
+.card-settings-warning code {
+  background: rgba(255,255,255,0.6);
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 11px;
+}
 .card-settings-section textarea {
   padding: 6px 8px;
   border: 1px solid var(--border);

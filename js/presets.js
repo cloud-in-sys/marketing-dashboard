@@ -166,10 +166,11 @@ export function renderPresets() {
         const soft = hexToSoft(color);
         const badgeText = p.builtin ? '\u6a19\u6e96' : '\u30de\u30a4';
         const badge = `<span class="preset-badge">${badgeText}</span>`;
+        const dup = `<button type="button" class="preset-dup" data-idx="${i}" title="\u8907\u88fd">\u29c9</button>`;
         const del = p.builtin ? '' : `<button type="button" class="preset-del" data-idx="${i}" title="\u524a\u9664">\u00d7</button>`;
         const editing = S.PRESET_EDIT_IDX === i ? ' editing' : '';
         const title = p.builtin ? '\u6a19\u6e96\u30d7\u30ea\u30bb\u30c3\u30c8\uff08\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\u3001\u524a\u9664\u4e0d\u53ef\uff09' : '\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6';
-        return `<div class="preset-item${p.builtin?' builtin':''}${editing}" data-idx="${i}" data-drag-key="${escapeHtml(p.name)}" draggable="true" style="--preset-color:${color};--preset-color-soft:${soft}"><span class="preset-name" title="${title}">${badge}${escapeHtml(p.name)}</span>${del}</div>`;
+        return `<div class="preset-item${p.builtin?' builtin':''}${editing}" data-idx="${i}" data-drag-key="${escapeHtml(p.name)}" draggable="true" style="--preset-color:${color};--preset-color-soft:${soft}"><span class="preset-name" title="${title}">${badge}${escapeHtml(p.name)}</span>${dup}${del}</div>`;
       }).join('')
     : '<div class="preset-empty">\u4fdd\u5b58\u306a\u3057</div>';
 }
@@ -184,11 +185,10 @@ function deserializeFilterValues(values) {
 }
 
 export function loadPresetIntoGlobals(p) {
-  if (Array.isArray(p.charts) && p.charts.length) {
-    // 全フィールド保持(lines, smoothLine, dotSize, lineWidth, showDataLabels 等)
-    S.CHARTS = p.charts.map(c => ({...c, color: c.color || '#2563eb', name: c.name || '', bucket: c.bucket || 'auto'}));
-    S.CHART_ID_SEQ = S.CHARTS.length ? Math.max(0, ...S.CHARTS.map(c => c.id)) + 1 : 1;
-  }
+  // 全フィールド保持(lines, smoothLine, dotSize, lineWidth, showDataLabels 等)
+  // p.charts が空/未定義でも S.CHARTS を必ずリセット (= 削除タブの古いチャートが残らない)
+  S.CHARTS = Array.isArray(p.charts) ? p.charts.map(c => ({...c, color: c.color || '#2563eb', name: c.name || '', bucket: c.bucket || 'auto'})) : [];
+  S.CHART_ID_SEQ = S.CHARTS.length ? Math.max(0, ...S.CHARTS.map(c => c.id)) + 1 : 1;
   S.CARDS = Array.isArray(p.cards) ? p.cards.map(c => ({...c})) : [];
   S.CARD_ID_SEQ = S.CARDS.length ? Math.max(0, ...S.CARDS.map(c => c.id)) + 1 : 1;
   S.SELECTED_DIMS = Array.isArray(p.dims) && p.dims.length ? [...p.dims] : ['action_date'];
@@ -257,6 +257,51 @@ export async function savePresetPrompt() {
     newItem.scrollIntoView({behavior: 'smooth', block: 'nearest'});
     newItem.closest('.preset-item')?.classList.add('preset-flash');
     setTimeout(() => newItem.closest('.preset-item')?.classList.remove('preset-flash'), 1400);
+  }
+}
+
+export async function duplicatePreset(i) {
+  const list = getPresets();
+  const src = list[i];
+  if (!src) return;
+  // 既存と被らない初期名を作る ("○○ のコピー" → "○○ のコピー 2" → ...)
+  const base = `${src.name} のコピー`;
+  let name = base;
+  let n = 2;
+  while (list.some(p => p.name === name)) name = `${base} ${n++}`;
+  const input = await showModal({
+    title: 'プリセットを複製',
+    body: `「${src.name}」を複製します。新しいプリセット名を入力してください。`,
+    input: true,
+    placeholder: name,
+    defaultValue: name,
+    okText: '複製',
+  });
+  if (!input) return;
+  if (list.some(p => p.name === input && p.builtin)) {
+    await showModal({title: '保存できません', body: '標準プリセットと同じ名前は使用できません', okText: 'OK', cancelText: ''});
+    return;
+  }
+  if (list.some(p => p.name === input)) {
+    const ok = await showModal({title: '上書き保存', body: `「${input}」は既に存在します。上書きしますか？`, okText: '上書き', danger: true});
+    if (!ok) return;
+  }
+  // builtin フラグは外す。color は元と同じにしておく (区別したければユーザーが編集)。
+  const copy = JSON.parse(JSON.stringify(src));
+  delete copy.builtin;
+  copy.name = input;
+  const existing = list.findIndex(p => p.name === input && !p.builtin);
+  if (existing >= 0) list[existing] = copy;
+  else list.splice(i + 1, 0, copy); // 元の直後に挿入
+  setPresets(list);
+  renderPresets();
+  renderTabPresetSelect();
+  const newIdx = list.findIndex(p => p.name === input);
+  const newItem = document.querySelector(`#preset-list [data-idx="${newIdx}"]`);
+  if (newItem) {
+    newItem.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    newItem.classList.add('preset-flash');
+    setTimeout(() => newItem.classList.remove('preset-flash'), 1400);
   }
 }
 
@@ -348,12 +393,22 @@ export function loadTabState(viewKey) {
       loadPresetIntoGlobals(p);
       applyPresetFilters(p);
     } else {
+      // preset 未存在のフォールバック。CHARTS / CARDS / TABLE_CONFIG も一緒にリセットしないと
+      // 直前のタブの内容が残って見える (削除タブの内容が残るバグの一因)。
       S.SELECTED_DIMS = [...view.dims];
       S.SELECTED_METRICS = S.METRIC_DEFS.map(m => m.key);
       S.THRESHOLDS = {};
       S.THRESHOLD_METRICS = [];
       S.FILTER_VALUES = {};
       S.FILTER_CONDITIONS = {};
+      S.CHARTS = [];
+      S.CHART_ID_SEQ = 1;
+      S.CARDS = [];
+      S.CARD_ID_SEQ = 1;
+      S.TABLE_CONFIG = JSON.parse(JSON.stringify(DEFAULT_TABLE_CONFIG));
+      if (!S.TABLE_CONFIG.table)        S.TABLE_CONFIG.table = {};
+      if (!S.TABLE_CONFIG.styles)       S.TABLE_CONFIG.styles = {};
+      if (!S.TABLE_CONFIG.headerStyles) S.TABLE_CONFIG.headerStyles = {};
     }
     return;
   }
@@ -369,6 +424,12 @@ export function loadTabState(viewKey) {
   if (!S.TABLE_CONFIG.table)         S.TABLE_CONFIG.table = {};
   if (!S.TABLE_CONFIG.styles)        S.TABLE_CONFIG.styles = {};
   if (!S.TABLE_CONFIG.headerStyles)  S.TABLE_CONFIG.headerStyles = {};
+  // カスタムタブは CHARTS/CARDS を持たない (TAB_STATES に保存していない) ので、
+  // 標準タブ→カスタムタブ切替で前タブのチャートが残らないようリセット。
+  S.CHARTS = [];
+  S.CHART_ID_SEQ = 1;
+  S.CARDS = [];
+  S.CARD_ID_SEQ = 1;
   restoreFilterStateForTab(viewKey);
 }
 

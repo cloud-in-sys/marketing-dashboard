@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="styles/table.css">
 <link rel="stylesheet" href="styles/settings.css">
 <link rel="stylesheet" href="styles/modal.css">
+<link rel="stylesheet" href="styles/colorPicker.css">
 </head>
 <body>
 <div class="login-overlay" id="login-overlay">
@@ -142,7 +143,10 @@
     <div class="view-header">
       <div class="view-title-wrap">
         <div class="view-crumb" id="view-crumb">デフォルト</div>
-        <h2 id="view-title">全体サマリー</h2>
+        <div class="view-title-row">
+          <h2 id="view-title">全体サマリー</h2>
+          <button type="button" id="view-tab-edit" class="view-tab-edit" title="タブを編集" aria-label="タブを編集">⚙</button>
+        </div>
       </div>
       <div class="view-actions">
         <div class="view-preset-wrap">

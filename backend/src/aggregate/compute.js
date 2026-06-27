@@ -121,6 +121,30 @@ function computeAggregate(rows, spec, today) {
 // lifted 式を JS 関数にコンパイル。
 // 入力は validateExpression を通った識別子 + 算術のみ。
 // FORBIDDEN リストで constructor / eval / require / for / while 等は弾かれている。
+// `parent(X)` / `total(X)` を単に `(X)` に置換する。括弧入れ子に対応するため
+// 開閉カウンタで対応する `)` を探す。引数が複雑式 (例: `parent(a + b)`) でも動く。
+function stripParentTotal(src) {
+  const re = /\b(parent|total)\s*\(/g;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    const start = m.index;
+    const argStart = m.index + m[0].length;
+    let depth = 1;
+    let i = argStart;
+    while (i < src.length && depth > 0) {
+      const c = src[i];
+      if (c === '(') depth++;
+      else if (c === ')') depth--;
+      if (depth > 0) i++;
+    }
+    if (depth !== 0) break;
+    // src.slice(start, i+1) = "parent(X)" → "(X)"
+    src = src.slice(0, start) + '(' + src.slice(argStart, i) + ')' + src.slice(i + 1);
+    re.lastIndex = start + 1;
+  }
+  return src;
+}
+
 function compileLifted(formula) {
   if (compiledLiftedCache.has(formula)) return compiledLiftedCache.get(formula);
   const validateErr = validateExpression(formula, { label: 'lifted-formula' });
@@ -161,7 +185,12 @@ export function aggregate(rows, config) {
       a[key] = NaN;
       return;
     }
-    const { lifted, specs } = liftFormula(String(formula || ''));
+    // parent(X) / total(X) は階層集計 (ピボット表) でのみ意味を持つ。
+    // backend は単一スコープのアグリゲートを返すだけなので、ここでは内側の式と
+    // 等価とみなして剥がす (parent(X)/X → X/X = 1.0 になる)。
+    // カード/グラフでこれを使う構成は意図された使い方ではないため、設定 UI で警告を出す。
+    const stripped = stripParentTotal(String(formula || ''));
+    const { lifted, specs } = liftFormula(stripped);
     const aggValues = {};
     for (const ph of Object.keys(specs)) {
       aggValues[ph] = computeAggregate(rows, specs[ph], today);

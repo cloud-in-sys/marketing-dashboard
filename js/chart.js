@@ -3,6 +3,7 @@ import { escapeHtml } from './utils.js';
 import { groupRows } from './aggregate/dimensions.js';
 import { aggregate } from './aggregate/aggregate.js';
 import { renderChartSettingsPanel, closeChartSettings } from './chartSettings.js';
+import { isAnyColorPickerOpen } from './colorPicker.js';
 
 // 円グラフ / 積み上げ用のカラーパレット
 export const PIE_PALETTE = ['#2563eb', '#f59e0b', '#10b981', '#ef4444', '#7c3aed', '#ec4899', '#14b8a6', '#0ea5e9', '#84cc16', '#f97316'];
@@ -135,7 +136,7 @@ function buildStackedSVG(chart, rows, W, H) {
   const PL = 60, PR = 16, PT = 28, PB = 36;
   const iw = W - PL - PR, ih = H - PT - PB;
   const step = iw / xOrder.length;
-  const barW = Math.min(step * 0.7, 36);
+  const barW = Math.max(0, Math.min(step * 0.7, 36));
 
   let s = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`;
   // グリッド
@@ -230,7 +231,7 @@ function buildComboSVG(chart, rows, W, H) {
     0
   ) || 1;
   const step = iw / data.length;
-  const barW = Math.min(step * 0.6, 32);
+  const barW = Math.max(0, Math.min(step * 0.6, 32));
   const color1 = chart.color || '#2563eb';
 
   let s = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`;
@@ -351,7 +352,7 @@ export function buildChartSVG(chart, rows, W, H) {
     ? Math.max(...data.map(d => d.y), ...data.flatMap(d => extraLines.map((_, idx) => d[`y${idx + 2}`])), 0) || 1
     : Math.max(...data.map(d => d.y), 0) || 1;
   const step = iw / data.length;
-  const barW = Math.min(step * 0.7, 36);
+  const barW = Math.max(0, Math.min(step * 0.7, 36));
   const color = chart.color || '#2563eb';
   const gradId = `grad_${chart.id}`;
 
@@ -507,9 +508,11 @@ export function renderChart(rows) {
     body.innerHTML = buildChartSVG(c, rows, W, H);
   });
   // 設定パネルが開いていたら中身を更新
+  // ただしカラーピッカーがドラッグ中だと再 render で picker DOM が破棄されるのでスキップ。
   if (S.CHART_SETTINGS_ID != null) {
     const stillExists = S.CHARTS.some(c => c.id === S.CHART_SETTINGS_ID);
-    if (stillExists) renderChartSettingsPanel();
-    else closeChartSettings();
+    if (stillExists) {
+      if (!isAnyColorPickerOpen()) renderChartSettingsPanel();
+    } else closeChartSettings();
   }
 }

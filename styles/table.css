@@ -136,11 +136,11 @@ table {
 thead th {
   position: sticky;
   top: 0;
-  /* テーブル設定の「全体」で --header-bg / --header-color / --header-vertical-align を設定可能 */
+  /* テーブル設定の「全体」で --header-bg / --header-color / --header-text-align / --header-vertical-align を設定可能 */
   background: var(--header-bg, linear-gradient(180deg, #eef2ff 0%, #e0e7ff 100%));
   color: var(--header-color, var(--primary-600));
   font-weight: 700;
-  text-align: right;
+  text-align: var(--header-text-align, right);
   vertical-align: var(--header-vertical-align, middle);
   padding: 0.9em 1.15em;
   border-bottom: 2px solid var(--primary-soft);
@@ -184,7 +184,8 @@ body.col-resizing .col-resizer::before {
 body.col-resizing { cursor: col-resize !important; user-select: none; }
 body.col-resizing * { cursor: col-resize !important; }
 thead th.group-col {
-  text-align: left;
+  /* dim 列のヘッダーは基本左揃え。「全体」で --header-text-align が指定されてればそちらを優先。 */
+  text-align: var(--header-text-align, left);
 }
 thead th.col-frozen {
   position: sticky;
@@ -452,6 +453,24 @@ tbody tr:hover td.cell-yellow { background: rgba(245, 158, 11, 0.28); }
 .pivot-depth-4.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
   background: var(--depth-4-bg, #ffffff);
 }
+/* depth 5+ は --depth-4-bg にフォールバック (テーブル設定は depth-0..4 までしか UI に無い) */
+.pivot-depth-5.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-6.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-7.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-8.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-9.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-10.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-11.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-12.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-13.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-14.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-15.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-16.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-17.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-18.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+.pivot-depth-19.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-4-bg, #ffffff);
+}
 /* 深さ N の親行では、N より浅い (= dim-idx < N) ディメンション列を色付けせず透明に。
    Excel ピボット風: 「第N ディメンション」階層の色は、その列以降にだけ適用される。 */
 .pivot-depth-1.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
@@ -479,34 +498,52 @@ tbody tr:hover td.cell-yellow { background: rgba(245, 158, 11, 0.28); }
 .pivot-leaf-row.pivot-depth-4 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
 
 /* 固定列の場合、stairstep の transparent だと横スクロール時にメトリクス側のセルが透けてしまう。
-   各 dim 列の depth-N-bg で塗りつぶして透過を防ぐ (非固定列は従来どおり transparent)。 */
-.pivot-depth-1.pivot-parent-row td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-2.pivot-parent-row td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-3.pivot-parent-row td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-4.pivot-parent-row td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row.pivot-depth-1 td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row.pivot-depth-2 td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row.pivot-depth-3 td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row.pivot-depth-4 td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+   各 dim 列の depth-N-bg で塗りつぶして透過を防ぐ (非固定列は従来どおり transparent)。
+   ピボットの階層数 (= data-dim-idx) は depth に関わらず data-dim-idx 自体の値で背景色を決められる。
+   data-dim-idx 0 → --depth-0-bg、idx 1 → --depth-1-bg、… と単純対応させれば、何階層深くなっても
+   stairstep 階段表示は維持しつつ、固定列が透けることもない。 */
+td.col-frozen[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
   background: var(--depth-0-bg, linear-gradient(180deg, #eef2ff 0%, #e8ecf8 100%));
 }
-.pivot-depth-2.pivot-parent-row td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-3.pivot-parent-row td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-4.pivot-parent-row td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row.pivot-depth-2 td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row.pivot-depth-3 td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row.pivot-depth-4 td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+td.col-frozen[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
   background: var(--depth-1-bg, linear-gradient(180deg, #f1f5f9 0%, #edf0f5 100%));
 }
-.pivot-depth-3.pivot-parent-row td.col-frozen[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-4.pivot-parent-row td.col-frozen[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row.pivot-depth-3 td.col-frozen[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row.pivot-depth-4 td.col-frozen[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+td.col-frozen[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
   background: var(--depth-2-bg, #f8fafc);
 }
-.pivot-depth-4.pivot-parent-row td.col-frozen[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row.pivot-depth-4 td.col-frozen[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+td.col-frozen[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
   background: var(--depth-3-bg, #fafbfc);
+}
+td.col-frozen[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-4-bg, #fafbfc);
+}
+/* depth 5 以上は単純な背景色フォールバック (backend は MAX_DIMS=20 まで許可)。
+   固定列が透けないことだけは保証する。
+   attribute selector を idx 5〜19 で個別に書く代わりに、より高い特異性が必要な場合の
+   フォールバックとしてまとめて当てる。 */
+td.col-frozen[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+td.col-frozen[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+td.col-frozen[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+td.col-frozen[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+td.col-frozen[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+td.col-frozen[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+td.col-frozen[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+td.col-frozen[data-dim-idx="12"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+td.col-frozen[data-dim-idx="13"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+td.col-frozen[data-dim-idx="14"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+td.col-frozen[data-dim-idx="15"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+td.col-frozen[data-dim-idx="16"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+td.col-frozen[data-dim-idx="17"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+td.col-frozen[data-dim-idx="18"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
+td.col-frozen[data-dim-idx="19"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-4-bg, #ffffff);
+}
+/* 究極のフォールバック: data-dim-idx 属性を持つ固定列が透明背景になるのを最終的に防ぐ。
+   非固定列は別ルールで transparent が当たり続けるので影響なし。 */
+tbody td.col-frozen[data-dim-idx] {
+  /* 上記の data-dim-idx ベースのルールが効かない場合 (例: stairstep transparent との
+     セレクタ特異性勝負で負けた場合) でも、固定列だけは必ず不透明にする。 */
+  background-color: #ffffff;
 }
 
 /* 親行・データ行の hover: depth-N と transparent ルールの後に置くことで cascade で勝つ。
@@ -645,8 +682,8 @@ thead .total-row td.col-frozen { z-index: 4; }
   position: absolute;
   right: 0;
   top: 50%;
-  width: 28px;
-  height: 22px;
+  width: 22px;
+  height: 18px;
   transform: translateY(-50%);
   border-radius: 4px;
   pointer-events: none;
