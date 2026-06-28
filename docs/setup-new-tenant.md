@@ -47,9 +47,21 @@ gcloud projects create {{PROJECT_ID}} --name="{{PROJECT_NAME}}"
 gcloud config set project {{PROJECT_ID}}
 ```
 
-**課金アカウント紐付け**（ブラウザ）:
-1. <https://console.cloud.google.com/billing/linkedaccount?project={{PROJECT_ID}}>
-2. 「課金アカウントをリンク」→ 既存 or 新規作成（Blaze 有料プラン）
+**課金アカウント紐付け**:
+
+既存の請求先アカウントがあれば CLI だけで完結する（ブラウザ不要）:
+```bash
+# 利用可能な請求先アカウントを確認
+gcloud billing accounts list
+# プロジェクトにリンク（ACCOUNT_ID は上で確認した値）
+gcloud billing projects link {{PROJECT_ID}} --billing-account={{BILLING_ACCOUNT_ID}}
+# 確認: billingEnabled: true なら OK
+gcloud billing projects describe {{PROJECT_ID}}
+```
+
+新規の請求先アカウントを作る場合のみブラウザが必要（クレカ等の支払い情報入力のため）:
+1. <https://console.cloud.google.com/billing/create> で請求先アカウントを作成
+2. 作成後、上の `gcloud billing projects link` でリンク（請求先の付け替えは後からでも一瞬。リソースはそのまま）
 
 プロジェクト番号を取得:
 ```bash
@@ -77,6 +89,13 @@ gcloud services enable \
 ```bash
 firebase projects:addfirebase {{PROJECT_ID}}
 ```
+
+> ⚠️ **組織配下 & その Google アカウントで初めて Firebase を使う場合、CLI が `403 The caller does not have permission` で失敗する**ことがある（owner 権限があっても）。
+> これは **Firebase 利用規約(ToS)の未承諾**が原因で、ToS 承諾は CLI 不可。一度だけブラウザで:
+> 1. <https://console.firebase.google.com/> →「プロジェクトを追加」→ 既存 GCP プロジェクト `{{PROJECT_ID}}` を選択
+> 2. Firebase 利用規約に同意（Google Analytics は不要なら無効でOK）→ 追加完了
+>
+> その後は CLI（下の Web アプリ登録以降）が通る。
 
 Web アプリ登録:
 ```bash
@@ -159,8 +178,12 @@ echo -n "GOCSPX-xxxx-あなたのクライアントシークレット" | \
 ## Step 11: Firebase Auth プロバイダ有効化（ブラウザ）
 
 1. <https://console.firebase.google.com/project/{{PROJECT_ID}}/authentication/providers>
-2. **Google** 有効化（サポートメール: `{{ADMIN_EMAIL}}`）
-3. **メール/パスワード** 有効化
+2. 初回は「**始める / Get started**」をクリック
+3. **Google** のみ有効化（サポートメール: `{{ADMIN_EMAIL}}`）
+
+> このアプリのログインは **Google SSO 専用**。メール/パスワード等は有効化しないこと
+> （backend ミドルウェアが `sign_in_provider !== 'google.com'` を 403 拒否するため、
+> 有効化してもログインできずハマる）。
 
 ## Step 12: テナント定義を作成
 
@@ -262,6 +285,31 @@ Firebase Console → Authentication で管理者アカウントを作成（Step 
    - `isAdmin` → `boolean`
    - `perms` → `map`
 
+> **CLI ショートカット**（Firestore 画面を手で触らずに作成）。
+> 先に管理者本人が **一度アプリにログイン**（Google SSO）して Auth ユーザーを作っておく。その後:
+> ```bash
+> # 1) ログイン済みユーザーの UID を取得
+> firebase auth:export /tmp/users.json --project={{PROJECT_ID}} --format=json
+> ADMIN_UID=$(node -e 'console.log(require("/tmp/users.json").users[0].localId)')
+> echo "$ADMIN_UID"
+> # 2) Firestore REST で users/$ADMIN_UID を作成 (createdAt 必須)
+> TOKEN=$(gcloud auth print-access-token)
+> curl -s -X PATCH \
+>   "https://firestore.googleapis.com/v1/projects/{{PROJECT_ID}}/databases/(default)/documents/users/${ADMIN_UID}" \
+>   -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
+>   -d '{"fields":{
+>         "uid":{"stringValue":"'"${ADMIN_UID}"'"},
+>         "email":{"stringValue":"{{ADMIN_EMAIL}}"},
+>         "name":{"stringValue":"{{管理者名}}"},
+>         "photoURL":{"stringValue":""},
+>         "isAdmin":{"booleanValue":true},
+>         "perms":{"mapValue":{"fields":{}}},
+>         "createdAt":{"stringValue":"2026-01-01T00:00:00.000Z"}
+>       }}'
+> rm -f /tmp/users.json
+> ```
+> 注: シェルの `UID` は予約変数なので、必ず別名（例 `ADMIN_UID`）を使うこと。
+
 ## Step 16: フロントエンドデプロイ
 
 ```bash
@@ -276,8 +324,8 @@ firebase deploy --only hosting --project={{PROJECT_ID}}
 
 ## トラブルシューティング
 
-### `allUsers` が IAM に付与できない
-組織ポリシー `iam.allowedPolicyMemberDomains` がドメイン制限。プロジェクト単位で上書き:
+### `allUsers` が IAM に付与できない（backend デプロイ時 "Setting IAM policy failed"）
+組織ポリシー `iam.allowedPolicyMemberDomains` がドメイン制限している。プロジェクト単位で上書きする:
 
 ```yaml
 # /tmp/allow-all-domains.yaml
@@ -290,6 +338,20 @@ spec:
 gcloud org-policies set-policy /tmp/allow-all-domains.yaml --project={{PROJECT_ID}}
 # 伝播に1〜2分かかる
 ```
+
+> ⚠️ 上書きには **`roles/orgpolicy.policyAdmin`** が必要（project owner には含まれない）。
+> `orgpolicy.policies.create` で `PERMISSION_DENIED` になる場合は、組織管理者が付与する:
+> ```bash
+> gcloud organizations add-iam-policy-binding {{ORG_ID}} \
+>   --member="user:{{ADMIN_EMAIL}}" --role="roles/orgpolicy.policyAdmin"
+> # {{ORG_ID}} は: gcloud organizations list で確認
+> ```
+> 付与後、上の set-policy → 伝播待ち → 公開アクセス付与:
+> ```bash
+> gcloud run services add-iam-policy-binding dashboard-backend \
+>   --region={{REGION}} --project={{PROJECT_ID}} \
+>   --member=allUsers --role=roles/run.invoker
+> ```
 
 ### バックエンドが 404 / CORS エラー
 - `firebase.json` の rewrites が `dashboard-backend` を指しているか確認
