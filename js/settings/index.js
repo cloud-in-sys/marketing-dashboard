@@ -45,11 +45,25 @@ export function enterSettingsMode(target = 'users') {
     settingsState.userDetailIdx = null;
     // Load users + groups concurrently (グループはプルダウン選択肢として必要)
     Promise.all([api.listUsers(), api.listGroups()]).then(([uRes, gRes]) => {
-      S.USERS = uRes.users || [];
+      const serverUsers = uRes.users || [];
       settingsState.groupsCache = gRes.groups || [];
-      S.USERS_DRAFT = JSON.parse(JSON.stringify(S.USERS));
+      // 編集中 (dirty) の DRAFT を server data で上書きするとユーザーの未保存の編集が消える。
+      //   - dirty: DRAFT を温存。S.USERS だけ最新化。server に新規 UID があれば DRAFT 末尾に追加。
+      //   - clean: DRAFT を全更新 (server data が source of truth)。
+      const isDirty = !!document.getElementById('users-save-btn')?.classList.contains('dirty');
+      if (isDirty) {
+        S.USERS = serverUsers;
+        const draftUids = new Set((S.USERS_DRAFT || []).map(u => u.uid));
+        for (const u of serverUsers) {
+          if (!draftUids.has(u.uid)) (S.USERS_DRAFT ||= []).push(JSON.parse(JSON.stringify(u)));
+        }
+      } else {
+        S.USERS = serverUsers;
+        S.USERS_DRAFT = JSON.parse(JSON.stringify(serverUsers));
+      }
       renderUsersModal();
     }).catch(e => console.warn('[users] load failed', e));
+    // Promise.all が返るまでの仮表示 (キャッシュ済みの S.USERS = api.me() 結果を一旦見せる)
     S.USERS_DRAFT = JSON.parse(JSON.stringify(S.USERS));
     S.METRICS_DRAFT = null;
     S.METRICS_DRAFT_BASE = null;

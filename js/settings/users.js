@@ -126,8 +126,11 @@ async function addUser() {
   if (!name) return;
   try {
     const created = await api.createUser({ email, name, isAdmin: false });
+    // server-side cache (S.USERS) と DRAFT に「追加」する。DRAFT 全体を replace すると
+    // 他ユーザーで進行中の編集が消えるので append のみ。
     S.USERS.push(created);
-    S.USERS_DRAFT = JSON.parse(JSON.stringify(S.USERS));
+    if (!Array.isArray(S.USERS_DRAFT)) S.USERS_DRAFT = JSON.parse(JSON.stringify(S.USERS));
+    else S.USERS_DRAFT.push(JSON.parse(JSON.stringify(created)));
     settingsState.userDetailIdx = S.USERS_DRAFT.length - 1;
     renderUsersModal();
     await showModal({title: '作成完了', body: `${email} を追加しました。本人が Google でログインすると有効化されます。`, okText: 'OK', cancelText: ''});

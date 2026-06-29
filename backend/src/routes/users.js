@@ -6,10 +6,19 @@ import { httpError } from '../middleware/error.js';
 
 const app = new Hono();
 
-// List all users (admin only)
+// List all users (admin only)。
+// orderBy('createdAt') を使うと Firestore 仕様で「createdAt フィールドを持たない doc」は
+// 結果から除外されてしまう (旧スクリプト/手動投入された admin doc などが消える)。
+// 全件取って JS 側で並べる: createdAt 無しの doc は最初に置いて UI から見えるようにする。
 app.get('/', adminOnly, async c => {
-  const snap = await db.collection('users').orderBy('createdAt').get();
-  return c.json({ users: snap.docs.map(d => d.data()) });
+  const snap = await db.collection('users').get();
+  const users = snap.docs.map(d => d.data());
+  users.sort((a, b) => {
+    const ca = a.createdAt || '';
+    const cb = b.createdAt || '';
+    return ca < cb ? -1 : ca > cb ? 1 : 0;
+  });
+  return c.json({ users });
 });
 
 // Pre-register a user by email (admin only). Google ログインで本人が初回サインインした時に
