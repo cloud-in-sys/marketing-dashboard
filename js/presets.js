@@ -1,4 +1,4 @@
-import { S, DEFAULT_VIEWS_INIT, BUILTIN_SEED_VERSION, DEFAULT_TABLE_CONFIG, getPresets, setPresets, syncCurrentTabState, getTabFilterState, serializeFilterValues } from './state.js';
+import { S, DEFAULT_VIEWS_INIT, BUILTIN_SEED_VERSION, DEFAULT_TABLE_CONFIG, getPresets, createPresetOp, updatePresetOp, deletePresetOp, reorderPresetsOp, syncCurrentTabState, getTabFilterState, serializeFilterValues } from './state.js';
 import { escapeHtml, hexToSoft } from './utils.js';
 import { showModal } from './modal.js';
 import { hasPerm } from './auth.js';
@@ -118,23 +118,12 @@ export const BUILTIN_PRESET_DEFS = {
   },
 };
 
-export function seedDefaultPresets() {
-  // 同名の builtin プリセット重複(過去の race による副作用)を起動時に掃除
-  const all = getPresets();
-  const seenNames = new Set();
-  let changed = false;
-  const deduped = all.filter(p => {
-    if (!p.builtin) return true;
-    if (seenNames.has(p.name)) { changed = true; return false; }
-    seenNames.add(p.name);
-    return true;
-  });
-  if (changed) setPresets(deduped);
-  const existing = deduped;
-  // If presets already exist for this source, don't re-seed
+export async function seedDefaultPresets() {
+  // backend が POST/PUT 時点で同名を 409 で弾くので dedup ロジックは不要。
+  // 既存プリセットがあれば seed 済み扱い。
+  const existing = getPresets();
   if (existing.length > 0) return;
-  // First time for this source: create builtin presets for current VIEWS
-  const builtins = [];
+  // 初回 seed: 各 builtin を POST で作って id 付きでキャッシュ。
   for (const [k, v] of Object.entries(S.VIEWS)) {
     const initDef = DEFAULT_VIEWS_INIT[k];
     const presetDef = initDef ? (BUILTIN_PRESET_DEFS[k] || null) : null;
@@ -142,7 +131,7 @@ export function seedDefaultPresets() {
       charts: [{metric: 'ad_cost', type: 'bar', size: 'main', color: '#2563eb'}],
       metrics: S.METRIC_DEFS.map(m => m.key),
     };
-    builtins.push({
+    const preset = {
       name: v.presetName || v.label,
       builtin: true,
       seedVersion: BUILTIN_SEED_VERSION,
@@ -151,9 +140,10 @@ export function seedDefaultPresets() {
       metrics: [...def.metrics],
       thresholds: def.thresholds ? JSON.parse(JSON.stringify(def.thresholds)) : {},
       thresholdMetrics: def.thresholdMetrics ? [...def.thresholdMetrics] : [],
-    });
+    };
+    try { await createPresetOp(preset); }
+    catch (e) { /* 個別失敗は無視、次回起動で再 seed される */ }
   }
-  setPresets(builtins);
 }
 
 export function renderPresets() {
@@ -166,11 +156,12 @@ export function renderPresets() {
         const soft = hexToSoft(color);
         const badgeText = p.builtin ? '\u6a19\u6e96' : '\u30de\u30a4';
         const badge = `<span class="preset-badge">${badgeText}</span>`;
+        const ren = `<button type="button" class="preset-ren" data-idx="${i}" title="\u540d\u524d\u3092\u5909\u66f4">\u270e</button>`;
         const dup = `<button type="button" class="preset-dup" data-idx="${i}" title="\u8907\u88fd">\u29c9</button>`;
         const del = p.builtin ? '' : `<button type="button" class="preset-del" data-idx="${i}" title="\u524a\u9664">\u00d7</button>`;
         const editing = S.PRESET_EDIT_IDX === i ? ' editing' : '';
         const title = p.builtin ? '\u6a19\u6e96\u30d7\u30ea\u30bb\u30c3\u30c8\uff08\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\u3001\u524a\u9664\u4e0d\u53ef\uff09' : '\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6';
-        return `<div class="preset-item${p.builtin?' builtin':''}${editing}" data-idx="${i}" data-drag-key="${escapeHtml(p.name)}" draggable="true" style="--preset-color:${color};--preset-color-soft:${soft}"><span class="preset-name" title="${title}">${badge}${escapeHtml(p.name)}</span>${dup}${del}</div>`;
+        return `<div class="preset-item${p.builtin?' builtin':''}${editing}" data-idx="${i}" data-drag-key="${escapeHtml(p.name)}" draggable="true" style="--preset-color:${color};--preset-color-soft:${soft}"><span class="preset-name" title="${title}">${badge}${escapeHtml(p.name)}</span>${ren}${dup}${del}</div>`;
       }).join('')
     : '<div class="preset-empty">\u4fdd\u5b58\u306a\u3057</div>';
 }
@@ -221,14 +212,10 @@ export async function savePresetPrompt() {
   const name = await showModal({title: '\u65b0\u3057\u3044\u30d7\u30ea\u30bb\u30c3\u30c8\u3092\u4fdd\u5b58', body: '\u30d7\u30ea\u30bb\u30c3\u30c8\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', input: true, placeholder: '\u4f8b: \u6708\u6b21\u30ec\u30d3\u30e5\u30fc\u7528', okText: '\u4fdd\u5b58'});
   if (!name) return;
   const list = getPresets();
-  if (list.some(p => p.name === name && p.builtin)) {
-    await showModal({title: '\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093', body: '\u6a19\u6e96\u30d7\u30ea\u30bb\u30c3\u30c8\u3068\u540c\u3058\u540d\u524d\u306f\u4f7f\u7528\u3067\u304d\u307e\u305b\u3093', okText: 'OK', cancelText: ''});
+  // \u6a19\u6e96/\u30de\u30a4\u554f\u308f\u305a\u540c\u540d\u304c\u3042\u308c\u3070\u4fdd\u5b58\u4e0d\u53ef (backend \u5074\u306e 409 \u3068\u6319\u52d5\u3092\u63c3\u3048\u308b)
+  if (list.some(p => p.name === name)) {
+    await showModal({title: '\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093', body: '\u540c\u3058\u540d\u524d\u306e\u30d7\u30ea\u30bb\u30c3\u30c8\u304c\u65e2\u306b\u5b58\u5728\u3057\u307e\u3059\u3002\u5225\u306e\u540d\u524d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002', okText: 'OK', cancelText: ''});
     return;
-  }
-  const dup = list.some(p => p.name === name && !p.builtin);
-  if (dup) {
-    const ok = await showModal({title: '\u4e0a\u66f8\u304d\u4fdd\u5b58', body: `\u300c${name}\u300d\u306f\u65e2\u306b\u5b58\u5728\u3057\u307e\u3059\u3002\u4e0a\u66f8\u304d\u3057\u307e\u3059\u304b\uff1f`, okText: '\u4e0a\u66f8\u304d', danger: true});
-    if (!ok) return;
   }
   const PRESET_COLORS = ['#7c3aed','#10b981','#f59e0b','#ef4444','#0ea5e9','#ec4899','#14b8a6','#8b5cf6'];
   const userCount = list.filter(p => !p.builtin).length;
@@ -246,12 +233,11 @@ export async function savePresetPrompt() {
     filterValues: serializeFilterValues(S.FILTER_VALUES),
     filterConditions: JSON.parse(JSON.stringify(S.FILTER_CONDITIONS || {})),
   };
-  const existing = list.findIndex(p => p.name === name && !p.builtin);
-  if (existing >= 0) { entry.color = list[existing].color || entry.color; list[existing] = entry; }
-  else list.push(entry);
-  setPresets(list);
+  // 同名は上のチェックで弾かれているので純粋な新規作成のみ
+  try { await createPresetOp(entry); }
+  catch (e) { return; }
   renderPresets();
-  const idx = list.findIndex(p => p.name === name);
+  const idx = S.PRESETS_CACHE.findIndex(p => p.name === name);
   const newItem = document.querySelector(`#preset-list [data-idx="${idx}"].preset-load`);
   if (newItem) {
     newItem.scrollIntoView({behavior: 'smooth', block: 'nearest'});
@@ -278,25 +264,37 @@ export async function duplicatePreset(i) {
     okText: '複製',
   });
   if (!input) return;
-  if (list.some(p => p.name === input && p.builtin)) {
-    await showModal({title: '保存できません', body: '標準プリセットと同じ名前は使用できません', okText: 'OK', cancelText: ''});
+  // 標準/マイ問わず同名があれば複製不可 (backend 側の 409 と挙動を揃える)
+  if (list.some(p => p.name === input)) {
+    await showModal({title: '複製できません', body: '同じ名前のプリセットが既に存在します。別の名前を入力してください。', okText: 'OK', cancelText: ''});
     return;
   }
-  if (list.some(p => p.name === input)) {
-    const ok = await showModal({title: '上書き保存', body: `「${input}」は既に存在します。上書きしますか？`, okText: '上書き', danger: true});
-    if (!ok) return;
-  }
-  // builtin フラグは外す。color は元と同じにしておく (区別したければユーザーが編集)。
+  // builtin フラグと元 doc id は継承しない (id 継承すると batch 内で元が上書きされる)。
   const copy = JSON.parse(JSON.stringify(src));
   delete copy.builtin;
+  delete copy.id;
   copy.name = input;
-  const existing = list.findIndex(p => p.name === input && !p.builtin);
-  if (existing >= 0) list[existing] = copy;
-  else list.splice(i + 1, 0, copy); // 元の直後に挿入
-  setPresets(list);
+  const srcId = src.id;
+  try {
+    const created = await createPresetOp(copy);
+    // 元の直後に並べ替える (作成直後は末尾に追加されているので reorder が必要)
+    if (srcId && created?.id) {
+      const cache = S.PRESETS_CACHE;
+      const srcIdx = cache.findIndex(p => p.id === srcId);
+      const newIdx = cache.findIndex(p => p.id === created.id);
+      if (srcIdx >= 0 && newIdx >= 0 && newIdx !== srcIdx + 1) {
+        const orderIds = cache.map(p => p.id);
+        const [movedId] = orderIds.splice(newIdx, 1);
+        // 削除で srcIdx が左にシフトするケースを補正
+        const srcIdxAfter = newIdx < srcIdx ? srcIdx - 1 : srcIdx;
+        orderIds.splice(srcIdxAfter + 1, 0, movedId);
+        await reorderPresetsOp(orderIds);
+      }
+    }
+  } catch (e) { return; }
   renderPresets();
   renderTabPresetSelect();
-  const newIdx = list.findIndex(p => p.name === input);
+  const newIdx = S.PRESETS_CACHE.findIndex(p => p.name === input);
   const newItem = document.querySelector(`#preset-list [data-idx="${newIdx}"]`);
   if (newItem) {
     newItem.scrollIntoView({behavior: 'smooth', block: 'nearest'});
@@ -305,35 +303,74 @@ export async function duplicatePreset(i) {
   }
 }
 
-export async function deletePreset(i) {
+export async function renamePreset(i) {
   const list = getPresets();
-  if (!list[i] || list[i].builtin) return;
-  const name = list[i].name;
-  const ok = await showModal({title: '\u30d7\u30ea\u30bb\u30c3\u30c8\u524a\u9664', body: `\u300c${name}\u300d\u3092\u524a\u9664\u3057\u307e\u3059\u304b\uff1f\u3053\u306e\u64cd\u4f5c\u306f\u53d6\u308a\u6d88\u305b\u307e\u305b\u3093\u3002`, okText: '\u524a\u9664', danger: true});
-  if (!ok) return;
-  list.splice(i, 1);
-  setPresets(list);
+  const target = list[i];
+  if (!target || !target.id) return;
+  if (!hasPerm('editPreset')) {
+    await showModal({title: '権限がありません', body: 'プリセット編集権限がありません', okText: 'OK', cancelText: ''});
+    return;
+  }
+  const input = await showModal({
+    title: 'プリセット名を変更',
+    body: `「${target.name}」の新しい名前を入力してください。`,
+    input: true,
+    defaultValue: target.name,
+    okText: '変更',
+  });
+  if (!input) return;
+  const newName = input.trim();
+  if (!newName || newName === target.name) return;
+  // 同名衝突チェック (backend も 409 で弾くが UX のため先に client 側でチェック)
+  if (list.some(p => p.id !== target.id && p.name === newName)) {
+    await showModal({title: '変更できません', body: '同じ名前のプリセットが既に存在します。別の名前を入力してください。', okText: 'OK', cancelText: ''});
+    return;
+  }
+  try { await updatePresetOp(target.id, { ...target, name: newName }); }
+  catch (e) { return; }
+  // 標準タブが旧名を参照している場合は追従させる (再描画で反映)
+  for (const [k, v] of Object.entries(S.VIEWS)) {
+    if (v.presetName === target.name) v.presetName = newName;
+  }
   renderPresets();
   renderTabPresetSelect();
 }
 
+export async function deletePreset(i) {
+  const list = getPresets();
+  const target = list[i];
+  if (!target || target.builtin) return;
+  const ok = await showModal({title: '\u30d7\u30ea\u30bb\u30c3\u30c8\u524a\u9664', body: `\u300c${target.name}\u300d\u3092\u524a\u9664\u3057\u307e\u3059\u304b\uff1f\u3053\u306e\u64cd\u4f5c\u306f\u53d6\u308a\u6d88\u305b\u307e\u305b\u3093\u3002`, okText: '\u524a\u9664', danger: true});
+  if (!ok) return;
+  if (!target.id) return; // id \u672a\u53d6\u5f97\u306e preset \u306f\u524a\u9664\u4e0d\u53ef (\u901a\u5e38\u306f listPresets \u7d4c\u7531\u3067\u5fc5\u305a id \u304c\u4ed8\u304f)
+  try { await deletePresetOp(target.id); }
+  catch (e) { return; }
+  renderPresets();
+  renderTabPresetSelect();
+}
+
+// 現在の編集内容を編集中プリセットに反映して PUT を投げる。
+// 返り値は PUT 完了の Promise (呼び出し元が await して成功/失敗を判定できる)。
 export function syncPresetEdit() {
-  if (S.PRESET_EDIT_IDX == null) return;
+  if (S.PRESET_EDIT_IDX == null) return Promise.resolve();
   const list = getPresets();
   const p = list[S.PRESET_EDIT_IDX];
-  if (!p) return;
-  p.charts = S.CHARTS.map(c => ({...c}));
-  p.cards = S.CARDS.map(c => ({...c}));
-  p.dims = [...S.SELECTED_DIMS];
-  p.metrics = [...S.SELECTED_METRICS];
-  p.thresholds = JSON.parse(JSON.stringify(S.THRESHOLDS));
-  p.thresholdMetrics = [...S.THRESHOLD_METRICS];
-  p.tableState = getTableState();
-  p.tableConfig = JSON.parse(JSON.stringify(S.TABLE_CONFIG || DEFAULT_TABLE_CONFIG));
-  p.filterValues = serializeFilterValues(S.FILTER_VALUES);
-  p.filterConditions = JSON.parse(JSON.stringify(S.FILTER_CONDITIONS || {}));
-  p.color = document.getElementById('preset-color-picker').value || p.color;
-  setPresets(list);
+  if (!p || !p.id) return Promise.resolve();
+  const updated = {
+    ...p,
+    charts: S.CHARTS.map(c => ({...c})),
+    cards: S.CARDS.map(c => ({...c})),
+    dims: [...S.SELECTED_DIMS],
+    metrics: [...S.SELECTED_METRICS],
+    thresholds: JSON.parse(JSON.stringify(S.THRESHOLDS)),
+    thresholdMetrics: [...S.THRESHOLD_METRICS],
+    tableState: getTableState(),
+    tableConfig: JSON.parse(JSON.stringify(S.TABLE_CONFIG || DEFAULT_TABLE_CONFIG)),
+    filterValues: serializeFilterValues(S.FILTER_VALUES),
+    filterConditions: JSON.parse(JSON.stringify(S.FILTER_CONDITIONS || {})),
+    color: document.getElementById('preset-color-picker').value || p.color,
+  };
+  return updatePresetOp(p.id, updated);
 }
 
 export function enterPresetEdit(idx) {
@@ -469,12 +506,12 @@ export function renderTabPresetSelect() {
   sel.value = idx >= 0 ? String(idx) : '';
 }
 
-export function createBuiltinPresetFor(baseName) {
+export async function createBuiltinPresetFor(baseName) {
   const list = getPresets();
   let name = baseName;
   let n = 2;
   while (list.some(p => p.name === name)) { name = `${baseName} (${n++})`; }
-  list.push({
+  const preset = {
     name,
     builtin: true,
     seedVersion: BUILTIN_SEED_VERSION,
@@ -484,8 +521,9 @@ export function createBuiltinPresetFor(baseName) {
     metrics: S.METRIC_DEFS.map(m => m.key),
     thresholds: {},
     thresholdMetrics: [],
-  });
-  setPresets(list);
+  };
+  try { await createPresetOp(preset); }
+  catch (e) { return null; }
   renderPresets();
   renderTabPresetSelect();
   return name;

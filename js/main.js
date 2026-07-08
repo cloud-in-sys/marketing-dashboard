@@ -3,8 +3,9 @@ import './colorPicker.js'; // <dashboard-color-picker> カスタム要素を登�
 import { on, emit } from './events.js';
 import { S,
   initStateFromServer, saveState, saveCustomTabs, saveViewOrder,
-  syncCurrentTabState, getPresets, setPresets,
-  loadSourceMethod, flushUserStateNow } from './state.js';
+  syncCurrentTabState, getPresets,
+  loadSourceMethod, flushUserStateNow, flushPresetsNow, setPresetsErrorNotifier,
+  reorderPresetsOp } from './state.js';
 import { flushConfigNow } from './persistence.js';
 import { escapeHtml, hexToSoft } from './utils.js';
 import { showModal } from './modal.js';
@@ -18,7 +19,7 @@ import { groupRows } from './aggregate/dimensions.js';
 import { dimLabel } from './aggregate/dimensions.js';
 import { renderCurrentUserLabel, applyPermissionUI, hideLogin, observeAuth, signIn, logout } from './auth.js';
 import { seedDefaultPresets, renderPresets, loadPresetIntoGlobals, applyPresetFilters, renderTabPresetSelect,
-  enterPresetEdit, syncPresetEdit, deletePreset, duplicatePreset, savePresetPrompt,
+  enterPresetEdit, syncPresetEdit, deletePreset, duplicatePreset, renamePreset, savePresetPrompt,
   loadTabState, initTabStates, setExitSettingsMode as setExitSettingsModePresets } from './presets.js';
 import { renderCustomTabs, renderViewNav, applyView, highlightActiveView, toggleCustomTabGroup, listCustomTabGroups,
   setExitSettingsMode as setExitSettingsModeTabs } from './tabs.js';
@@ -495,6 +496,27 @@ document.addEventListener('click', () => {
 window.addEventListener('pagehide', () => {
   flushConfigNow({ keepalive: true });
   flushUserStateNow({ keepalive: true });
+  flushPresetsNow({ keepalive: true });
+});
+
+// プリセット保存失敗をユーザーに通知。連続失敗でモーダルが重ならないよう単純フラグでガード。
+// rollback で cache は元に戻っているが optimistic 表示が残るので UI も再 render する。
+let _presetsErrModalOpen = false;
+setPresetsErrorNotifier(async (e) => {
+  renderPresets();
+  renderTabPresetSelect();
+  if (_presetsErrModalOpen) return;
+  _presetsErrModalOpen = true;
+  try {
+    const msg = e?.message || String(e);
+    // 409 (同名衝突) は専用モーダル。それ以外は汎用エラー。
+    const isConflict = e?.status === 409 || /同じ名前/.test(msg);
+    const title = isConflict ? '同じ名前のプリセットがあります' : 'プリセット保存に失敗しました';
+    const body = isConflict
+      ? `${msg}\n\n別の名前で保存してください。`
+      : `プリセットの保存に失敗しました。編集内容は元の状態に戻ります (rollback)。ネットワーク接続を確認してもう一度お試しください。\n\n${msg}`;
+    await showModal({ title, body, okText: 'OK', cancelText: '' });
+  } finally { _presetsErrModalOpen = false; }
 });
 
 // ===== FILTERS TOGGLE =====
@@ -518,9 +540,13 @@ document.getElementById('preset-save-btn').addEventListener('click', async () =>
   if (!p) return;
   const ok = await showModal({title: '\u30d7\u30ea\u30bb\u30c3\u30c8\u3092\u4fdd\u5b58', body: `\u300c${p.name}\u300d\u306b\u73fe\u5728\u306e\u7de8\u96c6\u5185\u5bb9\u3092\u4fdd\u5b58\u3057\u307e\u3059\u304b\uff1f`, okText: '\u4fdd\u5b58'});
   if (!ok) return;
-  syncPresetEdit();
+  // syncPresetEdit \u306f\u5f53\u8a72 preset \u306e\u66f4\u65b0 Promise \u3092\u8fd4\u3059\u3002await \u3057\u3066\u6210\u529f\u6642\u306e\u307f\u300c\u4fdd\u5b58\u5b8c\u4e86\u300d\u3092\u51fa\u3059\u3002
+  // \u5931\u6557\u6642\u306f setPresetsErrorNotifier \u304c\u5225\u30e2\u30fc\u30c0\u30eb\u3092\u51fa\u3059\u306e\u3067\u3001\u3053\u3053\u306f silent return\u3002
+  const savePromise = syncPresetEdit();
   renderPresets();
   renderTabPresetSelect();
+  try { await savePromise; }
+  catch (e) { return; }
   await showModal({title: '\u4fdd\u5b58\u5b8c\u4e86', body: `\u300c${p.name}\u300d\u3092\u4fdd\u5b58\u3057\u307e\u3057\u305f`, okText: 'OK', cancelText: ''});
 });
 document.getElementById('preset-exit-btn').addEventListener('click', async () => {
@@ -530,6 +556,8 @@ document.getElementById('preset-exit-btn').addEventListener('click', async () =>
   applyView(S.CUSTOM_TABS[0]?.key || 'summary_daily');
 });
 document.getElementById('preset-list').addEventListener('click', e => {
+  const ren = e.target.closest('.preset-ren');
+  if (ren) { renamePreset(+ren.dataset.idx); return; }
   const dup = e.target.closest('.preset-dup');
   if (dup) { duplicatePreset(+dup.dataset.idx); return; }
   const del = e.target.closest('.preset-del');
@@ -630,7 +658,9 @@ makeSortable(document.getElementById('preset-list'), (from, to, before) => {
   let toIdx = list.findIndex(p => p.name === to);
   if (!before) toIdx += 1;
   list.splice(toIdx, 0, moved);
-  setPresets(list);
+  // 並替のみを PATCH で送る (bulk 置換ではないので他ユーザーの編集を潰さない)
+  const ids = list.map(p => p.id).filter(Boolean);
+  reorderPresetsOp(ids).catch(() => {});
   renderPresets();
 });
 
@@ -666,7 +696,7 @@ observeAuth({
     renderSourceNav();
     renderViewNav();
     loadState();
-    seedDefaultPresets();
+    await seedDefaultPresets();
     initTabStates();
     loadTabState(S.CURRENT_VIEW);
     // タブ毎にフィルタが復元されるため UI を再描画

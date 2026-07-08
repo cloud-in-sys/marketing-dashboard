@@ -1,4 +1,4 @@
-import { S, saveViews, saveViewOrder, getPresets, setPresets, compileFilter } from '../state.js';
+import { S, saveViews, saveViewOrder, getPresets, updatePresetOp, compileFilter } from '../state.js';
 import { escapeHtml } from '../utils.js';
 import { showModal } from '../modal.js';
 import { hasPerm } from '../auth.js';
@@ -102,30 +102,41 @@ export function setupDefaultsEvents() {
     if (new Set(keys).size !== keys.length) { await showModal({title: '保存できません', body: 'キーが重複しています', okText: 'OK', cancelText: ''}); return; }
     const ok = await showModal({title: '標準定義を保存', body: '変更内容を保存しますか？', okText: '保存'});
     if (!ok) return;
-    // Build old preset name mapping from current VIEWS
+    // 各タブの旧 label / 旧 presetName を分けて捕捉。label 変更判定は必ず oldLabel を使う。
+    // (以前は oldPresetName と現在の label を比較していたので、"ア (2)" のように auto-suffix
+    // が付いた preset を持つタブでは label 未変更でも rename が発火する false-positive があった)
+    const oldLabels = {};
     const oldPresetNames = {};
     for (const [k, v] of Object.entries(S.VIEWS)) {
+      oldLabels[k] = v.label;
       oldPresetNames[k] = v.presetName || v.label;
     }
 
-    // Create presets for new tabs / rename presets for renamed tabs
+    // Phase 1: 各タブに紐付く builtin preset の作成/リネーム。
+    // ここで 1 件でも失敗したら S.VIEWS を更新せずに abort する。
+    // 半端な presetName を持ったまま S.VIEWS が保存されて後段の昇格/降格が壊れた
+    // preset を触るのを防ぐ。errorNotifier が別モーダルで通知しているので、ここは silent return。
     const presetList = getPresets();
-    defs.forEach(v => {
+    for (const v of defs) {
       if (!v.presetName) {
-        // New tab: create a builtin preset
-        v.presetName = createBuiltinPresetFor(v.label || '新規タブ');
+        const created = await createBuiltinPresetFor(v.label || '新規タブ');
+        if (!created) return; // 作成失敗 → S.VIEWS 更新せず中断
+        v.presetName = created;
       } else {
-        // Existing tab: if label changed, rename the linked preset too
-        const oldName = oldPresetNames[v.key];
-        if (oldName && oldName !== v.label && v.presetName === oldName) {
-          const preset = presetList.find(p => p.name === oldName && p.builtin);
-          if (preset) {
-            preset.name = v.label;
+        const oldLabel = oldLabels[v.key];
+        const oldPresetName = oldPresetNames[v.key];
+        // 「label が実際に変わった」かつ「presetName は手動で別プリセットに切替えていない」
+        // ときだけ rename を試みる。auto-suffix ("ア (2)" 等) で label 未変更のケースは対象外。
+        if (oldLabel && oldLabel !== v.label && v.presetName === oldPresetName) {
+          const preset = presetList.find(p => p.name === oldPresetName && p.builtin);
+          if (preset && preset.id) {
+            try { await updatePresetOp(preset.id, { ...preset, name: v.label }); }
+            catch (e) { return; } // rename 失敗 (409 等) → presetName 変更せず中断
             v.presetName = v.label;
           }
         }
       }
-    });
+    }
 
     const next = {};
     defs.forEach(v => {
@@ -146,18 +157,24 @@ export function setupDefaultsEvents() {
       S.CURRENT_VIEW = S.VIEW_ORDER[0] || 'summary_daily';
     }
 
-    // Delete orphan builtin presets (not referenced by any view) and dedupe by name
+    // preset ↔ view の紐付け整合を per-preset ops で調整 (削除はしない)。
+    //   1. 参照されなくなった builtin → 非 builtin に降格 (データ保全)
+    //   2. 参照された user preset → builtin に昇格 (× で誤削除防止)
+    //   3. 同名衝突は backend が POST/PUT 時点で 409 で弾くので dedup ロジックは不要
     const referenced = new Set(Object.values(S.VIEWS).map(v => v.presetName));
-    const latestPresets = getPresets();
-    const seenBuiltinNames = new Set();
-    const cleaned = latestPresets.filter(p => {
-      if (!p.builtin) return true;
-      if (!referenced.has(p.name)) return false;       // 孤立 (参照無し)
-      if (seenBuiltinNames.has(p.name)) return false;  // 同名重複
-      seenBuiltinNames.add(p.name);
-      return true;
-    });
-    setPresets(cleaned);
+    const snapshot = [...getPresets()];
+    for (const p of snapshot) {
+      if (!p.id) continue;
+      const isReferenced = referenced.has(p.name);
+      if (p.builtin && !isReferenced) {
+        try { await updatePresetOp(p.id, { ...p, builtin: false }); }
+        catch (e) { /* silent, errorNotifier で別モーダル */ }
+      } else if (!p.builtin && isReferenced) {
+        try { await updatePresetOp(p.id, { ...p, builtin: true }); }
+        catch (e) { /* silent */ }
+      }
+    }
+    renderDefaultsDoc();     // ← Bug ①: auto-created preset を select に即時反映
     renderPresets();
     renderTabPresetSelect();
     clearDefaultsDirty();

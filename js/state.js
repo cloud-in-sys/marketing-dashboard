@@ -370,24 +370,164 @@ export function clearSourceRaw(sid) {
   S.SOURCE_DATA[sid] = [];
 }
 
-// Presets: list replace semantics (matches frontend preset editor)
+// Presets: per-preset ops のみ (旧 bulk PUT / setPresets 系は撤去済み)。
 export function getPresets() { return S.PRESETS_CACHE; }
-// API 呼び出しを直列化(同時並行で PUT すると Firestore batch が race して duplicates になる)。
-// 連続して呼ばれた場合は最新の list だけ送る。
-let _presetsSaveQueue = Promise.resolve();
-let _presetsSavePending = null;
-export function setPresets(list) {
-  S.PRESETS_CACHE = list;
-  if (!S.CURRENT_SOURCE) return;
-  _presetsSavePending = list;
-  _presetsSaveQueue = _presetsSaveQueue
-    .then(async () => {
-      if (_presetsSavePending !== list) return; // 後発の setPresets に上書きされた
-      const toSave = _presetsSavePending;
-      _presetsSavePending = null;
-      try { await api.putPresets(S.CURRENT_SOURCE, toSave); }
-      catch (e) { console.warn('[presets] save failed', e); }
-    });
+// source ごとに Promise チェーンでシリアライズ。_runPresetOp が管理する。
+const _presetsChain = new Map();   // sid -> Promise
+let _presetsErrorNotifier = null;
+export function setPresetsErrorNotifier(fn) { _presetsErrorNotifier = fn; }
+
+// pagehide 等で pending 中の per-preset op が完了するまで待つ (best-effort、個別失敗は無視)。
+// keepalive は per-preset ops が自前で fetch に転送していないので、この関数の opts は現在使われない。
+export async function flushPresetsNow(_opts) {
+  const promises = Array.from(_presetsChain.values()).map(p => p.catch(() => {}));
+  if (promises.length === 0) return;
+  await Promise.all(promises);
+}
+
+// ===== per-preset (targeted) ops =====
+// bulk 置換の PUT を避けて他ユーザー / 他タブの編集を潰さないようにする。
+// 呼び出し元は await して try/catch で失敗を判定できる (成功時のみモーダル等)。
+// 失敗時は _presetsErrorNotifier が別モーダルで通知。
+//
+// 並替 / 削除でインデックスがシフトするため、S.PRESET_EDIT_IDX は id ベースで
+// 再解決する (編集中プリセットが別の preset を指すバグ防止)。
+
+function _savePresetEditId() {
+  if (S.PRESET_EDIT_IDX == null) return null;
+  return S.PRESETS_CACHE[S.PRESET_EDIT_IDX]?.id ?? null;
+}
+function _restorePresetEditIdx(id) {
+  if (id == null) return;
+  const idx = S.PRESETS_CACHE.findIndex(p => p.id === id);
+  S.PRESET_EDIT_IDX = idx >= 0 ? idx : null;
+}
+
+async function _runPresetOp(sid, fn) {
+  const prev = _presetsChain.get(sid) || Promise.resolve();
+  const next = prev.catch(() => {}).then(async () => {
+    try { return await fn(); }
+    catch (e) {
+      console.warn('[presets] op failed', e);
+      if (_presetsErrorNotifier) _presetsErrorNotifier(e);
+      throw e;
+    }
+  });
+  _presetsChain.set(sid, next);
+  next.catch(() => {}).finally(() => {
+    if (_presetsChain.get(sid) === next) _presetsChain.delete(sid);
+  });
+  return next;
+}
+
+// 新規作成。POST を await → 返ってきた {id, ...} をキャッシュ末尾に push。
+// POST の await 中に別 source に切り替わっていたら push しない (別 source cache に混入させない)。
+export async function createPresetOp(preset) {
+  const sid = S.CURRENT_SOURCE;
+  if (!sid) throw new Error('no source');
+  const { id: _, ...body } = preset || {};
+  return _runPresetOp(sid, async () => {
+    const created = await api.createPreset(sid, body);
+    if (S.CURRENT_SOURCE === sid) S.PRESETS_CACHE.push(created);
+    return created;
+  });
+}
+
+// 個別更新。ローカルキャッシュを先に反映 (optimistic) → PUT を await。
+// - sid を closure キャプチャして API は開始時 sid に送る
+// - キャッシュ変更 / rollback は「今も同じ source を見ている場合のみ」実行
+// - 失敗時は変更前の preset を復元 (source が変わっていたら復元しない)
+export async function updatePresetOp(pid, preset) {
+  const sid = S.CURRENT_SOURCE;
+  if (!sid) throw new Error('no source');
+  if (!pid) throw new Error('pid required');
+  const { id: _, ...body } = preset || {};
+  let rollback = null;
+  if (S.CURRENT_SOURCE === sid) {
+    const idx = S.PRESETS_CACHE.findIndex(p => p.id === pid);
+    if (idx >= 0) {
+      const prev = S.PRESETS_CACHE[idx];
+      S.PRESETS_CACHE[idx] = { ...prev, ...body, id: pid };
+      rollback = () => {
+        if (S.CURRENT_SOURCE !== sid) return;
+        const cur = S.PRESETS_CACHE.findIndex(p => p.id === pid);
+        if (cur >= 0) S.PRESETS_CACHE[cur] = prev;
+      };
+    }
+  }
+  return _runPresetOp(sid, async () => {
+    try { await api.updatePreset(sid, pid, body); }
+    catch (e) { if (rollback) rollback(); throw e; }
+  });
+}
+
+// 個別削除。ローカルから消してから DELETE を await。
+// source が変わっていたら現在キャッシュは触らない。失敗時は元の位置に復元。
+export async function deletePresetOp(pid) {
+  const sid = S.CURRENT_SOURCE;
+  if (!sid) throw new Error('no source');
+  if (!pid) throw new Error('pid required');
+  let rollback = null;
+  if (S.CURRENT_SOURCE === sid) {
+    const idx = S.PRESETS_CACHE.findIndex(p => p.id === pid);
+    if (idx >= 0) {
+      const prev = S.PRESETS_CACHE[idx];
+      const prevEditIdx = S.PRESET_EDIT_IDX;
+      const editedId = _savePresetEditId();
+      S.PRESETS_CACHE = S.PRESETS_CACHE.filter(p => p.id !== pid);
+      if (editedId === pid) S.PRESET_EDIT_IDX = null;
+      else _restorePresetEditIdx(editedId);
+      rollback = () => {
+        if (S.CURRENT_SOURCE !== sid) return;
+        // 既に別 op で削除済み or 誰かが同 id を作った場合は復元しない
+        if (S.PRESETS_CACHE.some(p => p.id === pid)) return;
+        const insertAt = Math.min(idx, S.PRESETS_CACHE.length);
+        S.PRESETS_CACHE.splice(insertAt, 0, prev);
+        S.PRESET_EDIT_IDX = prevEditIdx;
+      };
+    }
+  }
+  return _runPresetOp(sid, async () => {
+    try { await api.deletePreset(sid, pid); }
+    catch (e) { if (rollback) rollback(); throw e; }
+  });
+}
+
+// 並替のみ。pids は新しい順序の id 配列。
+// source が変わっていたら現在キャッシュは触らない。失敗時は元の順序に復元。
+export async function reorderPresetsOp(pids) {
+  const sid = S.CURRENT_SOURCE;
+  if (!sid) throw new Error('no source');
+  if (!Array.isArray(pids)) throw new Error('pids array required');
+  let rollback = null;
+  if (S.CURRENT_SOURCE === sid) {
+    const prevCache = S.PRESETS_CACHE.slice(); // 順序スナップショット
+    const prevEditIdx = S.PRESET_EDIT_IDX;
+    const editedId = _savePresetEditId();
+    const byId = new Map(S.PRESETS_CACHE.map(p => [p.id, p]));
+    const next = [];
+    for (const pid of pids) {
+      const p = byId.get(pid);
+      if (p) next.push(p);
+    }
+    for (const p of S.PRESETS_CACHE) if (!pids.includes(p.id)) next.push(p);
+    S.PRESETS_CACHE = next;
+    _restorePresetEditIdx(editedId);
+    rollback = () => {
+      if (S.CURRENT_SOURCE !== sid) return;
+      // 復元前後で id 集合が変わっていたら (別 op で create/delete) 復元は諦める
+      const curIds = new Set(S.PRESETS_CACHE.map(p => p.id));
+      const prevIds = new Set(prevCache.map(p => p.id));
+      if (curIds.size !== prevIds.size) return;
+      for (const id of curIds) if (!prevIds.has(id)) return;
+      S.PRESETS_CACHE = prevCache;
+      S.PRESET_EDIT_IDX = prevEditIdx;
+    };
+  }
+  return _runPresetOp(sid, async () => {
+    try { await api.reorderPresets(sid, pids); }
+    catch (e) { if (rollback) rollback(); throw e; }
+  });
 }
 
 export function saveCurrentSource() {

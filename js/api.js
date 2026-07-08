@@ -75,7 +75,10 @@ export const api = {
 
   // Presets
   listPresets:   (sid) => request('GET', `/api/presets/${sid}`),
-  putPresets:    (sid, presets) => request('PUT', `/api/presets/${sid}`, { presets }),
+  createPreset:  (sid, preset, opts) => request('POST', `/api/presets/${sid}`, preset, opts),
+  updatePreset:  (sid, pid, preset, opts) => request('PUT', `/api/presets/${sid}/${encodeURIComponent(pid)}`, preset, opts),
+  deletePreset:  (sid, pid, opts) => request('DELETE', `/api/presets/${sid}/${encodeURIComponent(pid)}`, null, opts),
+  reorderPresets: (sid, order, opts) => request('PATCH', `/api/presets/${sid}`, { order }, opts),
 
   // Google integration
   googleStatus:  () => request('GET', '/api/google/status'),

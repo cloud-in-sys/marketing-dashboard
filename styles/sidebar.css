@@ -78,6 +78,7 @@ body.no-add-custom #add-custom-tab { display: none; }
 body.no-save-preset #save-preset { display: none; }
 body.no-delete-custom .custom-tab-item .preset-del { display: none; }
 body.no-delete-preset .preset-item .preset-del { display: none; }
+body.no-edit-preset .preset-item .preset-ren { display: none; }
 body.no-edit-custom.tab-custom .panel[data-panel="dim"] .panel-body,
 body.no-edit-custom.tab-custom .panel[data-panel="metric"] .panel-body,
 body.no-edit-custom.tab-custom .panel[data-panel="thresholds"] .panel-body,
@@ -369,7 +370,8 @@ body.no-edit-custom .custom-tab-color { display: none; }
   border-left-color: var(--violet);
 }
 .preset-del,
-.preset-dup {
+.preset-dup,
+.preset-ren {
   background: transparent;
   border: none;
   color: var(--muted);
@@ -381,6 +383,7 @@ body.no-edit-custom .custom-tab-color { display: none; }
 }
 .preset-del:hover { background: #fee2e2; color: var(--danger); }
 .preset-dup:hover { background: var(--primary-soft); color: var(--primary); }
+.preset-ren:hover { background: var(--primary-soft); color: var(--primary); }
 .preset-name {
   flex: 1;
   min-width: 0;

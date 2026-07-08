@@ -95,6 +95,25 @@ body.settings-mode .view { display: none; }
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
+.metric-formula-input.is-invalid {
+  border-color: var(--danger);
+  background: #fef2f2;
+}
+.metric-formula-input.is-invalid:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+}
+.metric-formula-error {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--danger);
+  margin-top: 4px;
+  padding: 4px 6px;
+  background: #fef2f2;
+  border-left: 2px solid var(--danger);
+  border-radius: 2px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
 .metrics-doc-info-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
