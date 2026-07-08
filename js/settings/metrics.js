@@ -3,7 +3,7 @@ import { S, DEFAULT_BASE_FORMULAS, DEFAULT_FORMULAS,
 import { flushConfigNow } from '../persistence.js';
 import { escapeHtml } from '../utils.js';
 import { showModal } from '../modal.js';
-import { parseBaseFormula, isPureBaseFormula } from '../aggregate/aggregate.js';
+import { parseBaseFormula, isPureBaseFormula, liftFormula } from '../aggregate/aggregate.js';
 import { hasPerm } from '../auth.js';
 import { renderViewNav } from '../tabs.js';
 import { emit } from '../events.js';
@@ -11,7 +11,10 @@ import { makeSortable } from '../sortable.js';
 import { validateExpression } from '../validateExpression.js';
 
 function _validateFormula(src, label) {
-  const err = validateExpression(src, { label });
+  // 集計 DSL (`sum(x) where y='a'` 等) は素の JS ではないので、
+  // liftFormula で `__agg_N__` プレースホルダに変換してから JS 構文チェックする。
+  const { lifted } = liftFormula(String(src || ''));
+  const err = validateExpression(lifted, { label });
   return err ? _translateError(err) : null;
 }
 // 英語エラー文を日本語化

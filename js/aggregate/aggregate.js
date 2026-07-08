@@ -328,7 +328,7 @@ function evalAst(node, row, today) {
 }
 
 // 式から集計関数呼び出しを抽出 → placeholder で置換した式と spec マップを返す
-function liftFormula(formula) {
+export function liftFormula(formula) {
   const cacheKey = formula;
   if (liftCache.has(cacheKey)) return liftCache.get(cacheKey);
 
