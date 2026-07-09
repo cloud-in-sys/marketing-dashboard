@@ -24,6 +24,7 @@ export function renderDimsDoc() {
     {v: 'date',       l: '日付'},
     {v: 'week',       l: '週 (YYYY-MM-DD〜YYYY-MM-DD)'},
     {v: 'month',      l: '月 (YYYY-MM)'},
+    {v: 'year',       l: '年 (YYYY)'},
     {v: 'dow',        l: '曜日'},
     {v: 'expression', l: '計算式'},
     {v: 'image',      l: '画像 (URL カラム)'},
@@ -135,6 +136,7 @@ export function setupDimensionsEvents() {
         <code>日付</code> — 日付として扱う（YYYY-MM-DD)<br>
         <code>週</code> — 日付を週単位にまとめる。表示は <code>YYYY-MM-DD〜YYYY-MM-DD</code>。週の開始曜日 (日〜土) は各ディメンションで個別に指定可能<br>
         <code>月 (YYYY-MM)</code> — 日付の先頭7文字を抽出<br>
+        <code>年 (YYYY)</code> — 日付の先頭4文字を抽出<br>
         <code>曜日</code> — 日付から曜日(日/月/火/...)に変換<br>
         <code>計算式</code> — 任意のJS式で行から値を算出<br>
         <code>画像 (URL カラム)</code> — データカラムの値を画像 URL とみなし、ピボット列にサムネを表示。クリックで URL を新規タブで開く。サイズは「画像の高さ・幅 (px)」で指定可能 (未指定なら 40×120px)<br>

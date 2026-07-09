@@ -349,8 +349,40 @@ export async function deletePreset(i) {
   renderTabPresetSelect();
 }
 
+// プリセット編集の dirty 判定用ベースライン (シリアライズ済み)。
+// enter で記録 → syncPresetEdit 成功で更新 → exit で null。
+// null の間は「編集モードに入っていない」= dirty ではない扱い。
+let _presetEditSnapshot = null;
+
+// syncPresetEdit と同じフィールドをシリアライズ (save 内容と一致させる)。
+function computePresetEditSnapshot() {
+  if (S.PRESET_EDIT_IDX == null) return null;
+  const picker = document.getElementById('preset-color-picker');
+  return JSON.stringify({
+    charts: S.CHARTS || [],
+    cards: S.CARDS || [],
+    dims: S.SELECTED_DIMS || [],
+    metrics: S.SELECTED_METRICS || [],
+    thresholds: S.THRESHOLDS || {},
+    thresholdMetrics: S.THRESHOLD_METRICS || [],
+    tableConfig: S.TABLE_CONFIG || DEFAULT_TABLE_CONFIG,
+    tableState: getTableState(),
+    filterValues: serializeFilterValues(S.FILTER_VALUES),
+    filterConditions: S.FILTER_CONDITIONS || {},
+    color: picker?.value || '',
+  });
+}
+
+// 未保存変更ガード用。編集モードで snapshot と現在値が異なる時だけ dirty。
+export function isPresetEditDirty() {
+  if (S.PRESET_EDIT_IDX == null) return false;
+  if (_presetEditSnapshot == null) return false;
+  return _presetEditSnapshot !== computePresetEditSnapshot();
+}
+
 // 現在の編集内容を編集中プリセットに反映して PUT を投げる。
 // 返り値は PUT 完了の Promise (呼び出し元が await して成功/失敗を判定できる)。
+// 成功時のみ snapshot を更新して dirty をクリア。失敗時は dirty のまま残す。
 export function syncPresetEdit() {
   if (S.PRESET_EDIT_IDX == null) return Promise.resolve();
   const list = getPresets();
@@ -370,7 +402,11 @@ export function syncPresetEdit() {
     filterConditions: JSON.parse(JSON.stringify(S.FILTER_CONDITIONS || {})),
     color: document.getElementById('preset-color-picker').value || p.color,
   };
-  return updatePresetOp(p.id, updated);
+  const snapshotAtSave = computePresetEditSnapshot();
+  return updatePresetOp(p.id, updated).then(res => {
+    _presetEditSnapshot = snapshotAtSave;
+    return res;
+  });
 }
 
 export function enterPresetEdit(idx) {
@@ -395,10 +431,13 @@ export function enterPresetEdit(idx) {
   emit('render');
   const viewEl = document.querySelector('.view');
   if (viewEl) { viewEl.classList.remove('animating'); void viewEl.offsetWidth; viewEl.classList.add('animating'); }
+  // globals / DOM 反映後にベースラインを記録
+  _presetEditSnapshot = computePresetEditSnapshot();
 }
 
 export function exitPresetEdit() {
   S.PRESET_EDIT_IDX = null;
+  _presetEditSnapshot = null;
   document.body.classList.remove('preset-editing');
 }
 

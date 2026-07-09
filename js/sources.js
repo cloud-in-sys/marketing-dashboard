@@ -10,7 +10,7 @@ import { showModal } from './modal.js';
 import { populateFilters, renderFilters, renderMSDynamic, closeFloatingMs } from './filters/index.js';
 import { renderViewNav, highlightActiveView, renderCustomTabs } from './tabs.js';
 import { initTabStates, loadTabState, renderPresets, renderTabPresetSelect } from './presets.js';
-import { exitSettingsMode, renderCsvColumns } from './settings.js';
+import { exitSettingsMode, renderCsvColumns, confirmDiscardUnsavedChanges } from './settings.js';
 import { api } from './api.js';
 import * as sheets from './sheets.js';
 import * as bq from './bq.js';
@@ -127,8 +127,9 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') toggleSourceDropdown(false);
 });
 // 「⚙ 現在のソースの設定」ボタン
-document.getElementById('open-source-settings')?.addEventListener('click', () => {
+document.getElementById('open-source-settings')?.addEventListener('click', async () => {
   toggleSourceDropdown(false);
+  if (!(await confirmDiscardUnsavedChanges())) return;
   enterSourceView();
 });
 
@@ -160,6 +161,8 @@ document.getElementById('source-delete-btn')?.addEventListener('click', async ()
     await showModal({title: '削除できません', body: 'データソースは最低1つ必要です', okText: 'OK', cancelText: ''});
     return;
   }
+  // 未保存 draft は削除対象ソースのものなので、破壊的操作前に確認して discard
+  if (!(await confirmDiscardUnsavedChanges())) return;
   const ok = await showModal({
     title: 'データソースを削除',
     body: `「${ds.name}」を削除しますか？\nこのデータソースの全ての設定・プリセット・スナップショットが削除されます。`,
@@ -182,7 +185,7 @@ document.getElementById('source-delete-btn')?.addEventListener('click', async ()
     S.DATA_SOURCES = S.DATA_SOURCES.filter(d => d.id !== ds.id);
     delete S.SOURCE_DATA[ds.id];
     clearSourceRaw(ds.id);
-    await switchSource(S.DATA_SOURCES[0].id);
+    await switchSource(S.DATA_SOURCES[0].id, { skipGuard: true });
     exitSettingsMode();
     reloadFullUI();
   } catch (err) {
@@ -199,7 +202,10 @@ document.getElementById('source-nav').addEventListener('click', e => {
       return;
     }
     const dsName = S.DATA_SOURCES.find(d=>d.id===id)?.name||id;
-    showModal({title: 'データソースを削除', body: `「${dsName}」を削除しますか？\nこのデータソースの全ての設定・プリセットが削除されます。`, okText: '削除', danger: true}).then(async ok => {
+    (async () => {
+      // reloadFullUI で exitSettingsMode されるため、非 current 削除でも先に未保存確認
+      if (!(await confirmDiscardUnsavedChanges())) return;
+      const ok = await showModal({title: 'データソースを削除', body: `「${dsName}」を削除しますか？\nこのデータソースの全ての設定・プリセットが削除されます。`, okText: '削除', danger: true});
       if (!ok) return;
       const typed = await showModal({title: '本当に削除しますか？', body: `「${dsName}」の削除は取り消せません。確認のため「削除」と入力してください。`, input: true, placeholder: '削除', okText: '削除する', danger: true, noEnter: true});
       if (typed !== '削除') return;
@@ -209,13 +215,13 @@ document.getElementById('source-nav').addEventListener('click', e => {
         delete S.SOURCE_DATA[id];
         clearSourceRaw(id);
         if (S.CURRENT_SOURCE === id) {
-          await switchSource(S.DATA_SOURCES[0].id);
+          await switchSource(S.DATA_SOURCES[0].id, { skipGuard: true });
         }
         reloadFullUI();
       } catch (err) {
         showModal({title: '削除に失敗', body: err.message || '削除に失敗しました', okText: 'OK', cancelText: ''});
       }
-    });
+    })();
     return;
   }
   const rename = e.target.closest('[data-rename-source]');
@@ -244,8 +250,12 @@ document.getElementById('source-nav').addEventListener('click', e => {
     const id = btn.dataset.source;
     (async () => {
       if (S.CURRENT_SOURCE !== id) {
-        await switchSource(id);
+        const switched = await switchSource(id);
+        if (!switched) return;
         reloadFullUI();
+      } else {
+        // 同一ソースクリック: 設定画面から離脱するので未保存確認を挟む
+        if (!(await confirmDiscardUnsavedChanges())) return;
       }
       // ドロップダウンを閉じてダッシュボードに戻る（設定画面は開かない）
       toggleSourceDropdown(false);
@@ -806,7 +816,8 @@ document.getElementById('add-source').addEventListener('click', async () => {
     const created = await api.createSource({ name, copyFromId: copyFromId || undefined });
     S.DATA_SOURCES.push(created);
     S.SOURCE_DATA[created.id] = [];
-    await switchSource(created.id);
+    const switched = await switchSource(created.id);
+    if (!switched) return;
     reloadFullUI();
   } catch (e) {
     await showModal({title: '作成に失敗', body: e.message || 'データソースの作成に失敗しました', okText: 'OK', cancelText: ''});

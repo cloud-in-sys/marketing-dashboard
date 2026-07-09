@@ -33,6 +33,12 @@ export function makeSortable(container, onReorder) {
     item.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
     try { e.dataTransfer.setData('text/plain', dragKey); } catch (_) {}
+    // ドラッグゴーストが大きいと動きが重く見えるので、[data-drag-preview] を持つ
+    // 子要素があればそれを ghost として使う (例: グループヘッダーのみ)。
+    const previewEl = item.querySelector('[data-drag-preview]');
+    if (previewEl) {
+      try { e.dataTransfer.setDragImage(previewEl, 10, 10); } catch (_) {}
+    }
   });
   container.addEventListener('dragend', () => { clearMarks(); dragKey = null; mousedownTarget = null; });
   container.addEventListener('dragover', e => {

@@ -41,11 +41,22 @@ function yesterdayMonth(offset = 0) {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   return `${y}-${m}`;
 }
+function todayMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 
 // rows をカードのフィルタモードに従って絞り込む
 function applyCardFilter(rows, card) {
   const mode = card.filterMode || 'follow';
   if (mode === 'follow') return rows;
+  if (mode === 'current_month') {
+    // 今月 (今日のカレンダー月) を絞り込む。未完月でもそのまま使う。
+    const field = getCardDateField();
+    const target = todayMonth();
+    const source = isFilterRangeOpen() ? S.RAW : rows;
+    return source.filter(r => rowMonth(r[field]) === target);
+  }
   if (mode === 'latest_month' || mode === 'prev_month') {
     const field = getCardDateField();
     let target;
@@ -183,11 +194,12 @@ export function renderCardSettingsPanel() {
         <span class="chart-settings-label">対象データ</span>
         <select data-card-panel-role="filterMode">
           <option value="follow"${(c.filterMode || 'follow') === 'follow' ? ' selected' : ''}>フィルタに追従</option>
+          <option value="current_month"${c.filterMode === 'current_month' ? ' selected' : ''}>今月のみ</option>
           <option value="latest_month"${c.filterMode === 'latest_month' ? ' selected' : ''}>最新月のみ</option>
           <option value="prev_month"${c.filterMode === 'prev_month' ? ' selected' : ''}>先月のみ</option>
         </select>
       </label>
-      <div class="card-settings-hint">「最新月/先月」は現在のフィルタ範囲内で自動判定</div>
+      <div class="card-settings-hint">「今月」は今日のカレンダー月 (未完でも可)、「最新月/先月」はフィルタ範囲内で自動判定</div>
     </div>
     <div class="card-settings-section">
       <div class="card-settings-section-title">配色</div>

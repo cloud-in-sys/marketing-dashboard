@@ -61,9 +61,11 @@ export function renderCustomTabs() {
   let html = ungrouped.map(renderCustomTabItem).join('');
   for (const [name, tabs] of groups) {
     const isCollapsed = collapsed.has(name);
-    html += `<div class="custom-tab-group${isCollapsed ? ' collapsed' : ''}" data-group-name="${escapeHtml(name)}">`
-      + `<button type="button" class="custom-tab-group-header" data-group-toggle="${escapeHtml(name)}">`
-      + `<span class="custom-tab-group-caret">\u25be</span>`
+    // group \u584a\u81ea\u4f53\u3092\u30c9\u30e9\u30c3\u30b0\u5bfe\u8c61\u306b\u3059\u308b\u3002\u63b4\u3081\u308b\u306e\u306f\u30ad\u30e3\u30ec\u30c3\u30c8 (\u25be) \u9818\u57df\u306e\u307f\u3002
+    // \u30b0\u30eb\u30fc\u30d7\u540d\u30af\u30ea\u30c3\u30af\u306f\u6298\u308a\u7573\u307f\u30c8\u30b0\u30eb\u3068\u3057\u3066\u6a5f\u80fd\u3055\u305b\u305f\u3044\u306e\u3067\u3001data-drag-handle \u3092\u30ad\u30e3\u30ec\u30c3\u30c8\u306b\u9650\u5b9a\u3002
+    html += `<div class="custom-tab-group${isCollapsed ? ' collapsed' : ''}" data-group-name="${escapeHtml(name)}" data-drag-key="__group__:${escapeHtml(name)}" draggable="true">`
+      + `<button type="button" class="custom-tab-group-header" data-group-toggle="${escapeHtml(name)}" data-drag-preview>`
+      + `<span class="custom-tab-group-caret" data-drag-handle title="\u30c9\u30e9\u30c3\u30b0\u3067\u30b0\u30eb\u30fc\u30d7\u3092\u4e26\u3073\u66ff\u3048">\u25be</span>`
       + `<span class="custom-tab-group-name">${escapeHtml(name)}</span>`
       + `<span class="custom-tab-group-count">${tabs.length}</span>`
       + `</button>`
@@ -88,11 +90,14 @@ export function renderViewNav() {
 
 let _exitSettingsMode = null;
 export function setExitSettingsMode(fn) { _exitSettingsMode = fn; }
+let _unsavedGuard = () => Promise.resolve(true);
+export function setUnsavedGuard(fn) { _unsavedGuard = fn; }
 
-export function applyView(viewKey) {
+export async function applyView(viewKey) {
   const isBuiltin = !!S.VIEWS[viewKey];
   const isCustom = S.CUSTOM_TABS.some(t => t.key === viewKey);
   if (!isBuiltin && !isCustom) return;
+  if (!(await _unsavedGuard())) return; // 未保存変更ガード
   dlog('applyView', { from: S.CURRENT_VIEW, to: viewKey, sid: S.CURRENT_SOURCE });
   if (_exitSettingsMode) _exitSettingsMode();
   syncCurrentTabState();

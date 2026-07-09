@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import { escapeHtml } from '../utils.js';
 import { showModal } from '../modal.js';
 import { hasPerm, logout } from '../auth.js';
-import { renderPresets, exitPresetEdit } from '../presets.js';
+import { renderPresets, exitPresetEdit, isPresetEditDirty } from '../presets.js';
 import { abortInFlightAggregate } from '../aggregate/aggregateBackend.js';
 
 import { settingsState } from './state.js';
@@ -15,8 +15,78 @@ import { renderDefaultsDoc, setupDefaultsEvents, clearDefaultsDirty } from './de
 import { loadGroupsAndRender, setupGroupsEvents } from './groups.js';
 import { loadBrandingForEdit, setupBrandingEvents } from './branding.js';
 
+// ----- UNSAVED CHANGES GUARD -----
+// 設定画面ごとの dirty マーカ (save-btn.dirty / groups-list.has-dirty)。
+// プリセット編集モードも「未保存の可能性あり」として扱う。
+const DIRTY_SELECTORS = [
+  '#users-save-btn.dirty',
+  '#metrics-save-btn.dirty',
+  '#filters-save-btn.dirty',
+  '#defaults-save-btn.dirty',
+  '#dims-save-btn.dirty',
+  '#branding-save-btn.dirty',
+  '#groups-list.has-dirty',
+];
+
+export function hasUnsavedSettingsChanges() {
+  for (const sel of DIRTY_SELECTORS) {
+    if (document.querySelector(sel)) return true;
+  }
+  // プリセット編集中は「実際に snapshot と差分がある」時だけ dirty 扱い
+  if (isPresetEditDirty()) return true;
+  return false;
+}
+
+// 未保存変更があれば「保存せずに移動しますか？」モーダルを出す。
+// 戻り値: true = 移動続行 (dirty も clear 済み) / false = キャンセル (移動中断)
+// 二重表示を防ぐ単純フラグ。
+let _confirmInflight = false;
+export async function confirmDiscardUnsavedChanges() {
+  if (!hasUnsavedSettingsChanges()) return true;
+  if (_confirmInflight) return false; // 別の確認が既に走っている
+  _confirmInflight = true;
+  try {
+    const ok = await showModal({
+      title: '未保存の変更があります',
+      body: '未保存の変更があります。保存せずに移動しますか？',
+      okText: '保存せずに移動',
+      cancelText: 'キャンセル',
+      danger: true,
+    });
+    if (ok) discardAllDrafts();
+    return !!ok;
+  } finally {
+    _confirmInflight = false;
+  }
+}
+
+// 全 draft の破棄 + dirty のクリア。confirmDiscardUnsavedChanges 経由でのみ呼ぶ。
+export function discardAllDrafts() {
+  S.USERS_DRAFT = null;
+  S.METRICS_DRAFT = null;
+  S.METRICS_DRAFT_BASE = null;
+  S.METRIC_DEFS_DRAFT = null;
+  S.FILTER_DEFS_DRAFT = null;
+  S.VIEWS_DRAFT = null;
+  S.DIMENSIONS_DRAFT = null;
+  clearUsersDirty();
+  clearMetricsDirty();
+  clearFiltersDirty();
+  clearDefaultsDirty();
+  clearDimsDirty();
+  document.getElementById('branding-save-btn')?.classList.remove('dirty');
+  document.getElementById('groups-list')?.classList.remove('has-dirty');
+  if (S.PRESET_EDIT_IDX != null) exitPresetEdit();
+}
+
 // ----- ENTER / EXIT SETTINGS MODE -----
-export function enterSettingsMode(target = 'users') {
+export async function enterSettingsMode(target = 'users') {
+  // 別の設定サブ画面 / 通常タブへの切替でも未保存確認を挟む
+  if (!(await confirmDiscardUnsavedChanges())) return;
+  return _doEnterSettingsMode(target);
+}
+
+function _doEnterSettingsMode(target) {
   // 設定画面では集計スピナーを出さない。in-flight aggregate も中断する。
   document.body.classList.remove('aggregating');
   abortInFlightAggregate('enter-settings');
@@ -155,6 +225,8 @@ export function enterSettingsMode(target = 'users') {
   }
 }
 
+// exitSettingsMode は sync のまま。未保存確認は user action 直下 (applyView / switchSource /
+// logout 等) で行うので、内部呼び出しの exitSettingsMode は「確認後の実行」フェーズで呼ばれる想定。
 export function exitSettingsMode() {
   document.body.classList.remove('settings-mode');
   document.getElementById('source-view').classList.add('hidden');
@@ -276,8 +348,10 @@ export function setupSettingsEvents() {
   document.getElementById('header-logout').addEventListener('click', async () => {
     const ok = await showModal({title: 'ログアウト', body: 'ログアウトしますか？', okText: 'ログアウト'});
     if (!ok) return;
-    exitSettingsMode();
-    logout();
+    // logout 内で未保存変更ガードが走る (キャンセルされたら logout も中断)。
+    // logout が実際にログアウトするまで exitSettingsMode は呼ばない (キャンセル時に
+    // 設定画面 draft が消える事故を防ぐ)。
+    await logout();
   });
 
   // ----- SETTINGS NAV -----

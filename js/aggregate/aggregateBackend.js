@@ -45,7 +45,7 @@ export function serializeFilters() {
 // follow / 未知のモードは null を返す → カードのバックエンド prefetch 対象外。
 function computeCardMonthFilter(card) {
   const mode = card.filterMode || 'follow';
-  if (mode !== 'latest_month' && mode !== 'prev_month') return null;
+  if (mode !== 'latest_month' && mode !== 'prev_month' && mode !== 'current_month') return null;
   const defs = S.FILTER_DEFS || [];
   const fromDef = defs.find(d => d.type === 'date_from');
   const toDef = defs.find(d => d.type === 'date_to');
@@ -53,7 +53,11 @@ function computeCardMonthFilter(card) {
   const fromVal = fromDef ? (S.FILTER_VALUES || {})[fromDef.id] : null;
   const toVal = toDef ? (S.FILTER_VALUES || {})[toDef.id] : null;
   let target;
-  if (fromVal && toVal) {
+  if (mode === 'current_month') {
+    // 「今月」はカレンダー上の当月を無条件で使う (フィルタ範囲外なら 0 件)
+    const d = new Date();
+    target = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  } else if (fromVal && toVal) {
     const baseMonth = String(toVal).slice(0, 7);
     target = mode === 'latest_month' ? baseMonth : monthSubtract(baseMonth, 1);
   } else {

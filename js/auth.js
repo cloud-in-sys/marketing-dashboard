@@ -121,7 +121,12 @@ function showAuthError(e) {
   errEl.classList.remove('hidden');
 }
 
+// main.js から setUnsavedGuard で inject する。未保存確認モーダルを await する。
+let _unsavedGuard = () => Promise.resolve(true);
+export function setUnsavedGuard(fn) { _unsavedGuard = fn; }
+
 export async function logout() {
+  if (!(await _unsavedGuard())) return;
   await signOutUser();
   S.CURRENT_USER = null;
   applyPermissionUI();

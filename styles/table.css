@@ -345,13 +345,12 @@ tbody td.col-frozen {
 /* 単一ディメンション (= leaf も parent も無く tr 直下) の場合は tr のみで、偶奇交互の薄い背景を出す */
 tbody tr:not(.pivot-leaf-row):not(.pivot-parent-row):not(.total-row):nth-child(even) td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--leaf-bg, #fafbfc); }
 tbody tr:not(.pivot-leaf-row):not(.pivot-parent-row):not(.total-row):nth-child(odd) td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--leaf-bg, #ffffff); }
-/* Hover 背景 (データ行・通常行向け)。親行 hover は depth ルールの後に置く (下方参照)。 */
-tbody tr:hover td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--hover-bg, var(--primary-soft)); }
-tbody tr:hover td.group-col:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--hover-bg, #c7d2fe); }
-tbody tr:hover td.col-frozen:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--hover-bg, #c7d2fe); }
-tbody tr:hover td.cell-blue { background: rgba(37, 99, 235, 0.22); }
-tbody tr:hover td.cell-red { background: rgba(239, 68, 68, 0.22); }
-tbody tr:hover td.cell-yellow { background: rgba(245, 158, 11, 0.28); }
+/* Hover 背景 (データ行・通常行向け)。閾値色 (青/赤/黄) の base rule が !important なので、
+   hover 側も !important で上書きしてホバーを最優先にする。
+   親行 hover は depth ルールの後に置く (下方参照)。 */
+tbody tr:hover td { background: var(--hover-bg, var(--primary-soft)) !important; }
+tbody tr:hover td.group-col,
+tbody tr:hover td.col-frozen { background: var(--hover-bg, #c7d2fe) !important; }
 
 /* ===== PIVOT HIERARCHY ===== */
 .pivot-toggle {
@@ -547,14 +546,15 @@ tbody td.col-frozen[data-dim-idx] {
 }
 
 /* 親行・データ行の hover: depth-N と transparent ルールの後に置くことで cascade で勝つ。
+   閾値色 (青/赤/黄) の base rule が !important なので hover 側も !important で上書きする。
    メトリクス列 + 前列の透明 dim 列の両方を hover 色で塗る。 */
-.pivot-parent-row:hover td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row:hover td:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
-  background: var(--hover-bg, var(--primary-soft));
+.pivot-parent-row:hover td,
+.pivot-leaf-row:hover td {
+  background: var(--hover-bg, var(--primary-soft)) !important;
 }
-.pivot-parent-row:hover td[data-dim-idx]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row:hover td[data-dim-idx]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
-  background: var(--hover-bg, var(--primary-soft));
+.pivot-parent-row:hover td[data-dim-idx],
+.pivot-leaf-row:hover td[data-dim-idx] {
+  background: var(--hover-bg, var(--primary-soft)) !important;
 }
 .pivot-leaf-row td {
   font-size: 0.96em;

@@ -296,11 +296,18 @@ body.no-edit-custom .custom-tab-color { display: none; }
 .custom-tab-group-header:hover { background: var(--panel-2, #f1f5f9); }
 .custom-tab-group-caret {
   font-size: 10px;
-  width: 10px;
-  display: inline-block;
+  width: 14px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--muted);
-  transition: transform 0.15s;
+  transition: transform 0.15s, background 0.12s, color 0.12s;
+  border-radius: 3px;
+  cursor: grab;
 }
+.custom-tab-group-caret:hover { background: var(--panel-3, #e2e8f0); color: var(--text); }
+.custom-tab-group-caret:active { cursor: grabbing; }
 .custom-tab-group.collapsed .custom-tab-group-caret { transform: rotate(-90deg); }
 .custom-tab-group-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .custom-tab-group-count {

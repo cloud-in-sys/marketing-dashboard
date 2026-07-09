@@ -5,7 +5,7 @@ import { S,
   initStateFromServer, saveState, saveCustomTabs, saveViewOrder,
   syncCurrentTabState, getPresets,
   loadSourceMethod, flushUserStateNow, flushPresetsNow, setPresetsErrorNotifier,
-  reorderPresetsOp } from './state.js';
+  reorderPresetsOp, setUnsavedGuard as setUnsavedGuardState } from './state.js';
 import { flushConfigNow } from './persistence.js';
 import { escapeHtml, hexToSoft } from './utils.js';
 import { showModal } from './modal.js';
@@ -17,13 +17,14 @@ import { renderCards } from './cardsRender.js';
 import { renderTable } from './table.js';
 import { groupRows } from './aggregate/dimensions.js';
 import { dimLabel } from './aggregate/dimensions.js';
-import { renderCurrentUserLabel, applyPermissionUI, hideLogin, observeAuth, signIn, logout } from './auth.js';
+import { renderCurrentUserLabel, applyPermissionUI, hideLogin, observeAuth, signIn, logout,
+  setUnsavedGuard as setUnsavedGuardAuth } from './auth.js';
 import { seedDefaultPresets, renderPresets, loadPresetIntoGlobals, applyPresetFilters, renderTabPresetSelect,
   enterPresetEdit, syncPresetEdit, deletePreset, duplicatePreset, renamePreset, savePresetPrompt,
   loadTabState, initTabStates, setExitSettingsMode as setExitSettingsModePresets } from './presets.js';
 import { renderCustomTabs, renderViewNav, applyView, highlightActiveView, toggleCustomTabGroup, listCustomTabGroups,
-  setExitSettingsMode as setExitSettingsModeTabs } from './tabs.js';
-import { setupSettingsEvents, exitSettingsMode } from './settings.js';
+  setExitSettingsMode as setExitSettingsModeTabs, setUnsavedGuard as setUnsavedGuardTabs } from './tabs.js';
+import { setupSettingsEvents, exitSettingsMode, confirmDiscardUnsavedChanges, hasUnsavedSettingsChanges } from './settings.js';
 import { FEATURES } from './config.js';
 import { getBackendFollowFilteredRows } from './aggregate/aggregateCache.js';
 import { renderSourceNav, loadSnapshotIfNeeded, getCurrentLoadVersion } from './sources.js';
@@ -43,6 +44,18 @@ import('./branding.js').then(({ fetchAndApplyBranding }) => fetchAndApplyBrandin
 // ===== Wire up circular dep breakers =====
 setExitSettingsModePresets(exitSettingsMode);
 setExitSettingsModeTabs(exitSettingsMode);
+// 未保存変更ガード注入。auth/tabs/state から呼ばれると settings/index.js の confirm を叩く。
+setUnsavedGuardAuth(confirmDiscardUnsavedChanges);
+setUnsavedGuardTabs(confirmDiscardUnsavedChanges);
+setUnsavedGuardState(confirmDiscardUnsavedChanges);
+
+// beforeunload: 未保存変更があれば browser 標準の離脱警告を出す。カスタムモーダルは出せないので e.returnValue のみ。
+window.addEventListener('beforeunload', (e) => {
+  if (hasUnsavedSettingsChanges()) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 
 // ===== CHIPS & PILLS =====
 function renderDimPills() {
@@ -610,9 +623,84 @@ makeSortable(document.getElementById('view-nav'), (from, to, before) => {
   renderViewNav();
 });
 makeSortable(document.getElementById('custom-nav'), (from, to, before) => {
+  const GROUP_PREFIX = '__group__:';
+  const isGroupFrom = from.startsWith(GROUP_PREFIX);
+  const isGroupTo = to.startsWith(GROUP_PREFIX);
+
+  if (isGroupFrom) {
+    // グループ塊 (子タブ全部) を to の位置に移動
+    const groupName = from.slice(GROUP_PREFIX.length);
+    const groupTabs = S.CUSTOM_TABS.filter(t => (t.group || '') === groupName);
+    if (!groupTabs.length) return;
+    const otherTabs = S.CUSTOM_TABS.filter(t => (t.group || '') !== groupName);
+
+    let insertIdx;
+    if (isGroupTo) {
+      const targetName = to.slice(GROUP_PREFIX.length);
+      if (targetName === groupName) return;
+      if (before) {
+        const idx = otherTabs.findIndex(t => (t.group || '') === targetName);
+        insertIdx = idx >= 0 ? idx : otherTabs.length;
+      } else {
+        let last = -1;
+        for (let i = 0; i < otherTabs.length; i++) {
+          if ((otherTabs[i].group || '') === targetName) last = i;
+        }
+        insertIdx = last >= 0 ? last + 1 : otherTabs.length;
+      }
+    } else {
+      // タブ ターゲット。他グループの子タブ上なら、そのグループ塊の前後に配置
+      const targetIdx = otherTabs.findIndex(t => t.key === to);
+      if (targetIdx < 0) return;
+      const targetGroup = otherTabs[targetIdx].group || '';
+      if (targetGroup) {
+        if (before) {
+          insertIdx = otherTabs.findIndex(t => (t.group || '') === targetGroup);
+        } else {
+          let last = -1;
+          for (let i = 0; i < otherTabs.length; i++) {
+            if ((otherTabs[i].group || '') === targetGroup) last = i;
+          }
+          insertIdx = last + 1;
+        }
+      } else {
+        insertIdx = before ? targetIdx : targetIdx + 1;
+      }
+    }
+    // in-place で mutate (参照を保持しているモジュール向け)
+    S.CUSTOM_TABS.splice(0, S.CUSTOM_TABS.length,
+      ...otherTabs.slice(0, insertIdx), ...groupTabs, ...otherTabs.slice(insertIdx));
+    saveCustomTabs();
+    renderCustomTabs();
+    return;
+  }
+
   const fromTab = S.CUSTOM_TABS.find(t => t.key === from);
+  if (!fromTab) return;
+
+  if (isGroupTo) {
+    // タブをグループ container にドロップ = そのグループへ移動 (先頭 or 末尾)
+    const targetName = to.slice(GROUP_PREFIX.length);
+    fromTab.group = targetName;
+    const fromIdx = S.CUSTOM_TABS.indexOf(fromTab);
+    S.CUSTOM_TABS.splice(fromIdx, 1);
+    if (before) {
+      const idx = S.CUSTOM_TABS.findIndex(t => (t.group || '') === targetName);
+      S.CUSTOM_TABS.splice(idx >= 0 ? idx : S.CUSTOM_TABS.length, 0, fromTab);
+    } else {
+      let last = -1;
+      for (let i = 0; i < S.CUSTOM_TABS.length; i++) {
+        if ((S.CUSTOM_TABS[i].group || '') === targetName) last = i;
+      }
+      S.CUSTOM_TABS.splice(last + 1, 0, fromTab);
+    }
+    saveCustomTabs();
+    renderCustomTabs();
+    return;
+  }
+
   const toTab = S.CUSTOM_TABS.find(t => t.key === to);
-  if (!fromTab || !toTab) return;
+  if (!toTab) return;
   // 別グループにドロップしたらグループ移動も合わせて行う (group も書き換え)。
   if ((fromTab.group || '') !== (toTab.group || '')) {
     if (toTab.group) fromTab.group = toTab.group;
@@ -676,9 +764,9 @@ document.getElementById('preset-color-picker').addEventListener('input', e => {
 });
 
 // ===== INITIALIZATION SEQUENCE =====
-// Wire login/logout buttons
+// Wire login buttons (logout は settings/index.js:setupSettingsEvents で「ログアウトしますか？」
+// モーダル + 未保存確認付きで登録されるのでここでは不要)。
 document.getElementById('login-google-btn')?.addEventListener('click', () => signIn());
-document.getElementById('header-logout')?.addEventListener('click', () => logout());
 
 // After user signs in, load data from backend and render.
 observeAuth({

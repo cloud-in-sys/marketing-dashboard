@@ -644,12 +644,18 @@ async function loadSourceConfigFromServer(sid) {
 }
 
 // ===== SWITCH SOURCE =====
-export async function switchSource(id) {
+// main.js から setUnsavedGuard で inject。未保存確認モーダルを await する。
+let _unsavedGuard = () => Promise.resolve(true);
+export function setUnsavedGuard(fn) { _unsavedGuard = fn; }
+export async function switchSource(id, options = {}) {
+  // 削除フローなど、呼び出し側で先に未保存確認済みの場合は skipGuard: true で二重表示を避ける
+  if (!options.skipGuard && !(await _unsavedGuard())) return false;
   if (S.CURRENT_SOURCE) await flushConfigNow();
   S.CURRENT_SOURCE = id;
   setCurrentSourceId(id);
   saveCurrentSource();
   await loadSourceConfigFromServer(id);
+  return true;
 }
 
 // ===== INIT (called once after login) =====

@@ -46,6 +46,7 @@ function dimValue(row, key, dimMap) {
   }
   const raw = row[def.field] || '';
   if (def.type === 'month') return String(raw).slice(0, 7);
+  if (def.type === 'year') return String(raw).slice(0, 4);
   if (def.type === 'week') {
     return computeWeekRange(raw, def.weekStart);
   }
