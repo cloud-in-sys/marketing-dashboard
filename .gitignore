@@ -2,13 +2,17 @@
 .claude/
 
 # Per-company deployment config (contains Firebase keys)
-# app-config.js / .firebaserc は deploy/deploy.sh が生成する成果物
-app-config.js
+# Vite serves frontend/public/ at site root; deploy/deploy.sh がテナントごとに生成する成果物。
+frontend/public/app-config.js
 .firebaserc
 
 # テナント定義（実値）。_example.env テンプレのみコミットする
 deploy/tenants/*.env
 !deploy/tenants/_example.env
+
+# Vite / Node
+node_modules/
+frontend/dist/
 
 # Backend
 backend/node_modules
@@ -19,3 +23,5 @@ backend/sa-key.json
 
 # Firebase CLI cache
 .firebase/
+firebase-debug.log
+firebase-debug.*.log

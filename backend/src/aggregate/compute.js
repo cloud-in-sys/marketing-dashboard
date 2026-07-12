@@ -1,4 +1,4 @@
-// メトリクス集計エンジン。js/aggregate.js から移植 (S 依存を context 引数化)。
+// メトリクス集計エンジン。frontend/src/aggregate/aggregate.js から移植 (S 依存を context 引数化)。
 
 import { findCloseParen, parseAggregateInner, parseWhereStr } from './parser.js';
 import { evalAst, num, todayStr } from './evalAst.js';

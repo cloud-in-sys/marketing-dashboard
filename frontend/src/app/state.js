@@ -1,0 +1,691 @@
+// ===== CONSTANTS & DEFAULTS =====
+import { api } from '../api/index.js';
+import { setCurrentSourceId, queueConfigPatch, flushConfigNow } from './persistence.js';
+
+export const DEFAULT_METRIC_DEFS = [
+  {key:'ad_cost',        label:'広告費',                      fmt:'yen', type:'base'},
+  {key:'ad_cost_fee',    label:'広告費(手数料含む)',          fmt:'yen', type:'base'},
+  {key:'impression',     label:'impression',                  fmt:'int', type:'base'},
+  {key:'reach',          label:'reach',                       fmt:'int', type:'base'},
+  {key:'clicks',         label:'clicks',                      fmt:'int', type:'base'},
+  {key:'mcv',            label:'mcv',                         fmt:'int', type:'base'},
+  {key:'line_reg',       label:'LINE登録',                    fmt:'int', type:'base'},
+  {key:'answer',         label:'回答',                        fmt:'int', type:'base'},
+  {key:'booking',        label:'予約',                        fmt:'int', type:'base'},
+  {key:'join',           label:'参加',                        fmt:'int', type:'base'},
+  {key:'deal',           label:'成約',                        fmt:'int', type:'base'},
+  {key:'rev_first',      label:'売上(初回)',                  fmt:'yen', type:'base'},
+  {key:'rev_ltv',        label:'売上(LTV12m)',                fmt:'yen', type:'base'},
+  {key:'cpm',            label:'CPM',                         fmt:'yen', type:'derived'},
+  {key:'ctr',            label:'CTR',                         fmt:'pct', type:'derived'},
+  {key:'cpc',            label:'CPC',                         fmt:'yen', type:'derived'},
+  {key:'mcvr',           label:'mCVR',                        fmt:'pct', type:'derived'},
+  {key:'cvr',            label:'CVR',                         fmt:'pct', type:'derived'},
+  {key:'divergence',     label:'乖離率',                      fmt:'pct', type:'derived'},
+  {key:'cpa_reg',        label:'登録CPA',                     fmt:'yen', type:'derived'},
+  {key:'answer_rate',    label:'回答率',                      fmt:'pct', type:'derived'},
+  {key:'cpa_answer',     label:'回答CPA',                     fmt:'yen', type:'derived'},
+  {key:'cpa_booking',    label:'予約CPA',                     fmt:'yen', type:'derived'},
+  {key:'join_rate',      label:'参加率',                      fmt:'pct', type:'derived'},
+  {key:'cpa_join',       label:'参加CPA',                     fmt:'yen', type:'derived'},
+  {key:'cpa_join_calc',  label:'参加CPA(回答CPA÷参加率)',    fmt:'yen', type:'derived'},
+  {key:'seat_first',     label:'着座単価(初回)',              fmt:'yen', type:'derived'},
+  {key:'seat_ltv',       label:'着座単価(LTV12m)',            fmt:'yen', type:'derived'},
+  {key:'deal_rate',      label:'成約率',                      fmt:'pct', type:'derived'},
+  {key:'cpo',            label:'CPO',                         fmt:'yen', type:'derived'},
+  {key:'avg_first',      label:'平均単価(初回)',              fmt:'yen', type:'derived'},
+  {key:'avg_ltv',        label:'平均単価(LTV12m)',            fmt:'yen', type:'derived'},
+  {key:'roas_first',     label:'ROAS(初回)',                  fmt:'pct', type:'derived'},
+  {key:'roas_ltv',       label:'ROAS(LTV12m)',                fmt:'pct', type:'derived'},
+  {key:'ad_ratio_first', label:'広告費率(初回)',              fmt:'pct', type:'derived'},
+  {key:'ad_ratio_ltv',   label:'広告費率(LTV12m)',            fmt:'pct', type:'derived'},
+];
+
+export const DEFAULT_DIMENSIONS = [
+  {key:'action_date',  label:'日付',   field:'action_date', type:'date'},
+  {key:'month',        label:'月',     field:'action_date', type:'month'},
+  {key:'dow',          label:'曜日',   field:'action_date', type:'dow'},
+  {key:'operator',     label:'代理店', field:'operator',    type:'value'},
+  {key:'media',        label:'媒体',   field:'media',       type:'value'},
+  {key:'route',        label:'ルート', field:'route',       type:'value'},
+  {key:'seminar_type', label:'訴求',   field:'seminar_type',type:'value'},
+  {key:'funnel',       label:'ファネル',field:'funnel',     type:'value'},
+];
+
+export const DEFAULT_VIEWS_INIT = {
+  summary_daily: {label:'全体サマリー',         dims:['action_date'], filter: null},
+  summary_month: {label:'全体サマリー_月全体',  dims:['month'],       filter: null},
+  non_ad:        {label:'広告以外合算',         dims:['action_date'], filter: "r.funnel !== '広告'"},
+  ad_only:       {label:'広告合算',             dims:['action_date'], filter: "r.funnel === '広告'"},
+  op_media:      {label:'代理店×媒体ごと',      dims:['action_date','operator','media'], filter: null},
+  op_dow:        {label:'代理店×曜日ごと',      dims:['dow','operator'], filter: null},
+  seminar:       {label:'訴求ごと',             dims:['action_date','seminar_type'], filter: null},
+  media:         {label:'媒体ごと',             dims:['action_date','media'], filter: null},
+  lpcr:          {label:'LP-CRごと',            dims:['action_date','route'], filter: null},
+};
+
+export const DEFAULT_FILTER_DEFS = [
+  {id: 'from',     type: 'date_from', field: 'action_date', label: '開始日'},
+  {id: 'to',       type: 'date_to',   field: 'action_date', label: '終了日'},
+  {id: 'operator', type: 'multi',     field: 'operator',    label: 'operator'},
+  {id: 'media',    type: 'multi',     field: 'media',       label: 'media'},
+];
+
+export const DEFAULT_BASE_FORMULAS = {
+  ad_cost:     "sum(amount_1) where funnel = '広告'",
+  ad_cost_fee: "sum(amount_2) where funnel = '広告'",
+  impression:  "sum(impression) where funnel = '広告'",
+  reach:       "sum(reach) where funnel = '広告'",
+  clicks:      "sum(clicks) where funnel = '広告'",
+  mcv:         "sum(cv) where funnel = '広告'",
+  line_reg:    "sum(ac_count) where funnel = 'LINE登録'",
+  answer:      "sum(ac_count) where funnel = '回答'",
+  booking:     "sum(ac_count) where funnel = '予約'",
+  join:        "sum(ac_count) where funnel = '参加'",
+  deal:        "sum(ac_count) where funnel = '成約'",
+  rev_first:   "sum(amount_1) where funnel = '成約'",
+  rev_ltv:     "sum(amount_2) where funnel = '成約'",
+};
+
+export const DEFAULT_FORMULAS = {
+  cpm:            'ad_cost / impression * 1000',
+  ctr:            'clicks / impression',
+  cpc:            'ad_cost / clicks',
+  mcvr:           'mcv / clicks',
+  cvr:            'line_reg / clicks',
+  divergence:     '(mcv - line_reg) / mcv',
+  cpa_reg:        'ad_cost / line_reg',
+  answer_rate:    'answer / line_reg',
+  cpa_answer:     'ad_cost / answer',
+  cpa_booking:    'ad_cost / booking',
+  join_rate:      'join / booking',
+  cpa_join:       'ad_cost / join',
+  cpa_join_calc:  'cpa_answer / join_rate',
+  seat_first:     'rev_first / join',
+  seat_ltv:       'rev_ltv / join',
+  deal_rate:      'deal / join',
+  cpo:            'ad_cost / deal',
+  avg_first:      'rev_first / deal',
+  avg_ltv:        'rev_ltv / deal',
+  roas_first:     'rev_first / ad_cost',
+  roas_ltv:       'rev_ltv / ad_cost',
+  ad_ratio_first: 'ad_cost / rev_first',
+  ad_ratio_ltv:   'ad_cost / rev_ltv',
+};
+
+export const DOW_LABELS = ['日','月','火','水','木','金','土'];
+export const DOW_ORDER = {'日':0,'月':1,'火':2,'水':3,'木':4,'金':5,'土':6};
+
+export const PERM_GROUPS = [
+  {group: 'sources', label: 'データソース', perms: [
+    {key: 'viewSources',       label: '閲覧'},
+    {key: 'manageSources',     label: '管理（追加・編集・削除・更新）'},
+    {key: 'connectAccount',    label: 'Googleアカウント連携'},
+  ]},
+  {group: 'custom', label: 'カスタムタブ', perms: [
+    {key: 'viewCustom',   label: 'グループを表示'},
+    {key: 'addCustom',    label: '追加'},
+    {key: 'editCustom',   label: '編集'},
+    {key: 'deleteCustom', label: '削除'},
+  ]},
+  {group: 'settings', label: '設定', perms: [
+    {key: 'editMetrics',    label: 'メトリクス設定'},
+    {key: 'editFilters',    label: 'フィルタ設定'},
+    {key: 'editDimensions', label: 'ディメンション設定'},
+    {key: 'editDefaults',   label: '標準タブ設定'},
+    // プリセット系（以前は独立グループだったがサイドバーで「設定」に移動したので統合）
+    {key: 'viewPresets',    label: 'プリセット表示'},
+    {key: 'editPreset',     label: 'プリセット編集'},
+    {key: 'savePreset',     label: 'プリセット新規保存'},
+    {key: 'deletePreset',   label: 'プリセット削除'},
+    // 管理者設定 (サイドバー「管理者設定」セクション)
+    {key: 'manageUsers',    label: 'ユーザー管理'},
+    {key: 'manageGroups',   label: 'グループ管理'},
+    {key: 'manageBranding', label: 'ブランディング (ロゴ・タイトル・テーマ)'},
+  ]},
+];
+export const PERM_DEFS = PERM_GROUPS.flatMap(g => g.perms);
+export const ADMIN_PERMS = Object.fromEntries(PERM_DEFS.map(p => [p.key, true]));
+export const VIEWER_PERMS = Object.fromEntries(PERM_DEFS.map(p => [p.key, false]));
+export const PALETTE = ['#2563eb', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#7c3aed', '#ec4899', '#14b8a6'];
+export const DEFAULT_TABLE_CONFIG = Object.freeze({ showTotal: false, table: {}, styles: {}, headerStyles: {} });
+export const BUILTIN_SEED_VERSION = 3;
+
+// ===== UI-ONLY local storage keys (NOT synced to server) =====
+export const SIDEBAR_KEY = 'dashboard.sidebar.collapsed';
+export const PANELS_KEY = 'dashboard.panels.collapsed';
+export const GROUPS_KEY = 'dashboard.sidebarGroups.v1';
+
+// ===== SHARED MUTABLE STATE =====
+export const S = {
+  DATA_SOURCES: [],
+  CURRENT_SOURCE: null,
+  SOURCE_DATA: {},
+  RAW: [],
+  CURRENT_VIEW: 'summary_daily',
+  SELECTED_DIMS: ['action_date'],
+  SELECTED_METRICS: [],
+  CHARTS: [{id: 1, metric: 'ad_cost', type: 'bar', size: 'main', color: '#2563eb', bucket: 'auto'}],
+  CHART_ID_SEQ: 2,
+  CHART_POINTS: new Map(),
+  CHART_SETTINGS_ID: null,
+  CARDS: [],
+  CARD_ID_SEQ: 1,
+  CARD_SETTINGS_ID: null,
+  THRESHOLDS: {},
+  THRESHOLD_METRICS: [],
+  CURRENT_FILTER: null,
+  // タブごとのピボットテーブル設定 (実体は TAB_STATES[viewKey].tableConfig)。
+  // 形式は DEFAULT_TABLE_CONFIG / tableSettings.js のデータモデルコメントを参照。
+  TABLE_CONFIG: { showTotal: false, table: {}, styles: {}, headerStyles: {} },
+  TAB_STATES: {},
+  CUSTOM_TABS: [],
+  PRESET_EDIT_IDX: null,
+  VIEW_ORDER: [],
+  FILTER_VALUES: {},
+  FILTER_CONDITIONS: {},
+  COL_WIDTHS: {},
+  METRIC_DEFS: [],
+  DIMENSIONS: [],
+  VIEWS: {},
+  FILTER_DEFS: [],
+  METRIC_FORMULAS: {},
+  BASE_FORMULAS: {},
+  USERS: [],
+  CURRENT_USER: null,
+  USERS_DRAFT: null,
+  METRICS_DRAFT: null,
+  METRICS_DRAFT_BASE: null,
+  METRIC_DEFS_DRAFT: null,
+  FILTER_DEFS_DRAFT: null,
+  VIEWS_DRAFT: null,
+  DIMENSIONS_DRAFT: null,
+  DIM_EXPR_CACHE: new Map(),
+  // Per-source inputs (persisted to source doc, not to config)
+  SHEETS_INPUT: { url: '', tab: '' },
+  BQ_INPUT: { project: '', query: '' },
+  SOURCE_METHOD: '',
+  // Cached presets (loaded separately from config)
+  PRESETS_CACHE: [],
+};
+
+// ===== COMPILE FILTER =====
+export function compileFilter(expr) {
+  if (!expr) return null;
+  try { return new Function('r', `"use strict"; return (${expr});`); }
+  catch (e) { return null; }
+}
+
+// ===== SAVE HELPERS (queue patches to backend config doc) =====
+function serializeViews() {
+  const out = {};
+  for (const [k, v] of Object.entries(S.VIEWS)) {
+    out[k] = { label: v.label, dims: v.dims, filterExpr: v.filterExpr || null, presetName: v.presetName || v.label };
+  }
+  return out;
+}
+
+export function saveMetricDefs()  { queueConfigPatch({ metricDefs: S.METRIC_DEFS }); }
+export function saveDimensions()  { queueConfigPatch({ dimensions: S.DIMENSIONS }); }
+export function saveViews()       { queueConfigPatch({ views: serializeViews() }); }
+export function saveFilterDefs()  { queueConfigPatch({ filterDefs: S.FILTER_DEFS }); }
+export function saveBaseFormulas(){ queueConfigPatch({ baseFormulas: S.BASE_FORMULAS }); }
+export function saveFormulas()    { queueConfigPatch({ formulas: S.METRIC_FORMULAS }); }
+export function saveCustomTabs()  { queueConfigPatch({ customTabs: S.CUSTOM_TABS }); }
+export function saveViewOrder()   { queueConfigPatch({ viewOrder: S.VIEW_ORDER }); }
+
+// FILTER_VALUES の Set を JSON に保存できる形(配列)に変換
+export function serializeFilterValues(values) {
+  const out = {};
+  for (const [k, v] of Object.entries(values || {})) {
+    out[k] = (v instanceof Set) ? Array.from(v) : v;
+  }
+  return out;
+}
+
+// ===== ユーザー毎の状態 (Firestore users/{uid}.userState[sid] に保存) =====
+// 内訳: tabFilters[viewKey] = { filterValues, filterConditions }, currentView
+// メモリキャッシュ + デバウンス保存。タブ表示設定(TAB_STATES)とは別管理。
+let _userStateCache = { tabFilters: {}, currentView: null };
+let _userStateTimer = null;
+async function loadUserStateForCurrentSource() {
+  if (!S.CURRENT_SOURCE) { _userStateCache = { tabFilters: {}, currentView: null }; return; }
+  try {
+    const r = await api.getMyState(S.CURRENT_SOURCE);
+    const s = (r && r.state) || {};
+    _userStateCache = {
+      tabFilters: s.tabFilters || {},
+      currentView: s.currentView || null,
+    };
+  } catch (e) {
+    console.warn('[user state] load failed', e);
+    _userStateCache = { tabFilters: {}, currentView: null };
+  }
+}
+function _scheduleUserStateSave() {
+  if (_userStateTimer) clearTimeout(_userStateTimer);
+  _userStateTimer = setTimeout(async () => {
+    _userStateTimer = null;
+    if (!S.CURRENT_SOURCE) return;
+    try { await api.putMyState(S.CURRENT_SOURCE, _userStateCache); }
+    catch (e) { console.warn('[user state] save failed', e); }
+  }, 500);
+}
+// debounce 中の保留分を即時 flush。pagehide からは opts.keepalive: true で呼ぶ。
+export async function flushUserStateNow(opts) {
+  if (_userStateTimer) { clearTimeout(_userStateTimer); _userStateTimer = null; }
+  if (!S.CURRENT_SOURCE) return;
+  try { await api.putMyState(S.CURRENT_SOURCE, _userStateCache, opts); }
+  catch (e) { console.warn('[user state] flush failed', e); }
+}
+export function getTabFilterState(viewKey) {
+  return _userStateCache.tabFilters[viewKey] || null;
+}
+export function setTabFilterState(viewKey, filterValues, filterConditions) {
+  _userStateCache.tabFilters[viewKey] = { filterValues, filterConditions };
+  _scheduleUserStateSave();
+}
+export function getUserCurrentView() {
+  return _userStateCache.currentView || null;
+}
+export function setUserCurrentView(viewKey) {
+  if (_userStateCache.currentView === viewKey) return;
+  _userStateCache.currentView = viewKey;
+  _scheduleUserStateSave();
+}
+
+export function syncCurrentTabState() {
+  if (S.PRESET_EDIT_IDX != null) return;
+  if (!S.CURRENT_VIEW) return;
+  // 標準タブは preset 優先のため per-user 状態を保存しない (読み込み時に preset が常に上書きするので保存しても無駄)
+  if (S.VIEWS[S.CURRENT_VIEW]) return;
+  // すでに削除されたカスタムタブに対しては TAB_STATES を再挿入しない (orphan 防止)。
+  if (!S.CUSTOM_TABS.some(t => t.key === S.CURRENT_VIEW)) return;
+  // カスタムタブのみフィルタを per-user に保存
+  setTabFilterState(
+    S.CURRENT_VIEW,
+    serializeFilterValues(S.FILTER_VALUES),
+    JSON.parse(JSON.stringify(S.FILTER_CONDITIONS || {}))
+  );
+  // カスタムタブの表示設定 (dims/metrics 等) はソース共通
+  S.TAB_STATES[S.CURRENT_VIEW] = {
+    dims: [...S.SELECTED_DIMS],
+    metrics: [...S.SELECTED_METRICS],
+    thresholds: JSON.parse(JSON.stringify(S.THRESHOLDS)),
+    thresholdMetrics: [...S.THRESHOLD_METRICS],
+    tableConfig: JSON.parse(JSON.stringify(S.TABLE_CONFIG || DEFAULT_TABLE_CONFIG)),
+  };
+}
+
+// saveState は render 完了ごとに呼ばれるが、実際の state が変わっていない場合
+// (タブ切替やフィルタ無変更の resize 等) も毎回 queueConfigPatch を叩いてしまう。
+// 直前にシリアライズした state と一致したら queue を呼ばないことで、不要な
+// Firestore write (および debounce タイマー再設定) を抑える。
+let _lastStateHash = '';
+export function saveState() {
+  syncCurrentTabState();
+  const state = {
+    charts: S.CHARTS,
+    cards: S.CARDS,
+    currentView: S.CURRENT_VIEW,
+    tabStates: S.TAB_STATES,
+  };
+  // sid をハッシュに含めてソース切替も dirty 扱いにする
+  const hash = (S.CURRENT_SOURCE || '') + '' + JSON.stringify(state);
+  if (hash === _lastStateHash) return;
+  _lastStateHash = hash;
+  queueConfigPatch({ state });
+}
+
+// Source-level inputs (saved on the source doc, not on config)
+export async function saveSheetsInput(url, tab) {
+  S.SHEETS_INPUT = { url, tab };
+  if (S.CURRENT_SOURCE) {
+    try { await api.updateSource(S.CURRENT_SOURCE, { sheetsInput: { url, tab } }); } catch (e) { console.warn(e); }
+  }
+}
+export function loadSheetsInput() { return S.SHEETS_INPUT; }
+
+export async function saveBqInput(project, query) {
+  S.BQ_INPUT = { project, query };
+  if (S.CURRENT_SOURCE) {
+    try { await api.updateSource(S.CURRENT_SOURCE, { bqInput: { project, query } }); } catch (e) { console.warn(e); }
+  }
+}
+export function loadBqInput() { return S.BQ_INPUT; }
+
+export async function saveSourceMethod(method) {
+  S.SOURCE_METHOD = method || '';
+  if (S.CURRENT_SOURCE) {
+    // local DATA_SOURCES も即時更新 → renderSourceView の lock 反映がリロード待ちにならない
+    const ds = S.DATA_SOURCES.find(d => d.id === S.CURRENT_SOURCE);
+    if (ds) ds.method = S.SOURCE_METHOD;
+    try { await api.updateSource(S.CURRENT_SOURCE, { method: S.SOURCE_METHOD }); } catch (e) { console.warn(e); }
+  }
+}
+export function loadSourceMethod() { return S.SOURCE_METHOD; }
+
+// Session-only CSV (not persisted)
+export function clearSourceRaw(sid) {
+  S.SOURCE_DATA[sid] = [];
+}
+
+// Presets: per-preset ops のみ (旧 bulk PUT / setPresets 系は撤去済み)。
+export function getPresets() { return S.PRESETS_CACHE; }
+// source ごとに Promise チェーンでシリアライズ。_runPresetOp が管理する。
+const _presetsChain = new Map();   // sid -> Promise
+let _presetsErrorNotifier = null;
+export function setPresetsErrorNotifier(fn) { _presetsErrorNotifier = fn; }
+
+// pagehide 等で pending 中の per-preset op が完了するまで待つ (best-effort、個別失敗は無視)。
+// keepalive は per-preset ops が自前で fetch に転送していないので、この関数の opts は現在使われない。
+export async function flushPresetsNow(_opts) {
+  const promises = Array.from(_presetsChain.values()).map(p => p.catch(() => {}));
+  if (promises.length === 0) return;
+  await Promise.all(promises);
+}
+
+// ===== per-preset (targeted) ops =====
+// bulk 置換の PUT を避けて他ユーザー / 他タブの編集を潰さないようにする。
+// 呼び出し元は await して try/catch で失敗を判定できる (成功時のみモーダル等)。
+// 失敗時は _presetsErrorNotifier が別モーダルで通知。
+//
+// 並替 / 削除でインデックスがシフトするため、S.PRESET_EDIT_IDX は id ベースで
+// 再解決する (編集中プリセットが別の preset を指すバグ防止)。
+
+function _savePresetEditId() {
+  if (S.PRESET_EDIT_IDX == null) return null;
+  return S.PRESETS_CACHE[S.PRESET_EDIT_IDX]?.id ?? null;
+}
+function _restorePresetEditIdx(id) {
+  if (id == null) return;
+  const idx = S.PRESETS_CACHE.findIndex(p => p.id === id);
+  S.PRESET_EDIT_IDX = idx >= 0 ? idx : null;
+}
+
+async function _runPresetOp(sid, fn) {
+  const prev = _presetsChain.get(sid) || Promise.resolve();
+  const next = prev.catch(() => {}).then(async () => {
+    try { return await fn(); }
+    catch (e) {
+      console.warn('[presets] op failed', e);
+      if (_presetsErrorNotifier) _presetsErrorNotifier(e);
+      throw e;
+    }
+  });
+  _presetsChain.set(sid, next);
+  next.catch(() => {}).finally(() => {
+    if (_presetsChain.get(sid) === next) _presetsChain.delete(sid);
+  });
+  return next;
+}
+
+// 新規作成。POST を await → 返ってきた {id, ...} をキャッシュ末尾に push。
+// POST の await 中に別 source に切り替わっていたら push しない (別 source cache に混入させない)。
+export async function createPresetOp(preset) {
+  const sid = S.CURRENT_SOURCE;
+  if (!sid) throw new Error('no source');
+  const { id: _, ...body } = preset || {};
+  return _runPresetOp(sid, async () => {
+    const created = await api.createPreset(sid, body);
+    if (S.CURRENT_SOURCE === sid) S.PRESETS_CACHE.push(created);
+    return created;
+  });
+}
+
+// 個別更新。ローカルキャッシュを先に反映 (optimistic) → PUT を await。
+// - sid を closure キャプチャして API は開始時 sid に送る
+// - キャッシュ変更 / rollback は「今も同じ source を見ている場合のみ」実行
+// - 失敗時は変更前の preset を復元 (source が変わっていたら復元しない)
+export async function updatePresetOp(pid, preset) {
+  const sid = S.CURRENT_SOURCE;
+  if (!sid) throw new Error('no source');
+  if (!pid) throw new Error('pid required');
+  const { id: _, ...body } = preset || {};
+  let rollback = null;
+  if (S.CURRENT_SOURCE === sid) {
+    const idx = S.PRESETS_CACHE.findIndex(p => p.id === pid);
+    if (idx >= 0) {
+      const prev = S.PRESETS_CACHE[idx];
+      S.PRESETS_CACHE[idx] = { ...prev, ...body, id: pid };
+      rollback = () => {
+        if (S.CURRENT_SOURCE !== sid) return;
+        const cur = S.PRESETS_CACHE.findIndex(p => p.id === pid);
+        if (cur >= 0) S.PRESETS_CACHE[cur] = prev;
+      };
+    }
+  }
+  return _runPresetOp(sid, async () => {
+    try { await api.updatePreset(sid, pid, body); }
+    catch (e) { if (rollback) rollback(); throw e; }
+  });
+}
+
+// 個別削除。ローカルから消してから DELETE を await。
+// source が変わっていたら現在キャッシュは触らない。失敗時は元の位置に復元。
+export async function deletePresetOp(pid) {
+  const sid = S.CURRENT_SOURCE;
+  if (!sid) throw new Error('no source');
+  if (!pid) throw new Error('pid required');
+  let rollback = null;
+  if (S.CURRENT_SOURCE === sid) {
+    const idx = S.PRESETS_CACHE.findIndex(p => p.id === pid);
+    if (idx >= 0) {
+      const prev = S.PRESETS_CACHE[idx];
+      const prevEditIdx = S.PRESET_EDIT_IDX;
+      const editedId = _savePresetEditId();
+      S.PRESETS_CACHE = S.PRESETS_CACHE.filter(p => p.id !== pid);
+      if (editedId === pid) S.PRESET_EDIT_IDX = null;
+      else _restorePresetEditIdx(editedId);
+      rollback = () => {
+        if (S.CURRENT_SOURCE !== sid) return;
+        // 既に別 op で削除済み or 誰かが同 id を作った場合は復元しない
+        if (S.PRESETS_CACHE.some(p => p.id === pid)) return;
+        const insertAt = Math.min(idx, S.PRESETS_CACHE.length);
+        S.PRESETS_CACHE.splice(insertAt, 0, prev);
+        S.PRESET_EDIT_IDX = prevEditIdx;
+      };
+    }
+  }
+  return _runPresetOp(sid, async () => {
+    try { await api.deletePreset(sid, pid); }
+    catch (e) { if (rollback) rollback(); throw e; }
+  });
+}
+
+// 並替のみ。pids は新しい順序の id 配列。
+// source が変わっていたら現在キャッシュは触らない。失敗時は元の順序に復元。
+export async function reorderPresetsOp(pids) {
+  const sid = S.CURRENT_SOURCE;
+  if (!sid) throw new Error('no source');
+  if (!Array.isArray(pids)) throw new Error('pids array required');
+  let rollback = null;
+  if (S.CURRENT_SOURCE === sid) {
+    const prevCache = S.PRESETS_CACHE.slice(); // 順序スナップショット
+    const prevEditIdx = S.PRESET_EDIT_IDX;
+    const editedId = _savePresetEditId();
+    const byId = new Map(S.PRESETS_CACHE.map(p => [p.id, p]));
+    const next = [];
+    for (const pid of pids) {
+      const p = byId.get(pid);
+      if (p) next.push(p);
+    }
+    for (const p of S.PRESETS_CACHE) if (!pids.includes(p.id)) next.push(p);
+    S.PRESETS_CACHE = next;
+    _restorePresetEditIdx(editedId);
+    rollback = () => {
+      if (S.CURRENT_SOURCE !== sid) return;
+      // 復元前後で id 集合が変わっていたら (別 op で create/delete) 復元は諦める
+      const curIds = new Set(S.PRESETS_CACHE.map(p => p.id));
+      const prevIds = new Set(prevCache.map(p => p.id));
+      if (curIds.size !== prevIds.size) return;
+      for (const id of curIds) if (!prevIds.has(id)) return;
+      S.PRESETS_CACHE = prevCache;
+      S.PRESET_EDIT_IDX = prevEditIdx;
+    };
+  }
+  return _runPresetOp(sid, async () => {
+    try { await api.reorderPresets(sid, pids); }
+    catch (e) { if (rollback) rollback(); throw e; }
+  });
+}
+
+export function saveCurrentSource() {
+  try {
+    if (S.CURRENT_SOURCE) localStorage.setItem('dashboard.lastSource', S.CURRENT_SOURCE);
+  } catch (e) {}
+}
+
+// ===== LOAD SOURCE CONFIG FROM SERVER =====
+async function applyConfig(cfg) {
+  cfg = cfg || {};
+  S.METRIC_DEFS = Array.isArray(cfg.metricDefs)
+    ? cfg.metricDefs.map(m => ({key: m.key, label: m.label, fmt: m.fmt || 'int', type: m.type || 'derived'}))
+    : ('metricDefs' in cfg ? [] : JSON.parse(JSON.stringify(DEFAULT_METRIC_DEFS)));
+  S.SELECTED_METRICS = S.METRIC_DEFS.map(m => m.key);
+
+  S.DIMENSIONS = Array.isArray(cfg.dimensions)
+    ? cfg.dimensions.map(d => ({
+        key: d.key,
+        label: d.label,
+        field: d.field || d.key,
+        type: d.type || 'value',
+        expression: d.expression || '',
+        // type:'image' のサイズ指定 (任意。未設定なら CSS デフォルト)
+        ...(d.imageHeight != null ? { imageHeight: d.imageHeight } : {}),
+        ...(d.imageWidth  != null ? { imageWidth:  d.imageWidth  } : {}),
+      }))
+    : ('dimensions' in cfg ? [] : JSON.parse(JSON.stringify(DEFAULT_DIMENSIONS)));
+
+  S.VIEWS = {};
+  const savedViews = cfg.views;
+  if (savedViews && typeof savedViews === 'object') {
+    for (const [k, v] of Object.entries(savedViews)) {
+      S.VIEWS[k] = {label: v.label, dims: Array.isArray(v.dims) ? v.dims : [], filterExpr: v.filterExpr || null, filter: compileFilter(v.filterExpr), presetName: v.presetName || v.label};
+    }
+  } else if (!('views' in cfg)) {
+    for (const [k, v] of Object.entries(DEFAULT_VIEWS_INIT)) {
+      S.VIEWS[k] = {label: v.label, dims: [...v.dims], filterExpr: v.filter, filter: compileFilter(v.filter), presetName: v.label};
+    }
+  }
+
+  S.VIEW_ORDER = Array.isArray(cfg.viewOrder)
+    ? [...cfg.viewOrder.filter(k => S.VIEWS[k]), ...Object.keys(S.VIEWS).filter(k => !cfg.viewOrder.includes(k))]
+    : Object.keys(S.VIEWS);
+
+  S.FILTER_DEFS = Array.isArray(cfg.filterDefs)
+    ? cfg.filterDefs
+    : ('filterDefs' in cfg ? [] : JSON.parse(JSON.stringify(DEFAULT_FILTER_DEFS)));
+
+  S.COL_WIDTHS = cfg.colWidths && typeof cfg.colWidths === 'object' ? cfg.colWidths : {};
+
+  S.BASE_FORMULAS = 'baseFormulas' in cfg ? (cfg.baseFormulas || {}) : { ...DEFAULT_BASE_FORMULAS };
+  S.METRIC_FORMULAS = 'formulas' in cfg ? (cfg.formulas || {}) : { ...DEFAULT_FORMULAS };
+
+  S.CUSTOM_TABS = Array.isArray(cfg.customTabs) ? cfg.customTabs : [];
+
+  // Restore charts/view/tab state
+  const st = cfg.state || {};
+  S.CURRENT_VIEW = (st.currentView && (S.VIEWS[st.currentView] || S.CUSTOM_TABS.some(t => t.key === st.currentView))) ? st.currentView : 'summary_daily';
+  S.TAB_STATES = st.tabStates && typeof st.tabStates === 'object' ? st.tabStates : {};
+  S.CHARTS = Array.isArray(st.charts)
+    ? st.charts.map(c => ({...c, color: c.color || '#2563eb', name: c.name || '', bucket: c.bucket || 'auto'}))
+    : ('charts' in st ? [] : [{id: 1, metric: 'ad_cost', type: 'bar', size: 'main', color: '#2563eb', bucket: 'auto'}]);
+  S.CHART_ID_SEQ = Math.max(0, ...S.CHARTS.map(c => c.id)) + 1;
+  S.CARDS = Array.isArray(st.cards) ? st.cards.map(c => ({...c})) : [];
+  S.CARD_ID_SEQ = S.CARDS.length ? Math.max(0, ...S.CARDS.map(c => c.id)) + 1 : 1;
+
+  // Resets
+  S.FILTER_VALUES = {};
+  S.FILTER_OPTIONS = {};  // { [field]: [distinct values] } — フィルタ UI の選択肢 (backend or S.RAW から populate)
+  S.COLUMN_INFO = null;   // 設定画面プレビュー用 { columns: [{name, samples, isNumeric}], rowCount, sourceUpdatedAt }
+  // snapshot の updatedAt を sourceId ごとに保持。aggregate cacheKey に含めることで
+  // snapshot 更新時に自動 cache miss させる。loadSnapshotIfNeeded の getSnapshotMeta
+  // 結果を保存。S.SOURCE_SNAPSHOT_UPDATED_AT[sid] = '<iso8601>'。
+  if (!S.SOURCE_SNAPSHOT_UPDATED_AT) S.SOURCE_SNAPSHOT_UPDATED_AT = {};
+  S.SELECTED_DIMS = ['action_date'];
+  S.THRESHOLDS = {};
+  S.THRESHOLD_METRICS = [];
+  S.CURRENT_FILTER = null;
+  S.PRESET_EDIT_IDX = null;
+  S.USERS_DRAFT = null;
+  S.METRICS_DRAFT = null;
+  S.METRICS_DRAFT_BASE = null;
+  S.METRIC_DEFS_DRAFT = null;
+  S.FILTER_DEFS_DRAFT = null;
+  S.VIEWS_DRAFT = null;
+  S.DIMENSIONS_DRAFT = null;
+  S.DIM_EXPR_CACHE.clear();
+}
+
+async function loadSourceConfigFromServer(sid) {
+  const source = S.DATA_SOURCES.find(s => s.id === sid);
+  S.SHEETS_INPUT = source?.sheetsInput || { url: '', tab: '' };
+  S.BQ_INPUT = source?.bqInput || { project: '', query: '' };
+  S.SOURCE_METHOD = source?.method || '';
+
+  if (!S.SOURCE_DATA[sid]) S.SOURCE_DATA[sid] = [];
+  S.RAW = S.SOURCE_DATA[sid];
+
+  const [{ config }, { presets }] = await Promise.all([
+    api.getConfig(sid),
+    api.listPresets(sid),
+  ]);
+  await applyConfig(config);
+  S.PRESETS_CACHE = presets || [];
+  // ユーザー毎の状態(フィルタ・最終ビュー等)をロード
+  await loadUserStateForCurrentSource();
+  // 最終ビューの復元: ユーザーが最後に開いていたタブを優先
+  const userView = getUserCurrentView();
+  if (userView) {
+    const exists = !!S.VIEWS[userView] || (S.CUSTOM_TABS || []).some(t => t.key === userView);
+    if (exists) S.CURRENT_VIEW = userView;
+  }
+}
+
+// ===== SWITCH SOURCE =====
+// main.js から setUnsavedGuard で inject。未保存確認モーダルを await する。
+let _unsavedGuard = () => Promise.resolve(true);
+export function setUnsavedGuard(fn) { _unsavedGuard = fn; }
+export async function switchSource(id, options = {}) {
+  // 削除フローなど、呼び出し側で先に未保存確認済みの場合は skipGuard: true で二重表示を避ける
+  if (!options.skipGuard && !(await _unsavedGuard())) return false;
+  if (S.CURRENT_SOURCE) await flushConfigNow();
+  S.CURRENT_SOURCE = id;
+  setCurrentSourceId(id);
+  saveCurrentSource();
+  await loadSourceConfigFromServer(id);
+  return true;
+}
+
+// ===== INIT (called once after login) =====
+export async function initStateFromServer() {
+  // Load user + sources
+  const [{ user }, { sources }] = await Promise.all([
+    api.me(),
+    api.listSources(),
+  ]);
+
+  S.USERS = [user];
+  S.CURRENT_USER = user.uid;
+
+  S.DATA_SOURCES = sources;
+  S.SOURCE_DATA = {};
+  sources.forEach(s => { S.SOURCE_DATA[s.id] = []; });
+
+  // Restore last selected source if valid
+  let initial = null;
+  try {
+    const last = localStorage.getItem('dashboard.lastSource');
+    if (last && sources.some(s => s.id === last)) initial = last;
+  } catch (e) {}
+  if (!initial) initial = sources[0]?.id || null;
+
+  if (initial) {
+    S.CURRENT_SOURCE = initial;
+    setCurrentSourceId(initial);
+    saveCurrentSource();
+    await loadSourceConfigFromServer(initial);
+  }
+}
+

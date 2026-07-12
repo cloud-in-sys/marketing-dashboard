@@ -1,4 +1,4 @@
-// ディメンション値抽出 + グルーピング。js/dimensions.js から移植。
+// ディメンション値抽出 + グルーピング。frontend/src/aggregate/dimensions.js から移植。
 
 import { compileSafeExpr } from '../utils/safeExpr.js';
 

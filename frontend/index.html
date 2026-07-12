@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Marketing Metrics Dashboard</title>
+<!-- favicon / apple-touch-icon は src/features/sources/branding.js が Firestore のブランディング設定から動的に挿入 -->
+
+<!-- テナント別ランタイム設定。public/ から dist/ 直下へ verbatim コピーされ Vite はバンドルしない。
+     classic script かつ head の最上部に置くことで、Vite が head へ hoist する module bundle
+     (defer 実行) より必ず先に実行され window.__APP_CONFIG__ を確定させる。 -->
+<script src="/app-config.js"></script>
+
+<link rel="stylesheet" href="styles/base/base.css">
+<link rel="stylesheet" href="styles/layout/header.css">
+<link rel="stylesheet" href="styles/layout/sidebar.css">
+<link rel="stylesheet" href="styles/features/filters.css">
+<link rel="stylesheet" href="styles/layout/view.css">
+<link rel="stylesheet" href="styles/features/chart.css">
+<link rel="stylesheet" href="styles/features/table.css">
+<link rel="stylesheet" href="styles/features/settings.css">
+<link rel="stylesheet" href="styles/components/modal.css">
+<link rel="stylesheet" href="styles/components/colorPicker.css">
+</head>
+<body>
+<div class="login-overlay" id="login-overlay">
+  <div class="login-card">
+    <div class="login-logo" id="login-brand-logo"></div>
+    <div class="login-title">Marketing Dashboard</div>
+    <div class="login-subtitle hidden" id="login-subtitle">ログインしてください</div>
+    <div class="login-checking hidden" id="login-checking">
+      <div class="login-spinner"></div>
+      <div class="login-checking-text">認証情報を確認しています...</div>
+    </div>
+    <div class="login-body hidden" id="login-body">
+    <div class="login-error hidden" id="login-error"></div>
+    <button type="button" class="login-google-btn" id="login-google-btn">
+      <svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true">
+        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+      </svg>
+      <span>Googleでログイン</span>
+    </button>
+    </div><!-- /login-body -->
+  </div>
+</div>
+<header class="app-header">
+  <div class="header-left">
+    <button type="button" class="icon-btn" id="toggle-sidebar" aria-label="サイドバー切替">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="3" y1="6" x2="21" y2="6"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+    <div class="logo" id="brand-logo"></div>
+    <!-- データソース選択ドロップダウン (Google Analyticsのプロパティ切替風) -->
+    <div class="source-dropdown" id="source-dropdown">
+      <button type="button" class="source-dropdown-btn" id="source-dropdown-btn">
+        <svg class="source-dropdown-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <ellipse cx="12" cy="5" rx="8" ry="3"/>
+          <path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/>
+          <path d="M4 10c0 1.66 3.58 3 8 3s8-1.34 8-3"/>
+          <path d="M4 15c0 1.66 3.58 3 8 3s8-1.34 8-3"/>
+        </svg>
+        <span class="source-dropdown-label" id="source-dropdown-label">データソース</span>
+        <span class="source-dropdown-caret">▾</span>
+      </button>
+      <div class="source-dropdown-menu hidden" id="source-dropdown-menu">
+        <div class="source-dropdown-header">データソース</div>
+        <div class="source-dropdown-list" id="source-nav"></div>
+        <div class="source-dropdown-footer">
+          <button type="button" class="source-dropdown-action" id="add-source">+ データソースを追加</button>
+          <button type="button" class="source-dropdown-action" id="open-source-settings">⚙ 現在のソースの設定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <div class="meta">対象行数: <span id="row-count">0</span><span class="source-method-icon-mini" id="header-source-icon"></span></div>
+    <div class="header-user">
+      <div class="header-user-avatar" id="header-user-avatar"></div>
+      <div class="header-user-info">
+        <div class="header-user-name" id="header-user-name"></div>
+        <div class="header-user-role" id="header-user-role"></div>
+      </div>
+      <button type="button" class="header-logout" id="header-logout">ログアウト</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+<aside class="sidebar">
+  <div class="sidebar-group" data-group="default">
+    <div class="nav-title group-title"><span class="group-toggle">デフォルト</span><span class="group-caret">▾</span></div>
+    <div class="group-body">
+      <nav class="nav" id="view-nav"></nav>
+    </div>
+  </div>
+  <div class="sidebar-group" data-group="custom">
+    <div class="nav-title group-title">
+      <span class="group-toggle">カスタム</span>
+      <span class="group-caret">▾</span>
+    </div>
+    <div class="group-body">
+      <button type="button" class="save-btn" id="add-custom-tab">+ カスタムタブを追加</button>
+      <nav class="nav" id="custom-nav"></nav>
+    </div>
+  </div>
+  <div class="sidebar-group" data-group="settings">
+    <div class="nav-title group-title">
+      <span class="group-toggle">設定</span>
+      <span class="group-caret">▾</span>
+    </div>
+    <div class="group-body">
+      <nav class="nav">
+        <button type="button" class="nav-item settings-item" id="open-dims-doc">ディメンション設定</button>
+        <button type="button" class="nav-item settings-item" id="open-metrics-doc">メトリクス設定</button>
+        <button type="button" class="nav-item settings-item" id="open-filters-doc">フィルタ設定</button>
+        <button type="button" class="nav-item settings-item" id="open-defaults-doc">標準タブ設定</button>
+        <button type="button" class="nav-item settings-item" id="open-presets-settings">プリセット設定</button>
+      </nav>
+    </div>
+  </div>
+  <div class="sidebar-group" data-group="users">
+    <div class="nav-title group-title">
+      <span class="group-toggle">管理者設定</span>
+      <span class="group-caret">▾</span>
+    </div>
+    <div class="group-body">
+      <nav class="nav">
+        <button type="button" class="nav-item settings-item" id="open-settings">ユーザー一覧</button>
+        <button type="button" class="nav-item settings-item" id="open-groups">グループ管理</button>
+        <button type="button" class="nav-item settings-item" id="open-branding">ブランディング</button>
+      </nav>
+    </div>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="filters-bar" id="filters-bar">
+    <button type="button" class="filters-toggle" id="filters-toggle">フィルタ <span id="filters-toggle-icon">▾</span></button>
+    <section class="filters" id="filters"></section>
+  </div>
+
+  <section class="view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb" id="view-crumb">デフォルト</div>
+        <div class="view-title-row">
+          <h2 id="view-title">全体サマリー</h2>
+          <button type="button" id="view-tab-edit" class="view-tab-edit" title="タブを編集" aria-label="タブを編集">⚙</button>
+        </div>
+      </div>
+      <div class="view-actions">
+        <div class="view-preset-wrap">
+          <label for="tab-preset">プリセット</label>
+          <select id="tab-preset"></select>
+        </div>
+        <span class="readonly-badge">編集不可</span>
+        <span class="preset-edit-badge">プリセット編集モード</span>
+        <input type="color" id="preset-color-picker" class="preset-color-picker" title="プリセット色">
+        <button type="button" id="preset-save-btn" class="preset-save-btn">保存</button>
+        <button type="button" id="preset-exit-btn" class="preset-exit-btn">終了</button>
+      </div>
+    </div>
+
+    <div class="panel collapsible" data-panel="cards">
+      <div class="panel-head">
+        <div class="panel-title">カード</div>
+        <div class="panel-ctrl">
+          <button type="button" class="add-btn" id="add-card">+ カード</button>
+          <button type="button" class="collapse-btn" aria-label="折りたたみ">▾</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="cards-grid" id="cards-grid"></div>
+      </div>
+    </div>
+
+    <div class="panel collapsible" data-panel="chart">
+      <div class="panel-head">
+        <div class="panel-title">グラフ</div>
+        <div class="panel-ctrl">
+          <button type="button" class="add-btn" id="add-main-chart">+ メイン</button>
+          <button type="button" class="add-btn" id="add-sub-chart">+ サブ</button>
+          <button type="button" class="add-btn" id="add-mini-chart">+ ミニ</button>
+          <button type="button" class="collapse-btn" aria-label="折りたたみ">▾</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="charts-grid" id="charts-grid"></div>
+      </div>
+    </div>
+
+    <!-- KPIカード設定サイドパネル -->
+    <aside id="card-settings-panel" class="chart-settings-panel hidden" aria-hidden="true">
+      <div class="chart-settings-head">
+        <div class="chart-settings-title">カード設定</div>
+        <button type="button" class="chart-settings-close" id="card-settings-close" aria-label="閉じる">×</button>
+      </div>
+      <div class="chart-settings-body" id="card-settings-body"></div>
+    </aside>
+    <div id="card-settings-backdrop" class="chart-settings-backdrop hidden"></div>
+
+    <!-- グラフ詳細設定サイドパネル -->
+    <aside id="chart-settings-panel" class="chart-settings-panel hidden" aria-hidden="true">
+      <div class="chart-settings-head">
+        <div class="chart-settings-title">グラフ設定</div>
+        <button type="button" class="chart-settings-close" id="chart-settings-close" aria-label="閉じる">×</button>
+      </div>
+      <div class="chart-settings-body" id="chart-settings-body"></div>
+    </aside>
+    <div id="chart-settings-backdrop" class="chart-settings-backdrop hidden"></div>
+
+    <!-- テーブル設定サイドパネル -->
+    <aside id="table-settings-panel" class="chart-settings-panel hidden" aria-hidden="true">
+      <div class="chart-settings-head">
+        <div class="chart-settings-title">テーブル設定</div>
+        <button type="button" class="chart-settings-close" id="table-settings-close" aria-label="閉じる">×</button>
+      </div>
+      <div class="chart-settings-body" id="table-settings-body"></div>
+    </aside>
+    <div id="table-settings-backdrop" class="chart-settings-backdrop hidden"></div>
+
+    <div class="panel collapsible" data-panel="dim">
+      <div class="panel-head">
+        <div class="panel-title">ディメンション</div>
+        <div class="panel-ctrl">
+          <button type="button" class="collapse-btn" aria-label="折りたたみ">▾</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="pivot-row">
+          <div class="pivot-pills" id="dim-pills" data-sort-axis="x"></div>
+          <div class="pivot-add">
+            <button type="button" class="add-btn" id="dim-add-btn">+ 追加</button>
+            <div class="add-menu hidden" id="dim-add-menu"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel collapsible" data-panel="metric">
+      <div class="panel-head">
+        <div class="panel-title">メトリクス</div>
+        <div class="panel-ctrl">
+          <button type="button" class="link-btn" id="metric-all">すべて</button>
+          <button type="button" class="link-btn" id="metric-none">クリア</button>
+          <button type="button" class="collapse-btn" aria-label="折りたたみ">▾</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="chip-row" id="metric-chips" data-sort-axis="x"></div>
+      </div>
+    </div>
+
+    <div class="panel collapsible" data-panel="thresholds">
+      <div class="panel-head">
+        <div class="panel-title">許容値設定</div>
+        <div class="panel-ctrl">
+          <div class="pivot-add">
+            <button type="button" class="add-btn" id="threshold-add-btn">+ 指標を追加</button>
+            <div class="add-menu hidden" id="threshold-add-menu"></div>
+          </div>
+          <button type="button" class="link-btn" id="threshold-clear">クリア</button>
+          <button type="button" class="collapse-btn" aria-label="折りたたみ">▾</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="threshold-head" id="threshold-head">
+          <div></div><div class="threshold-head-span">許容値(警告)</div><div class="threshold-head-span">許容値(注意)</div><div class="threshold-head-span">目標値</div><div></div>
+        </div>
+        <div class="threshold-list" id="threshold-list"></div>
+      </div>
+    </div>
+
+    <div class="table-area" id="table-area">
+      <div class="table-toolbar hidden" id="table-toolbar"></div>
+      <div class="table-wrap">
+        <table id="data-table"></table>
+      </div>
+    </div>
+  </section>
+
+  <section class="settings-view hidden" id="source-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">データソース</div>
+        <h2 id="source-view-title">デフォルト</h2>
+      </div>
+      <div class="view-actions source-manage-actions">
+        <button type="button" class="link-btn" id="source-rename-btn">名前を変更</button>
+        <button type="button" class="link-btn danger" id="source-delete-btn">削除</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">データ取得方法</div>
+      </div>
+      <div class="source-method-grid">
+        <div class="source-method-card active" id="source-method-csv" data-method="csv">
+          <div class="source-method-icon">📄</div>
+          <div class="source-method-name">CSVアップロード</div>
+          <div class="source-method-desc">CSVファイルを読み込んで分析</div>
+        </div>
+        <div class="source-method-card" id="source-method-sheets" data-method="sheets">
+          <div class="source-method-icon"><svg viewBox="0 0 48 48" width="36" height="36"><path fill="#43a047" d="M37 45H11c-1.7 0-3-1.3-3-3V6c0-1.7 1.3-3 3-3h19l10 10v29c0 1.7-1.3 3-3 3z"/><path fill="#c8e6c9" d="M40 13H30V3z"/><path fill="#2e7d32" d="M30 13l10 10V13z"/><path fill="#e8f5e9" d="M31 23H17v14h14V23z"/><path fill="#43a047" d="M25 23h-2v14h2V23zm-4 6H17v2h4v-2zm8 0h-4v2h4v-2zm-8 4H17v2h4v-2zm8 0h-4v2h4v-2zm-8-8H17v2h4v-2zm8 0h-4v2h4v-2z"/></svg></div>
+          <div class="source-method-name">Google スプレッドシート</div>
+          <div class="source-method-desc">スプレッドシートからデータを取得</div>
+        </div>
+        <div class="source-method-card" id="source-method-bq" data-method="bq">
+          <div class="source-method-icon"><svg viewBox="0 0 48 48" width="36" height="36"><path fill="#1565c0" d="M24 2C12.95 2 4 10.95 4 22v4c0 11.05 8.95 20 20 20s20-8.95 20-20v-4C44 10.95 35.05 2 24 2z" opacity=".2"/><path fill="#4285f4" d="M24 6c-8.84 0-16 7.16-16 16s7.16 16 16 16 16-7.16 16-16S32.84 6 24 6z"/><path fill="#fff" d="M20 16h8v2h-8zm0 4h8v2h-8zm0 4h5v2h-5z" opacity=".8"/><path fill="#fff" d="M30 28l4 4-1.4 1.4-4-4z"/><circle cx="25" cy="23" r="6" fill="none" stroke="#fff" stroke-width="2"/></svg></div>
+          <div class="source-method-name">BigQuery</div>
+          <div class="source-method-desc">Google BigQueryからデータを取得</div>
+        </div>
+      </div>
+      <!-- Method detail panel -->
+      <div class="source-method-detail" id="source-method-detail">
+        <!-- CSV detail -->
+        <div class="method-detail-panel" id="detail-csv">
+          <label class="file-btn">
+            CSVファイルを選択
+            <input type="file" id="source-file" accept=".csv">
+          </label>
+        </div>
+        <!-- Sheets detail -->
+        <div class="method-detail-panel hidden" id="detail-sheets">
+          <div class="sheets-connect" id="sheets-connect">
+            <button type="button" class="file-btn" id="sheets-auth-btn">Googleアカウントで連携</button>
+          </div>
+          <div class="sheets-form hidden" id="sheets-form">
+            <div class="sheets-status" id="sheets-status"></div>
+            <div class="sheets-input-box">
+              <label class="sheets-field">
+                <span class="sheets-field-label">スプレッドシートURL</span>
+                <input type="text" class="api-input" id="sheets-url-input" placeholder="https://docs.google.com/spreadsheets/d/...">
+              </label>
+              <label class="sheets-field">
+                <span class="sheets-field-label">タブ名</span>
+                <input type="text" class="api-input" id="sheets-tab-input" placeholder="例: Sheet1">
+              </label>
+            </div>
+            <div class="snapshot-meta" id="sheets-snapshot-meta"></div>
+            <div class="sheets-actions">
+              <button type="button" class="file-btn admin-refresh" id="sheets-fetch-btn">今すぐ更新</button>
+              <button type="button" class="link-btn" id="sheets-disconnect">連携を解除</button>
+            </div>
+          </div>
+        </div>
+        <!-- BQ detail -->
+        <div class="method-detail-panel hidden" id="detail-bq">
+          <div class="sheets-connect" id="bq-connect">
+            <button type="button" class="file-btn" id="bq-auth-btn">Googleアカウントで連携</button>
+          </div>
+          <div class="sheets-form hidden" id="bq-form">
+            <div class="sheets-status" id="bq-status"></div>
+            <div class="sheets-input-box">
+              <label class="sheets-field">
+                <span class="sheets-field-label">プロジェクトID</span>
+                <input type="text" class="api-input" id="bq-project-input" placeholder="my-project-12345">
+              </label>
+              <label class="sheets-field">
+                <span class="sheets-field-label">SQLクエリ</span>
+                <textarea class="api-input bq-query-input" id="bq-query-input" rows="6" placeholder="SELECT * FROM `project.dataset.table` LIMIT 1000"></textarea>
+              </label>
+            </div>
+            <div class="snapshot-meta" id="bq-snapshot-meta"></div>
+            <div class="sheets-actions">
+              <button type="button" class="file-btn admin-refresh" id="bq-fetch-btn">今すぐ更新</button>
+              <button type="button" class="link-btn" id="bq-disconnect">連携を解除</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">データ情報</div>
+      </div>
+      <div class="source-info" id="source-info"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">データカラム</div>
+        <div class="panel-ctrl"><span class="csv-column-count" id="source-csv-column-count"></span></div>
+      </div>
+      <div class="csv-columns" id="source-csv-columns"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">データプレビュー</div>
+      </div>
+      <div class="source-preview" id="source-preview"></div>
+    </div>
+
+    <!-- アクセス権はグループ管理側に統合済み -->
+  </section>
+
+  <section class="settings-view hidden" id="settings-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">管理者設定</div>
+        <h2>ユーザー一覧</h2>
+      </div>
+      <div class="view-actions">
+        <button type="button" class="save-btn admin-only" id="add-user-btn">+ ユーザーを追加</button>
+        <button type="button" class="preset-save-btn admin-only" id="users-save-btn" style="display:inline-block">変更を保存</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">ユーザー一覧</div>
+      </div>
+      <div class="users-list" id="users-list"></div>
+    </div>
+    <div class="non-admin-note admin-hidden">管理者のみが他のユーザーの設定を変更できます。</div>
+  </section>
+
+  <section class="settings-view hidden" id="defaults-doc-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">設定</div>
+        <h2>標準タブ設定</h2>
+      </div>
+      <div class="view-actions">
+        <button type="button" class="preset-save-btn admin-only" id="defaults-save-btn" style="display:inline-block">変更を保存</button>
+      </div>
+    </div>
+    <div class="non-admin-note admin-hidden">権限があるユーザーのみが標準タブ設定を変更できます。</div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">タブとプリセットの対応</div>
+      </div>
+      <div class="defaults-doc" id="defaults-doc"></div>
+    </div>
+  </section>
+
+  <section class="settings-view hidden" id="groups-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">管理者設定</div>
+        <h2>グループ管理</h2>
+      </div>
+      <div class="view-actions admin-only">
+        <button type="button" class="save-btn" id="add-group-btn">+ グループを追加</button>
+      </div>
+    </div>
+    <div class="non-admin-note admin-hidden">管理者のみがグループを編集できます。</div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">グループ一覧</div>
+      </div>
+      <div class="groups-list" id="groups-list"></div>
+    </div>
+  </section>
+
+  <section class="settings-view hidden" id="branding-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">管理者設定</div>
+        <h2>ブランディング</h2>
+      </div>
+      <div class="view-actions">
+        <button type="button" class="preset-save-btn" id="branding-save-btn" style="display:inline-block">変更を保存</button>
+      </div>
+    </div>
+    <div class="non-admin-note no-manage-branding">権限のあるユーザーのみがブランディングを変更できます。</div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">アプリの外観</div>
+      </div>
+      <div class="branding-form" id="branding-form"></div>
+    </div>
+  </section>
+
+  <section class="settings-view hidden" id="presets-settings-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">設定</div>
+        <h2>プリセット設定</h2>
+      </div>
+      <div class="view-actions">
+        <button type="button" class="save-btn" id="save-preset">+ 新規追加</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">プリセット一覧</div>
+      </div>
+      <div class="preset-list" id="preset-list"></div>
+    </div>
+  </section>
+
+  <section class="settings-view hidden" id="dims-doc-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">設定</div>
+        <h2>ディメンション設定</h2>
+      </div>
+      <div class="view-actions">
+        <button type="button" class="save-btn" id="dims-help-btn">使い方</button>
+        <button type="button" class="preset-save-btn admin-only" id="dims-save-btn" style="display:inline-block">変更を保存</button>
+      </div>
+    </div>
+    <div class="non-admin-note admin-hidden">権限があるユーザーのみがディメンション設定を変更できます。</div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">データカラム</div>
+        <div class="panel-ctrl"><span class="csv-column-count" id="dims-csv-column-count"></span></div>
+      </div>
+      <div class="csv-columns" id="dims-csv-columns"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">ディメンション一覧</div>
+      </div>
+      <div class="dims-doc" id="dims-doc"></div>
+    </div>
+  </section>
+
+  <section class="settings-view hidden" id="filters-doc-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">設定</div>
+        <h2>フィルタ設定</h2>
+      </div>
+      <div class="view-actions">
+        <button type="button" class="preset-save-btn admin-only" id="filters-save-btn" style="display:inline-block">変更を保存</button>
+      </div>
+    </div>
+    <div class="non-admin-note admin-hidden">管理者のみがフィルタ設定を変更できます。</div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">データカラム</div>
+        <div class="panel-ctrl"><span class="csv-column-count" id="filters-csv-column-count"></span></div>
+      </div>
+      <div class="csv-columns" id="filters-csv-columns"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">フィルタ一覧</div>
+      </div>
+      <div class="filters-doc" id="filters-doc"></div>
+    </div>
+  </section>
+
+  <section class="settings-view hidden" id="metrics-doc-view">
+    <div class="view-header">
+      <div class="view-title-wrap">
+        <div class="view-crumb">設定</div>
+        <h2>メトリクス設定</h2>
+      </div>
+      <div class="view-actions">
+        <button type="button" class="save-btn" id="metrics-help-btn">使い方</button>
+        <button type="button" class="preset-save-btn admin-only" id="metrics-save-btn" style="display:inline-block">変更を保存</button>
+      </div>
+    </div>
+    <div class="non-admin-note admin-hidden">管理者のみがメトリクスの計算式を編集できます。</div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">データカラム</div>
+        <div class="panel-ctrl"><span class="csv-column-count" id="csv-column-count"></span></div>
+      </div>
+      <div class="csv-columns" id="csv-columns"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">計算方法一覧</div>
+      </div>
+      <div class="metrics-doc" id="metrics-doc"></div>
+    </div>
+  </section>
+</main>
+</div>
+
+<div class="modal-overlay hidden" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-title" id="modal-title"></div>
+    <div class="modal-body" id="modal-body"></div>
+    <input type="text" class="modal-input hidden" id="modal-input">
+    <div class="modal-actions">
+      <button type="button" class="modal-btn modal-cancel" id="modal-cancel">キャンセル</button>
+      <button type="button" class="modal-btn modal-ok" id="modal-ok">OK</button>
+    </div>
+  </div>
+</div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

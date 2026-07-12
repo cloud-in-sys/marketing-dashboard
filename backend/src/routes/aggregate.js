@@ -122,7 +122,7 @@ function validateInputs(body, config) {
 }
 
 // ----- multi-select / range / 条件フィルタのマッチング -----
-// フロント側 js/filters.js の applyFilters / matchCondition と等価なロジック。
+// フロント側 frontend/src/filters/index.js の applyFilters / matchCondition と等価なロジック。
 function matchFilter(row, f) {
   const v = row[f.field];
   switch (f.op) {

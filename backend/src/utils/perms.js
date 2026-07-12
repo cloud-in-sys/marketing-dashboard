@@ -1,4 +1,4 @@
-// フロントと同じ順・キーを保つこと (js/state.js の PERM_GROUPS)
+// フロントと同じ順・キーを保つこと (frontend/src/app/state.js の PERM_GROUPS)
 export const PERM_GROUPS = [
   { group: 'sources', perms: ['viewSources', 'manageSources', 'connectAccount'] },
   { group: 'custom',  perms: ['viewCustom', 'addCustom', 'editCustom', 'deleteCustom'] },
@@ -15,7 +15,7 @@ export const PERM_KEYS = PERM_GROUPS.flatMap(g => g.perms);
 export const ADMIN_PERMS = Object.fromEntries(PERM_KEYS.map(k => [k, true]));
 export const VIEWER_PERMS = Object.fromEntries(PERM_KEYS.map(k => [k, false]));
 
-// ロール判定 (frontend の js/settings/users.js getUserRole と揃える):
+// ロール判定 (frontend/src/features/settings/users/users.js の getUserRole と揃える):
 // operator = 非 admin かつ「settings 以外の全 perms 持ち」かつ「settings perms 全部なし」
 const SETTINGS_PERMS = PERM_GROUPS.find(g => g.group === 'settings')?.perms || [];
 const NON_SETTINGS_PERMS = PERM_KEYS.filter(k => !SETTINGS_PERMS.includes(k));
