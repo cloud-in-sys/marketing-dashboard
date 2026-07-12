@@ -27,9 +27,23 @@ async function request(method, path, body, opts = {}) {
   }
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;
-    try { const j = await res.json(); if (j.error) msg = j.error; } catch (e) {}
+    let payload = null;
+    try {
+      payload = await res.json();
+      // backend が構造化エラー ({error, field, detail, message}) を返す場合は
+      // message を優先 (旧 message 文字列との後方互換)、なければ error を使う。
+      if (payload?.message) msg = payload.message;
+      else if (payload?.error) msg = payload.error;
+    } catch (e) {}
     const err = new Error(msg);
     err.status = res.status;
+    if (payload) {
+      // 構造化エラーの生プロパティを attach。呼び出し側 (buildSaveErrorMessage 等) が field/detail
+      // を直接参照できる。存在しない場合は undefined。
+      err.field = payload.field;
+      err.detail = payload.detail;
+      err.body = payload;
+    }
     throw err;
   }
   if (res.status === 204) return null;
@@ -72,6 +86,10 @@ export const api = {
   getConfig:     (sid) => request('GET', `/api/config/${sid}`),
   putConfig:     (sid, config) => request('PUT', `/api/config/${sid}`, config),
   patchConfig:   (sid, patch, opts) => request('PATCH', `/api/config/${sid}`, patch, opts),
+  // 検証のみ (副作用なし)。frontend の live validation で使う。
+  // 成功時: { ok: true } / 失敗時: 400 + { ok: false, error, field, detail } を throw。
+  // AbortSignal サポート済み。
+  validateConfig: (sid, body, opts) => request('POST', `/api/config/${sid}/validate`, body, opts),
 
   // Presets
   listPresets:   (sid) => request('GET', `/api/presets/${sid}`),

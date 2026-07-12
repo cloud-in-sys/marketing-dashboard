@@ -4,6 +4,7 @@ import { escapeHtml } from '../utils.js';
 import { showModal } from '../modal.js';
 import { hasPerm, renderCurrentUserLabel, applyPermissionUI } from '../auth.js';
 import { settingsState } from './state.js';
+import { buildSaveErrorMessage, setSaveButtonState } from './saveFlow.js';
 
 // ----- DIRTY FLAGS -----
 export function markUsersDirty() {
@@ -199,6 +200,18 @@ export function setupUsersEvents() {
     }
     const ok = await showModal({title: 'ユーザー情報を保存', body: '変更内容を保存しますか？', okText: '保存'});
     if (!ok) return;
+
+    // ----- Save flow -----
+    // ユーザーは api.updateUser / api.deleteUser を直接呼ぶので config PATCH と違って
+    // 「部分成功」があり得る。失敗時は S.USERS を committed せず、draft / dirty を保持。
+    //
+    // TODO(future): 部分成功を防ぐには batch endpoint or Firestore transaction 化が必要。
+    //   案 1) POST /api/users/batch を用意して backend で一括 transaction 更新
+    //   案 2) frontend で差分を全部 collect → 1 度に送る (backend で all-or-nothing 判定)
+    // 現状は失敗時に draft/dirty を保持することで retry 可能なため運用上の実害は小さいと判断。
+    const saveBtn = document.getElementById('users-save-btn');
+    const rootEl = document.getElementById('settings-view');
+    setSaveButtonState(saveBtn, true, rootEl);
     try {
       // Diff against original and save changed ones
       const originalMap = Object.fromEntries(S.USERS.map(u => [u.uid, u]));
@@ -215,13 +228,17 @@ export function setupUsersEvents() {
           await api.deleteUser(orig.uid);
         }
       }
+      // 全 API 呼び出し成功: local commit + dirty clear
       S.USERS = JSON.parse(JSON.stringify(S.USERS_DRAFT));
       renderCurrentUserLabel();
       applyPermissionUI();
       clearUsersDirty();
       await showModal({title: '保存完了', body: 'ユーザー情報を保存しました', okText: 'OK', cancelText: ''});
     } catch (err) {
-      await showModal({title: '保存できません', body: err.message || '保存に失敗しました', okText: 'OK', cancelText: ''});
+      // 途中で失敗 → draft/dirty はそのまま。ユーザーが修正して再試行できる。
+      await showModal({title: '保存に失敗しました', body: buildSaveErrorMessage(err), okText: 'OK', cancelText: ''});
+    } finally {
+      setSaveButtonState(saveBtn, false, rootEl);
     }
   });
 }

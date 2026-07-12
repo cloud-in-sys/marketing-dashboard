@@ -7,6 +7,7 @@ import { api } from '../api.js';
 import { showModal } from '../modal.js';
 import { hasPerm } from '../auth.js';
 import { applyBranding } from '../branding.js';
+import { buildSaveErrorMessage, setSaveButtonState } from './saveFlow.js';
 
 let draft = {};
 let dirty = false;
@@ -248,14 +249,21 @@ export function setupBrandingEvents() {
         return;
       }
     }
+    const saveBtn = document.getElementById('branding-save-btn');
+    const rootEl = document.getElementById('branding-view');
+    setSaveButtonState(saveBtn, true, rootEl);
     try {
       const saved = await api.putBranding(draft);
+      // 成功時のみ draft と dirty を更新
       draft = { ...saved };
       clearDirty();
       applyBranding(saved);
       await showModal({title: '保存完了', body: 'ブランディングを保存しました。', okText: 'OK', cancelText: ''});
     } catch (e) {
-      await showModal({title: '保存失敗', body: e.message || '保存に失敗しました', okText: 'OK', cancelText: ''});
+      // 失敗 → draft / dirty はそのまま。プレビューも反映済みなので UI 状態は保持。
+      await showModal({title: '保存に失敗しました', body: buildSaveErrorMessage(e), okText: 'OK', cancelText: ''});
+    } finally {
+      setSaveButtonState(saveBtn, false, rootEl);
     }
   });
 }

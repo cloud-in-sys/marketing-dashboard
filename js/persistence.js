@@ -104,3 +104,15 @@ export function queueConfigPatch(patch) {
 export async function flushConfigNow(opts) {
   return flushConfigForSid(currentSid, opts);
 }
+
+// 明示的な保存失敗時に、リトライさせたくない patch key を _pending から削除する。
+// 通常の debounce 経由の失敗 (背景書き込み) は自動リトライして良いが、
+// ユーザーが保存ボタンで押した式が backend で 400 なら「そのまま同じ値を再送」
+// しても再度弾かれるだけなので、明示的に落とす方が UX が良い。
+// (draft は UI 側で保持されるので、修正して再保存 → queueConfigPatch で上書きされる)
+export function clearPendingConfigKeys(keys) {
+  if (!currentSid) return;
+  const p = _pending.get(currentSid);
+  if (!p) return;
+  for (const k of keys) delete p[k];
+}

@@ -1,5 +1,6 @@
 import { S } from '../state.js';
 import { api } from '../api.js';
+import { buildSaveErrorMessage, setSaveButtonState } from './saveFlow.js';
 import { escapeHtml } from '../utils.js';
 import { showModal } from '../modal.js';
 import { settingsState } from './state.js';
@@ -175,6 +176,9 @@ async function saveGroup() {
     await showModal({title: '保存できません', body: 'グループ名を入力してください', okText: 'OK', cancelText: ''});
     return;
   }
+  const saveBtn = document.querySelector('[data-group-save]');
+  const rootEl = document.getElementById('groups-view');
+  setSaveButtonState(saveBtn, true, rootEl);
   try {
     let gid = data.id;
 
@@ -220,7 +224,12 @@ async function saveGroup() {
     settingsState.groupDetailId = null;
     await loadGroupsAndRender();
   } catch (e) {
-    await showModal({title: '保存失敗', body: e.message || '保存に失敗しました', okText: 'OK', cancelText: ''});
+    await showModal({title: '保存に失敗しました', body: buildSaveErrorMessage(e), okText: 'OK', cancelText: ''});
+  } finally {
+    // 成功時は再描画で button/root 内要素が置き換わる。失敗時のみ locked 状態を解除する必要がある。
+    // 再描画後の要素は data-saveflow-* が付いていないので影響なし。
+    const btn = document.querySelector('[data-group-save]');
+    setSaveButtonState(btn, false, document.getElementById('groups-view'));
   }
 }
 

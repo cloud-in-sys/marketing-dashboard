@@ -1,10 +1,11 @@
 import { S, saveDimensions } from '../state.js';
-import { flushConfigNow } from '../persistence.js';
+import { flushConfigNow, clearPendingConfigKeys } from '../persistence.js';
 import { escapeHtml } from '../utils.js';
 import { showModal } from '../modal.js';
 import { hasPerm } from '../auth.js';
 import { emit } from '../events.js';
 import { makeSortable } from '../sortable.js';
+import { buildSaveErrorMessage, setSaveButtonState } from './saveFlow.js';
 
 // ----- DIRTY FLAGS -----
 export function markDimsDirty() {
@@ -248,14 +249,14 @@ export function setupDimensionsEvents() {
   document.getElementById('dims-save-btn').addEventListener('click', async () => {
     if (!hasPerm('editDimensions')) return;
     const defs = S.DIMENSIONS_DRAFT || [];
+    // ----- Frontend 事前チェック (backend と重複しない構造的なものだけ) -----
+    // 式の構文/allowlist チェックは backend に委譲。ここではキー重複や必須欄の空チェックだけ。
     const keys = defs.map(d => d.key);
     if (keys.some(k => !k)) { await showModal({title: '保存できません', body: '空のキーがあります', okText: 'OK', cancelText: ''}); return; }
     if (new Set(keys).size !== keys.length) { await showModal({title: '保存できません', body: 'キーが重複しています', okText: 'OK', cancelText: ''}); return; }
     for (const d of defs) {
       if (d.type === 'expression') {
         if (!d.expression) { await showModal({title: '保存できません', body: `「${d.label || d.key}」の計算式が空です`, okText: 'OK', cancelText: ''}); return; }
-        try { new Function('r', `"use strict"; return (${d.expression})`); }
-        catch (err) { await showModal({title: '保存できません', body: `「${d.label || d.key}」の計算式に構文エラーがあります`, okText: 'OK', cancelText: ''}); return; }
       } else {
         if (!d.field) { await showModal({title: '保存できません', body: `「${d.label || d.key}」のデータカラム名が空です`, okText: 'OK', cancelText: ''}); return; }
       }
@@ -264,21 +265,42 @@ export function setupDimensionsEvents() {
     if (!ok) return;
     // モーダル待ち中に権限が剥がれた可能性に備えて再チェック
     if (!hasPerm('editDimensions')) return;
-    S.DIMENSIONS = JSON.parse(JSON.stringify(defs));
-    S.DIM_EXPR_CACHE.clear();
-    saveDimensions();
-    const validKeys = new Set(S.DIMENSIONS.map(d => d.key));
-    S.SELECTED_DIMS = S.SELECTED_DIMS.filter(k => validKeys.has(k));
-    clearDimsDirty();
-    emit('renderChips');
-    // backend PATCH 完了を待ってから aggregate API を叩く。古い config での集計を回避。
+
+    // ----- Save flow with rollback -----
+    // 失敗時に draft / dirty を保持したまま state を巻き戻す。
+    const saveBtn = document.getElementById('dims-save-btn');
+    const rootEl = document.getElementById('dims-doc-view');
+    setSaveButtonState(saveBtn, true, rootEl);
+    const prevDimensions = S.DIMENSIONS;
+    const prevSelectedDims = [...S.SELECTED_DIMS];
     try {
-      await flushConfigNow();
-    } catch (e) {
-      await showModal({title: '保存に失敗しました', body: `サーバーへの保存に失敗しました。ネットワーク接続を確認してもう一度お試しください。\n\n${e?.message || e}`, okText: 'OK', cancelText: ''});
-      return;
+      S.DIMENSIONS = JSON.parse(JSON.stringify(defs));
+      S.DIM_EXPR_CACHE.clear();
+      saveDimensions();
+      const validKeys = new Set(S.DIMENSIONS.map(d => d.key));
+      S.SELECTED_DIMS = S.SELECTED_DIMS.filter(k => validKeys.has(k));
+      emit('renderChips');
+      try {
+        await flushConfigNow();
+      } catch (e) {
+        // Rollback local state
+        S.DIMENSIONS = prevDimensions;
+        S.DIM_EXPR_CACHE.clear();
+        S.SELECTED_DIMS = prevSelectedDims;
+        // 失敗した dimensions patch を pending から落として無限リトライを防ぐ
+        // (draft は UI に残っているので、修正して再保存すれば新 patch で上書きされる)
+        clearPendingConfigKeys(['dimensions']);
+        emit('renderChips');
+        await showModal({title: '保存に失敗しました', body: buildSaveErrorMessage(e), okText: 'OK', cancelText: ''});
+        return;
+      }
+      // 成功: dirty + draft を確定。draft は保持したまま S.DIMENSIONS と同期させておく。
+      S.DIMENSIONS_DRAFT = JSON.parse(JSON.stringify(S.DIMENSIONS));
+      clearDimsDirty();
+      emit('render');
+      await showModal({title: '保存完了', body: 'ディメンション定義を保存しました', okText: 'OK', cancelText: ''});
+    } finally {
+      setSaveButtonState(saveBtn, false, rootEl);
     }
-    emit('render');
-    await showModal({title: '保存完了', body: 'ディメンション定義を保存しました', okText: 'OK', cancelText: ''});
   });
 }

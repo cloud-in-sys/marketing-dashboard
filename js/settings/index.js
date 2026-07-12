@@ -5,6 +5,7 @@ import { showModal } from '../modal.js';
 import { hasPerm, logout } from '../auth.js';
 import { renderPresets, exitPresetEdit, isPresetEditDirty } from '../presets.js';
 import { abortInFlightAggregate } from '../aggregate/aggregateBackend.js';
+import { emit } from '../events.js';
 
 import { settingsState } from './state.js';
 import { renderUsersModal, setupUsersEvents, clearUsersDirty } from './users.js';
@@ -26,6 +27,9 @@ const DIRTY_SELECTORS = [
   '#dims-save-btn.dirty',
   '#branding-save-btn.dirty',
   '#groups-list.has-dirty',
+  // データソース (source-view) の Sheets URL/タブ名 / BQ project/query 入力欄
+  '#sheets-fetch-btn.dirty',
+  '#bq-fetch-btn.dirty',
 ];
 
 export function hasUnsavedSettingsChanges() {
@@ -76,6 +80,10 @@ export function discardAllDrafts() {
   clearDimsDirty();
   document.getElementById('branding-save-btn')?.classList.remove('dirty');
   document.getElementById('groups-list')?.classList.remove('has-dirty');
+  // source view の未保存編集は入力欄 DOM の値を保存済み値に戻す
+  document.getElementById('sheets-fetch-btn')?.classList.remove('dirty');
+  document.getElementById('bq-fetch-btn')?.classList.remove('dirty');
+  emit('sourceViewResetInputs');
   if (S.PRESET_EDIT_IDX != null) exitPresetEdit();
 }
 

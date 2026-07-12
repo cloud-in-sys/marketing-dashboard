@@ -95,25 +95,6 @@ body.settings-mode .view { display: none; }
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
-.metric-formula-input.is-invalid {
-  border-color: var(--danger);
-  background: #fef2f2;
-}
-.metric-formula-input.is-invalid:focus {
-  border-color: var(--danger);
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
-}
-.metric-formula-error {
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--danger);
-  margin-top: 4px;
-  padding: 4px 6px;
-  background: #fef2f2;
-  border-left: 2px solid var(--danger);
-  border-radius: 2px;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-}
 .metrics-doc-info-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -1037,6 +1018,31 @@ body.no-refresh-snapshot .admin-refresh { display: none !important; }
   0%, 100% { box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25); }
   50% { box-shadow: 0 4px 14px rgba(37, 99, 235, 0.5); }
 }
+/* 保存中は disabled + saving 見た目にする。dirty のパルスと衝突しないよう animation を止める。*/
+button.saving,
+button[aria-busy="true"] {
+  opacity: 0.7;
+  cursor: progress !important;
+  pointer-events: none;
+  animation: none !important;
+}
+button.saving::after {
+  content: '…';
+  margin-left: 4px;
+  display: inline-block;
+  animation: savingDots 1.2s steps(3, end) infinite;
+}
+@keyframes savingDots {
+  0%   { content: ''; }
+  33%  { content: '.'; }
+  66%  { content: '..'; }
+  100% { content: '...'; }
+}
+/* 保存中は該当フォーム root をロック表示 (視覚的に触れないことを明示)。
+   dashboard-color-picker は disabled 属性を持たないので pointer-events で塞ぐ。 */
+.saveflow-locked { opacity: 0.9; }
+.saveflow-locked dashboard-color-picker { pointer-events: none; opacity: 0.6; }
+.saveflow-locked ::placeholder { opacity: 0.5; }
 /* ===== REFERENCE SECTION TITLE ===== */
 .ref-section-title {
   font-size: 11px;

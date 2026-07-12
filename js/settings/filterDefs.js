@@ -1,9 +1,11 @@
 import { S, saveFilterDefs } from '../state.js';
+import { flushConfigNow, clearPendingConfigKeys } from '../persistence.js';
 import { escapeHtml } from '../utils.js';
 import { showModal } from '../modal.js';
 import { hasPerm } from '../auth.js';
 import { renderFilters } from '../filters/index.js';
 import { emit } from '../events.js';
+import { buildSaveErrorMessage, setSaveButtonState } from './saveFlow.js';
 
 // ----- DIRTY FLAGS -----
 export function markFiltersDirty() {
@@ -103,12 +105,34 @@ export function setupFilterDefsEvents() {
     }
     const ok = await showModal({title: 'フィルタを保存', body: '変更内容を保存しますか？', okText: '保存'});
     if (!ok) return;
-    S.FILTER_DEFS = JSON.parse(JSON.stringify(defs));
-    saveFilterDefs();
-    for (const k of Object.keys(S.FILTER_VALUES)) delete S.FILTER_VALUES[k];
-    renderFilters();
-    clearFiltersDirty();
-    emit('render');
-    await showModal({title: '保存完了', body: 'フィルタ定義を保存しました', okText: 'OK', cancelText: ''});
+
+    // ----- Save flow with rollback -----
+    const saveBtn = document.getElementById('filters-save-btn');
+    const rootEl = document.getElementById('filters-doc-view');
+    setSaveButtonState(saveBtn, true, rootEl);
+    const prevFilterDefs = S.FILTER_DEFS;
+    const prevFilterValues = { ...S.FILTER_VALUES };
+    try {
+      S.FILTER_DEFS = JSON.parse(JSON.stringify(defs));
+      saveFilterDefs();
+      for (const k of Object.keys(S.FILTER_VALUES)) delete S.FILTER_VALUES[k];
+      renderFilters();
+      try {
+        await flushConfigNow();
+      } catch (e) {
+        // Rollback local state
+        S.FILTER_DEFS = prevFilterDefs;
+        Object.assign(S.FILTER_VALUES, prevFilterValues);
+        clearPendingConfigKeys(['filterDefs']);
+        renderFilters();
+        await showModal({title: '保存に失敗しました', body: buildSaveErrorMessage(e), okText: 'OK', cancelText: ''});
+        return;
+      }
+      clearFiltersDirty();
+      emit('render');
+      await showModal({title: '保存完了', body: 'フィルタ定義を保存しました', okText: 'OK', cancelText: ''});
+    } finally {
+      setSaveButtonState(saveBtn, false, rootEl);
+    }
   });
 }

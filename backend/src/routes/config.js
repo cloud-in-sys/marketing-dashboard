@@ -42,6 +42,24 @@ app.get('/:sid', requireSourceAccess(), async c => {
   return c.json({ config: snap.exists ? snap.data() : null });
 });
 
+// 検証のみ (副作用なし)。frontend の live validation 用。
+// body の全式を validate して、通ればステータス 200 と { ok: true }、
+// 弾かれれば 400 と { ok: false, error, field, detail } を返す。
+app.post('/:sid/validate', requireSourceAccess(), async c => {
+  const body = await c.req.json();
+  if (!body || typeof body !== 'object') throw httpError(400, 'Body must be an object');
+  const invalid = validateConfigExpressions(body);
+  if (invalid) {
+    return c.json({
+      ok: false,
+      error: 'Invalid expression',
+      field: invalid.field,
+      detail: invalid.detail,
+    }, 400);
+  }
+  return c.json({ ok: true });
+});
+
 // 差分を式変更履歴として Firestore に記録 (非同期 / best-effort)
 async function logExpressionHistory(sid, before, after, user) {
   try {
@@ -80,7 +98,13 @@ app.put('/:sid', requireSourceAccess(), async c => {
   const missing = checkFieldPerms(body, user);
   if (missing) return c.json({ error: `Missing permission: ${missing}` }, 403);
   const invalid = validateConfigExpressions(body);
-  if (invalid) return c.json({ error: `Invalid expression: ${invalid}` }, 400);
+  if (invalid) return c.json({
+    error: 'Invalid expression',
+    field: invalid.field,
+    detail: invalid.detail,
+    // 後方互換: 旧 frontend が message から parse する経路のために文字列 message も含める
+    message: `Invalid expression: ${invalid.field}: expression error: ${invalid.detail}`,
+  }, 400);
   const beforeSnap = await configDoc(sid).get();
   const before = beforeSnap.exists ? beforeSnap.data() : {};
   // セキュリティ: PUT は doc 全体を上書きするので、権限のないフィールドを body から
@@ -110,7 +134,12 @@ app.patch('/:sid', requireSourceAccess(), async c => {
   const missing = checkFieldPerms(body, user);
   if (missing) return c.json({ error: `Missing permission: ${missing}` }, 403);
   const invalid = validateConfigExpressions(body);
-  if (invalid) return c.json({ error: `Invalid expression: ${invalid}` }, 400);
+  if (invalid) return c.json({
+    error: 'Invalid expression',
+    field: invalid.field,
+    detail: invalid.detail,
+    message: `Invalid expression: ${invalid.field}: expression error: ${invalid.detail}`,
+  }, 400);
   const docRef = configDoc(sid);
   const beforeSnap = await docRef.get();
   const before = beforeSnap.exists ? beforeSnap.data() : {};

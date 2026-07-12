@@ -1,97 +1,89 @@
-// ユーザーが保存する JavaScript 式(メトリクス式 / ディメンション式 / ビューフィルタ式)の検証。
-// フロントで new Function() 経由で各ユーザーのブラウザで実行されるため、
-// 悪意ある管理者アカウントから全ユーザーへ JS を配布されるのを防ぐ。
+// ユーザーが保存する式 (メトリクス式 / ディメンション式 / ビューフィルタ式) の検証。
+// AST ベースの allowlist 評価器 (safeExpr) で validate する。
+// 旧実装は blocklist + new Function 構文チェック → constructor bracket 経由の脱出が可能だった。
 
-const MAX_LEN = 2000;
+import { validateSafeExpr } from './safeExpr.js';
+import { liftFormula } from '../aggregate/compute.js';
 
-// トークン/文字列として検出したら拒否する正規表現リスト
-const FORBIDDEN = [
-  /\bimport\b/i,
-  /\brequire\b/i,
-  /\beval\b/i,
-  /\bFunction\s*\(/,
-  /\bfunction\s*\(/,        // 関数宣言/式
-  /\bfetch\s*\(/i,
-  /\bXMLHttpRequest\b/,
-  /\bWebSocket\b/,
-  /\bglobalThis\b/,
-  /\bwindow\b/,
-  /\bdocument\b/,
-  /\blocalStorage\b/,
-  /\bsessionStorage\b/,
-  /\bindexedDB\b/,
-  /\bnavigator\b/,
-  /\blocation\b/,
-  /\bprocess\b/,
-  /\bconstructor\s*\./i,    // fn.constructor("...")("") 経由の Function 呼び出し回避
-  /\bprototype\b/,
-  /\b__proto__\b/,
-  /\bwhile\s*\(/,            // while 全般 (無限ループ回避)
-  /\bfor\s*\(/,              // for 全般
-  /\bdo\s*\{/,               // do { } while
-  /\bsetInterval\s*\(/,
-  /\bsetTimeout\s*\(/,
-  /`/,                        // テンプレートリテラル(文字列補完経由の回避を封じる)
-];
-
-// 検証して問題があればエラーメッセージを返す。OK なら null。
-export function validateExpression(src, { label = 'expression' } = {}) {
+// 検証して問題があればエラー文字列 (`<label>: <detail>`) を返す。OK なら null。
+// options.allowAnyIdentifier: compileLifted のように識別子を呼び出し側で
+// 解決するケース向け (default: false = 厳格モード)。
+export function validateExpression(src, options = {}) {
+  const { label = 'expression', allowAnyIdentifier = false } = options;
   if (src == null || src === '') return null; // 空はOK
   if (typeof src !== 'string') return `${label} must be a string`;
-  if (src.length > MAX_LEN) return `${label} too long (max ${MAX_LEN} chars)`;
-  for (const re of FORBIDDEN) {
-    if (re.test(src)) return `${label} contains forbidden token: ${re.source}`;
-  }
-  // 構文チェック: new Function でパースのみ試みる(実行はしない)。
-  // フロントは 'r' を引数にして実行するのでここも 'r' で検証する。
-  try {
-    // eslint-disable-next-line no-new-func
-    new Function('r', `"use strict"; return (${src});`);
-  } catch (e) {
-    return `${label} has syntax error: ${e.message}`;
-  }
+  const err = validateSafeExpr(src, { allowAnyIdentifier });
+  if (err) return `${label}: ${err}`;
+  return null;
+}
+
+// 内部ヘルパ: {field, detail} を返す (構造化エラー用)。OK なら null。
+// validateExpression と挙動は同じだが、field と detail を分離。
+function validateExpressionStructured(src, field, options = {}) {
+  const { allowAnyIdentifier = false } = options;
+  if (src == null || src === '') return null;
+  if (typeof src !== 'string') return { field, detail: 'must be a string' };
+  const err = validateSafeExpr(src, { allowAnyIdentifier });
+  if (err) return { field, detail: err };
   return null;
 }
 
 // config body のうち、式を含むフィールドをすべて検証する。
-// 問題があれば最初のエラーメッセージを返す。
+// 問題があれば {field, detail} を返す。OK なら null。
+// (旧 API: `Invalid expression: ${field}: expression error: ${detail}` を組み立てていた;
+//  今は field / detail を構造化して呼び出し側に渡す)
+//
+// フィールド別の識別子ポリシー:
+//   - formulas / baseFormulas: メトリクスキー / sum/count/avg 等 DSL 関数 / __agg_N__ を含む
+//     → allowAnyIdentifier=true。identifier はランタイムで ctx (__proto__: null) 経由に
+//        置き換わるので、識別子の allowlist は不要 (構文構造の危険は引き続きブロック)。
+//   - dimensions[].expression / views.filter / cards.filterExpr: r-スコープの JS 式
+//     → 厳格 allowlist (r + Math + String + Number + parseInt 等) のみ許可。
 export function validateConfigExpressions(body) {
   if (!body || typeof body !== 'object') return null;
 
-  // formulas: { [key]: 'js expression' }
-  if (body.formulas && typeof body.formulas === 'object') {
-    for (const [k, v] of Object.entries(body.formulas)) {
-      const e = validateExpression(v, { label: `formulas.${k}` });
-      if (e) return e;
-    }
-  }
-
-  // dimensions: [{ key, type, expression? }]
-  if (Array.isArray(body.dimensions)) {
-    for (const d of body.dimensions) {
-      if (d && d.type === 'expression') {
-        const e = validateExpression(d.expression, { label: `dimensions[${d.key || ''}].expression` });
+  // formulas / baseFormulas:
+  //   `sum(x where cond)` などの DSL は JS 文法上不正なので、liftFormula で
+  //   `__agg_N__` プレースホルダに変換してから AST validate する。
+  const formulaFields = ['formulas', 'baseFormulas'];
+  for (const field of formulaFields) {
+    if (body[field] && typeof body[field] === 'object') {
+      for (const [k, v] of Object.entries(body[field])) {
+        if (v == null || v === '') continue;
+        if (typeof v !== 'string') return { field: `${field}.${k}`, detail: 'must be a string' };
+        const { lifted } = liftFormula(v);
+        const e = validateExpressionStructured(lifted, `${field}.${k}`, { allowAnyIdentifier: true });
         if (e) return e;
       }
     }
   }
 
-  // views: { [k]: { filter? filterExpr? } }
+  // dimensions: [{ key, type, expression? }]  — r-スコープ (厳格)
+  if (Array.isArray(body.dimensions)) {
+    for (const d of body.dimensions) {
+      if (d && d.type === 'expression') {
+        const e = validateExpressionStructured(d.expression, `dimensions[${d.key || ''}].expression`);
+        if (e) return e;
+      }
+    }
+  }
+
+  // views: { [k]: { filter? filterExpr? } }  — r-スコープ (厳格)
   if (body.views && typeof body.views === 'object') {
     for (const [k, v] of Object.entries(body.views)) {
       if (!v) continue;
-      const e1 = validateExpression(v.filter, { label: `views.${k}.filter` });
+      const e1 = validateExpressionStructured(v.filter, `views.${k}.filter`);
       if (e1) return e1;
-      const e2 = validateExpression(v.filterExpr, { label: `views.${k}.filterExpr` });
+      const e2 = validateExpressionStructured(v.filterExpr, `views.${k}.filterExpr`);
       if (e2) return e2;
     }
   }
 
-  // state.cards: [{ filterExpr? }]
+  // state.cards: [{ filterExpr? }]  — r-スコープ (厳格)
   if (body.state && Array.isArray(body.state.cards)) {
     for (const card of body.state.cards) {
       if (!card) continue;
-      const e = validateExpression(card.filterExpr, { label: `cards[${card.id || ''}].filterExpr` });
+      const e = validateExpressionStructured(card.filterExpr, `cards[${card.id || ''}].filterExpr`);
       if (e) return e;
     }
   }

@@ -1,5 +1,5 @@
 // ===== Data sources / source view (split out of main.js) =====
-import { emit } from './events.js';
+import { emit, on } from './events.js';
 import { S, switchSource, saveSheetsInput, loadSheetsInput,
   saveBqInput, loadBqInput,
   saveSourceMethod,
@@ -484,8 +484,6 @@ async function refreshSnapshotNow(method) {
   }
 }
 
-// (Live Sheets/BQ auto-refresh removed — data comes from daily snapshot now)
-
 // backend mode で source-view を開いた時、行データを持たないので列情報を遅延取得。
 // 1 ソースにつき 1 回だけ走らせる (S.COLUMN_INFO がセットされたら以降スキップ)。
 let _sourceViewColInfoInflight = null;
@@ -505,6 +503,9 @@ async function fetchColumnInfoForSourceView() {
 }
 
 function renderSourceView() {
+  // 入力欄が保存済み値で再描画される (loadSheetsInput/loadBqInput 経由) ので dirty をクリア
+  document.getElementById('sheets-fetch-btn')?.classList.remove('dirty');
+  document.getElementById('bq-fetch-btn')?.classList.remove('dirty');
   const ds = S.DATA_SOURCES.find(d => d.id === S.CURRENT_SOURCE);
   const name = ds ? ds.name : S.CURRENT_SOURCE;
   document.getElementById('source-view-title').textContent = name;
@@ -644,20 +645,31 @@ function renderSourceView() {
   }
 }
 
-// Save input on change
+// Sheets / BQ の入力欄は自動保存しない。「今すぐ更新」ボタン押下時のみ saveSheetsInput /
+// saveBqInput が動く (line 759, 793 参照)。
+//
+// 未保存編集は fetch-btn の .dirty クラスで検知 → 未保存変更ガード対象
+// (settings/index.js の DIRTY_SELECTORS に含める)。
+// タブ切替 / ソース切替 / 設定画面遷移 / logout / リロードで警告を出す。
+function _markSheetsDirty() { document.getElementById('sheets-fetch-btn')?.classList.add('dirty'); }
+function _clearSheetsDirty() { document.getElementById('sheets-fetch-btn')?.classList.remove('dirty'); }
+function _markBqDirty() { document.getElementById('bq-fetch-btn')?.classList.add('dirty'); }
+function _clearBqDirty() { document.getElementById('bq-fetch-btn')?.classList.remove('dirty'); }
 ['sheets-url-input', 'sheets-tab-input'].forEach(id => {
-  document.getElementById(id)?.addEventListener('input', () => {
-    const url = document.getElementById('sheets-url-input').value;
-    const tab = document.getElementById('sheets-tab-input').value;
-    saveSheetsInput(url, tab);
-  });
+  document.getElementById(id)?.addEventListener('input', _markSheetsDirty);
 });
 ['bq-project-input', 'bq-query-input'].forEach(id => {
-  document.getElementById(id)?.addEventListener('input', () => {
-    const project = document.getElementById('bq-project-input').value;
-    const query = document.getElementById('bq-query-input').value;
-    saveBqInput(project, query);
-  });
+  document.getElementById(id)?.addEventListener('input', _markBqDirty);
+});
+// 「保存せずに移動」で discardAllDrafts が発火した時、入力欄を保存済み値に戻す
+on('sourceViewResetInputs', () => {
+  const sheetsInput = loadSheetsInput() || {};
+  const bqInput = loadBqInput() || {};
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  setVal('sheets-url-input', sheetsInput.url);
+  setVal('sheets-tab-input', sheetsInput.tab);
+  setVal('bq-project-input', bqInput.project);
+  setVal('bq-query-input', bqInput.query);
 });
 
 // Confirm overwrite when data already loaded from another method
@@ -747,6 +759,7 @@ document.getElementById('sheets-fetch-btn').addEventListener('click', async () =
   // Persist inputs on the source doc so the batch job can read them
   await saveSheetsInput(urlOrId, tab);
   await saveSourceMethod('sheets');
+  _clearSheetsDirty();
   await refreshSnapshotNow('sheets');
 });
 
@@ -781,6 +794,7 @@ document.getElementById('bq-fetch-btn').addEventListener('click', async () => {
   if (!query) { await showModal({title: 'エラー', body: 'SQLクエリを入力してください', okText: 'OK', cancelText: ''}); return; }
   await saveBqInput(project, query);
   await saveSourceMethod('bq');
+  _clearBqDirty();
   await refreshSnapshotNow('bq');
 });
 

@@ -652,12 +652,36 @@ document.getElementById('table-toolbar').addEventListener('click', e => {
 // 全画面表示の ON/OFF。CSS で position:fixed; inset:0 を当てるだけで Browser
 // Fullscreen API は使わない (固定列の measure、ツールバーの sticky、設定パネル
 // との重なりを自前で制御したいため)。
+//
+// 追従フィルタ (#filters-bar) は通常時 .main の直下にあり全画面表示 (fixed: inset:0)
+// では画面外に押し出される。全画面中も操作できるよう、fullscreen 開始時に
+// #filters-bar を #table-area の中に移動し、解除時に元の場所へ戻す。
+let _filtersBarOriginalParent = null;
+let _filtersBarOriginalNext = null;
 function toggleTableFullscreen() {
   const area = document.getElementById('table-area');
   if (!area) return;
   const next = !area.classList.contains('is-fullscreen');
   area.classList.toggle('is-fullscreen', next);
   document.body.classList.toggle('table-fullscreen', next);
+  const filtersBar = document.getElementById('filters-bar');
+  if (filtersBar) {
+    if (next) {
+      _filtersBarOriginalParent = filtersBar.parentNode;
+      _filtersBarOriginalNext = filtersBar.nextSibling;
+      area.insertBefore(filtersBar, area.firstChild);
+    } else if (_filtersBarOriginalParent && _filtersBarOriginalParent.isConnected) {
+      _filtersBarOriginalParent.insertBefore(filtersBar, _filtersBarOriginalNext);
+      _filtersBarOriginalParent = null;
+      _filtersBarOriginalNext = null;
+    } else {
+      // parent が既に detach されていた場合の fallback: .main の先頭に戻す
+      const main = document.querySelector('.main');
+      if (main) main.insertBefore(filtersBar, main.firstChild);
+      _filtersBarOriginalParent = null;
+      _filtersBarOriginalNext = null;
+    }
+  }
   rerender();
 }
 // Esc キーで解除

@@ -1,6 +1,6 @@
 // ディメンション値抽出 + グルーピング。js/dimensions.js から移植。
 
-import { validateExpression } from '../utils/expression.js';
+import { compileSafeExpr } from '../utils/safeExpr.js';
 
 const DOW_LABELS = ['日','月','火','水','木','金','土'];
 const DOW_ORDER = {'日':0,'月':1,'火':2,'水':3,'木':4,'金':5,'土':6};
@@ -11,22 +11,14 @@ const dimExprCache = new Map();
 function compileDimExpr(expr) {
   const key = String(expr || '');
   if (dimExprCache.has(key)) return dimExprCache.get(key);
-  const validateErr = validateExpression(key, { label: 'dimension-expression' });
-  if (validateErr) {
-    const noop = () => '';
+  const noop = () => '';
+  const evalFn = compileSafeExpr(key);
+  if (!evalFn) {
     dimExprCache.set(key, noop);
     return noop;
   }
-  try {
-    // eslint-disable-next-line no-new-func
-    const fn = new Function('r', `"use strict"; return (${key || "''"});`);
-    dimExprCache.set(key, fn);
-    return fn;
-  } catch (e) {
-    const noop = () => '';
-    dimExprCache.set(key, noop);
-    return noop;
-  }
+  dimExprCache.set(key, evalFn);
+  return evalFn;
 }
 
 function buildDimMap(dimensions) {

@@ -2,7 +2,7 @@
 
 import { findCloseParen, parseAggregateInner, parseWhereStr } from './parser.js';
 import { evalAst, num, todayStr } from './evalAst.js';
-import { validateExpression } from '../utils/expression.js';
+import { compileSafeExpr, compileSafeNamespaceExpr } from '../utils/safeExpr.js';
 
 const FN_NAMES = ['sum', 'count', 'avg', 'min', 'max', 'countDistinct'];
 const FN_ALT = FN_NAMES.join('|');
@@ -13,7 +13,7 @@ const TRAILING_WHERE_REGEX = /^(__agg_\d+__)\s+where\s+(.+)$/i;
 const liftCache = new Map();
 const compiledLiftedCache = new Map();
 
-function liftFormula(formula) {
+export function liftFormula(formula) {
   if (liftCache.has(formula)) return liftCache.get(formula);
 
   let nextId = 0;
@@ -145,25 +145,25 @@ function stripParentTotal(src) {
   return src;
 }
 
+// lifted formula (例: `__agg_0__ / __agg_1__`, `Math.max(__agg_0__, 0)`) を
+// AST 評価器 (namespace mode) でコンパイル。呼び出し側が渡す ctx から identifier を解決。
+// 識別子 (metric keys / __agg_N__ / Math / min / max 等) は動的に混ざるため allowAnyIdentifier。
+// 構文の危険 (new, while, constructor 参照, tagged template 等) は AST validate でブロック。
 function compileLifted(formula) {
   if (compiledLiftedCache.has(formula)) return compiledLiftedCache.get(formula);
-  const validateErr = validateExpression(formula, { label: 'lifted-formula' });
-  if (validateErr) {
-    const noop = () => 0;
+  const noop = () => 0;
+  const evalFn = compileSafeNamespaceExpr(formula, { allowAnyIdentifier: true });
+  if (!evalFn) {
     compiledLiftedCache.set(formula, noop);
     return noop;
   }
-  try {
-    const code = formula.replace(/[a-zA-Z_][a-zA-Z0-9_]*/g, m => `ctx.${m}`);
-    // eslint-disable-next-line no-new-func
-    const fn = new Function('ctx', `"use strict"; try{var v=(${code});return v===v&&v!==1/0&&v!==-1/0?v:0}catch(e){return 0}`);
-    compiledLiftedCache.set(formula, fn);
-    return fn;
-  } catch (e) {
-    const noop = () => 0;
-    compiledLiftedCache.set(formula, noop);
-    return noop;
-  }
+  // 旧実装と同じフォールバック: NaN / Infinity は 0 に丸める。
+  const wrapped = (ctx) => {
+    const v = evalFn(ctx);
+    return v === v && v !== Infinity && v !== -Infinity ? v : 0;
+  };
+  compiledLiftedCache.set(formula, wrapped);
+  return wrapped;
 }
 
 // メトリクス集計のメインエントリ。
@@ -207,24 +207,21 @@ export function aggregate(rows, config) {
 }
 
 // view filter 式 (例: `r.status === '完了' && r.amount > 1000`) を行に適用する。
-// validateExpression を通った後にコンパイルしてキャッシュ。
+// AST allowlist 評価器 (safeExpr) 経由で compile。new Function は使わない。
 const viewFilterCache = new Map();
 export function compileViewFilter(expr) {
   if (!expr || !String(expr).trim()) return null;
   const src = String(expr);
   if (viewFilterCache.has(src)) return viewFilterCache.get(src);
-  const validateErr = validateExpression(src, { label: 'viewFilter' });
-  if (validateErr) {
+  const evalFn = compileSafeExpr(src);
+  if (!evalFn) {
     viewFilterCache.set(src, null);
     return null;
   }
-  try {
-    // eslint-disable-next-line no-new-func
-    const fn = new Function('r', `"use strict"; try{return !!(${src})}catch(e){return false}`);
-    viewFilterCache.set(src, fn);
-    return fn;
-  } catch (e) {
-    viewFilterCache.set(src, null);
-    return null;
-  }
+  const wrapped = (r) => {
+    const v = evalFn(r);
+    return !!v;
+  };
+  viewFilterCache.set(src, wrapped);
+  return wrapped;
 }
