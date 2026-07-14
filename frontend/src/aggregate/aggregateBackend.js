@@ -9,6 +9,7 @@ import { api } from '../api/index.js';
 import { FEATURES, dlog } from '../app/config.js';
 import { setBackendCache, dimsKeyFor } from './aggregateCache.js';
 import { hasVisibleSparklineMetric } from '../features/dashboard/table/sparkline.js';
+import { resolveDateFilter } from '../filters/dateFilter.js';
 
 // S.FILTER_VALUES / S.FILTER_CONDITIONS / FILTER_DEFS から API 用フィルタ配列を生成。
 // API への送信内容と cacheKey 安定化のため、values は文字列化してソートする。
@@ -24,6 +25,12 @@ export function serializeFilters() {
       if (v) out.push({ field: def.field, op: 'dateGte', value: v });
     } else if (def.type === 'date_to') {
       if (v) out.push({ field: def.field, op: 'dateLte', value: v });
+    } else if (def.type === 'date_range') {
+      // {from, to} を dateGte / dateLte の2条件に展開
+      if (v && typeof v === 'object') {
+        if (v.from) out.push({ field: def.field, op: 'dateGte', value: v.from });
+        if (v.to) out.push({ field: def.field, op: 'dateLte', value: v.to });
+      }
     } else if (def.type === 'multi') {
       if (v instanceof Set && v.size > 0) {
         // 選択順に依存しないよう values を文字列化してソート
@@ -46,12 +53,7 @@ export function serializeFilters() {
 function computeCardMonthFilter(card) {
   const mode = card.filterMode || 'follow';
   if (mode !== 'latest_month' && mode !== 'prev_month' && mode !== 'current_month') return null;
-  const defs = S.FILTER_DEFS || [];
-  const fromDef = defs.find(d => d.type === 'date_from');
-  const toDef = defs.find(d => d.type === 'date_to');
-  const field = fromDef?.field || toDef?.field || 'action_date';
-  const fromVal = fromDef ? (S.FILTER_VALUES || {})[fromDef.id] : null;
-  const toVal = toDef ? (S.FILTER_VALUES || {})[toDef.id] : null;
+  const { field, from: fromVal, to: toVal } = resolveDateFilter();
   let target;
   if (mode === 'current_month') {
     // 「今月」はカレンダー上の当月を無条件で使う (フィルタ範囲外なら 0 件)

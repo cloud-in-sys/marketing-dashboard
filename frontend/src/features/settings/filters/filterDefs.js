@@ -6,6 +6,7 @@ import { hasPerm } from '../../../app/auth.js';
 import { renderFilters } from '../../../filters/index.js';
 import { emit } from '../../../app/events.js';
 import { buildSaveErrorMessage, setSaveButtonState } from '../saveFlow.js';
+import { makeSortable } from '../../../shared/ui/sortable.js';
 
 // ----- DIRTY FLAGS -----
 export function markFiltersDirty() {
@@ -21,18 +22,20 @@ export function renderFiltersDoc() {
   if (!el) return;
   const defs = S.FILTER_DEFS_DRAFT || S.FILTER_DEFS;
   const typeOpts = [
-    {v: 'date_from', l: '開始日 (>=)'},
-    {v: 'date_to',   l: '終了日 (<=)'},
-    {v: 'multi',     l: '複数選択'},
+    {v: 'date_range', l: '期間 (開始〜終了)'},
+    {v: 'date_from',  l: '開始日 (>=)'},
+    {v: 'date_to',    l: '終了日 (<=)'},
+    {v: 'multi',      l: '複数選択'},
   ];
   el.innerHTML = `
     <div class="metrics-doc-box">
       ${defs.map((f, i) => `
-        <div class="metrics-doc-row" data-filter-idx="${i}">
-          <div class="metrics-doc-row-head">
-            <div class="field-col"><label class="field-label">名称</label><input type="text" class="metric-label-input" data-filter-label value="${escapeHtml(f.label)}" placeholder="表示名"></div>
-            <div class="field-col"><label class="field-label">データカラム</label><input type="text" class="metric-key-input" data-filter-field value="${escapeHtml(f.field)}" placeholder="データカラム名"></div>
-            <div class="field-col"><label class="field-label">種類</label><select class="metric-fmt-select" data-filter-type>
+        <div class="metrics-doc-row" data-filter-idx="${i}" data-drag-key="${i}" draggable="true">
+          <div class="metrics-doc-row-head filter-row-head">
+            <span class="drag-handle" data-drag-handle title="ドラッグで並び替え">⋮⋮</span>
+            <div class="field-col"><label class="field-label">名称</label><input type="text" class="metric-label-input" data-filter-label draggable="false" value="${escapeHtml(f.label)}" placeholder="表示名"></div>
+            <div class="field-col"><label class="field-label">データカラム</label><input type="text" class="metric-key-input" data-filter-field draggable="false" value="${escapeHtml(f.field)}" placeholder="データカラム名"></div>
+            <div class="field-col"><label class="field-label">種類</label><select class="metric-fmt-select" data-filter-type draggable="false">
               ${typeOpts.map(o => `<option value="${o.v}"${f.type===o.v?' selected':''}>${o.l}</option>`).join('')}
             </select></div>
             <button type="button" class="metric-del" data-filter-remove="${i}" title="削除">×</button>
@@ -46,6 +49,20 @@ export function renderFiltersDoc() {
 
 export function setupFilterDefsEvents() {
   // ----- FILTERS DOC EVENTS -----
+  makeSortable(document.getElementById('filters-doc'), (fromStr, toStr, before) => {
+    if (!hasPerm('editFilters')) return;
+    const from = +fromStr, to = +toStr;
+    const defs = S.FILTER_DEFS_DRAFT || S.FILTER_DEFS;
+    if (!defs || from === to || isNaN(from) || isNaN(to)) return;
+    if (from < 0 || from >= defs.length || to < 0 || to >= defs.length) return;
+    const item = defs[from];
+    defs.splice(from, 1);
+    const toAdjusted = (from < to) ? to - 1 : to;
+    const insertAt = before ? toAdjusted : toAdjusted + 1;
+    defs.splice(insertAt, 0, item);
+    markFiltersDirty();
+    renderFiltersDoc();
+  });
   document.getElementById('filters-doc').addEventListener('input', e => {
     if (!hasPerm('editFilters')) return;
     const row = e.target.closest('[data-filter-idx]');

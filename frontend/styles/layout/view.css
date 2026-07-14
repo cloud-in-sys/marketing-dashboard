@@ -105,6 +105,23 @@ body.tab-custom .view-tab-edit { display: inline-flex; }
   color: var(--muted);
   cursor: not-allowed;
 }
+.tab-save-preset {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--primary);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s;
+}
+.tab-save-preset:hover {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+}
 .readonly-badge, .preset-edit-badge {
   display: none;
   background: var(--warning);

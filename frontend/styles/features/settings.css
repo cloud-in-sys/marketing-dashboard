@@ -280,6 +280,11 @@ body.no-edit-metrics #metrics-save-btn { display: none; }
   gap: 10px;
   align-items: end;
 }
+/* フィルタ行はドラッグハンドル用に先頭列を1つ足し、名称/データカラム/種類/削除は
+   ハンドル追加前と同じ列幅を維持する (先頭 auto をハンドルが占有)。 */
+.filter-row-head {
+  grid-template-columns: auto auto minmax(0, 1fr) 400px 110px 28px;
+}
 .field-col {
   display: flex;
   flex-direction: column;
@@ -1007,6 +1012,11 @@ body.no-refresh-snapshot .admin-refresh { display: none !important; }
 .snapshot-meta.updating { color: var(--primary); font-weight: 600; animation: pulse 1.5s ease-in-out infinite; }
 .snapshot-meta.update-success { color: var(--success, #10b981); font-weight: 600; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+/* 定期更新の優先アカウントが未連携のときの警告色 (連携中は既定の --muted のまま) */
+.snapshot-connector-off { color: var(--danger); font-weight: 600; }
+/* 連携ボタンエリア (未連携の人に見える) の連携者ノート */
+.snapshot-connector-note { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+.snapshot-connector-note:empty { display: none; }
 #users-save-btn.dirty,
 #metrics-save-btn.dirty,
 #filters-save-btn.dirty,

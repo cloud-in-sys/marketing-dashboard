@@ -93,19 +93,50 @@ function hashFast(s) {
   return Math.abs(h).toString(36);
 }
 
+// 「定期更新の優先アカウント」= source.createdBy の表示名 + その人が今も Google 連携中か。
+// sheets/bq ソースかつ createdBy がある場合のみ生成。連携判定は token doc の存在
+// (GET /api/google/status と同基準)。返すのは name と connected のみで、
+// トークン値 / refreshToken / uid は絶対に含めない。
+async function buildConnector(source) {
+  const method = source?.method || '';
+  const createdBy = source?.createdBy;
+  if ((method !== 'sheets' && method !== 'bq') || !createdBy) return null; // CSV / レガシー
+  const userRef = db.collection('users').doc(createdBy);
+  const [userSnap, tokenSnap] = await Promise.all([
+    userRef.get(),
+    userRef.collection('tokens').doc('google').get(),
+  ]);
+  const profile = userSnap.exists ? userSnap.data() : null;
+  const name = profile?.name || profile?.email || null;
+  if (!name) return null;
+  return { name, connected: tokenSnap.exists };
+}
+
 // Return just metadata (fast, for UI)
 app.get('/:sid/meta', async c => {
   const sid = c.req.param('sid');
   const user = c.get('user');
-  await requireSourceAccess(user, sid);
+  // requireSourceAccess は source data を返す (60s キャッシュ)。source doc を再取得しない。
+  const source = await requireSourceAccess(user, sid);
+  // connector は admin / manageSources 保有者にだけ返す (UI 非表示だけでは API 直叩きで
+  // 氏名・連携状態が漏れる)。閲覧者には null を返し、追加の Firestore read もしない。
+  // meta 本体 (exists/updatedAt/rows) は閲覧者の集計にも必要なので、connector の read が
+  // 失敗しても 500 にせず connector: null にフォールバックする。
+  const canViewConnector = user?.isAdmin || user?.perms?.manageSources;
+  let connector = null;
+  if (canViewConnector) {
+    try { connector = await buildConnector(source); }
+    catch (e) { connector = null; }
+  }
   const file = bucket().file(objectName(sid));
   const [exists] = await file.exists();
-  if (!exists) return c.json({ exists: false });
+  if (!exists) return c.json({ exists: false, connector });
   const [meta] = await file.getMetadata();
   return c.json({
     exists: true,
     updatedAt: meta.metadata?.updatedAt || meta.updated,
     rows: Number(meta.metadata?.rows || 0),
+    connector,
   });
 });
 

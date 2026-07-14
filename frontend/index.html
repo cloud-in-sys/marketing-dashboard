@@ -157,6 +157,7 @@
         <div class="view-preset-wrap">
           <label for="tab-preset">プリセット</label>
           <select id="tab-preset"></select>
+          <button type="button" id="tab-save-preset" class="tab-save-preset" title="現在の内容を新規プリセットとして保存">＋新規</button>
         </div>
         <span class="readonly-badge">編集不可</span>
         <span class="preset-edit-badge">プリセット編集モード</span>
@@ -329,6 +330,7 @@
         <div class="method-detail-panel hidden" id="detail-sheets">
           <div class="sheets-connect" id="sheets-connect">
             <button type="button" class="file-btn" id="sheets-auth-btn">Googleアカウントで連携</button>
+            <div class="snapshot-connector-note" id="sheets-connector-note"></div>
           </div>
           <div class="sheets-form hidden" id="sheets-form">
             <div class="sheets-status" id="sheets-status"></div>
@@ -344,6 +346,7 @@
             </div>
             <div class="snapshot-meta" id="sheets-snapshot-meta"></div>
             <div class="sheets-actions">
+              <button type="button" class="file-btn" id="sheets-save-btn">保存</button>
               <button type="button" class="file-btn admin-refresh" id="sheets-fetch-btn">今すぐ更新</button>
               <button type="button" class="link-btn" id="sheets-disconnect">連携を解除</button>
             </div>
@@ -353,6 +356,7 @@
         <div class="method-detail-panel hidden" id="detail-bq">
           <div class="sheets-connect" id="bq-connect">
             <button type="button" class="file-btn" id="bq-auth-btn">Googleアカウントで連携</button>
+            <div class="snapshot-connector-note" id="bq-connector-note"></div>
           </div>
           <div class="sheets-form hidden" id="bq-form">
             <div class="sheets-status" id="bq-status"></div>
@@ -368,6 +372,7 @@
             </div>
             <div class="snapshot-meta" id="bq-snapshot-meta"></div>
             <div class="sheets-actions">
+              <button type="button" class="file-btn" id="bq-save-btn">保存</button>
               <button type="button" class="file-btn admin-refresh" id="bq-fetch-btn">今すぐ更新</button>
               <button type="button" class="link-btn" id="bq-disconnect">連携を解除</button>
             </div>

@@ -42,6 +42,9 @@ function dimValue(row, key, dimMap) {
   if (def.type === 'week') {
     return computeWeekRange(raw, def.weekStart);
   }
+  if (def.type === 'week_md') {
+    return computeWeekRange(raw, def.weekStart, true);
+  }
   if (def.type === 'dow') {
     const dt = new Date(raw);
     return isNaN(dt) ? '' : DOW_LABELS[dt.getDay()];
@@ -64,9 +67,11 @@ function parseYMD(raw) {
 }
 function pad2(n) { return n < 10 ? '0' + n : String(n); }
 function fmtYMD(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+function fmtMD(d) { return `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
 
-// 週の開始曜日 (0=日..6=土、デフォルト 1=月) を起点に YYYY-MM-DD〜YYYY-MM-DD を返す。
-function computeWeekRange(raw, weekStart) {
+// 週の開始曜日 (0=日..6=土、デフォルト 1=月) を起点に週範囲を返す。
+// monthDayOnly=true なら年を省いた MM-DD〜MM-DD で返す。
+function computeWeekRange(raw, weekStart, monthDayOnly = false) {
   const ymd = parseYMD(raw);
   if (!ymd) return '';
   const ws = (weekStart != null && weekStart >= 0 && weekStart <= 6) ? Number(weekStart) : 1;
@@ -76,7 +81,8 @@ function computeWeekRange(raw, weekStart) {
   start.setDate(dt.getDate() - offset);
   const end = new Date(start);
   end.setDate(start.getDate() + 6);
-  return `${fmtYMD(start)}〜${fmtYMD(end)}`;
+  const fmt = monthDayOnly ? fmtMD : fmtYMD;
+  return `${fmt(start)}〜${fmt(end)}`;
 }
 
 function dimSort(key, a, b, dimMap) {

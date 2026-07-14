@@ -11,6 +11,7 @@ import { escapeHtml, hexToSoft } from './shared/utils/utils.js';
 import { showModal } from './shared/ui/modal.js';
 import { makeSortable } from './shared/ui/sortable.js';
 import { applyFilters, renderFilters, closeFloatingMs } from './filters/index.js';
+import { computeRangePreset } from './filters/dateFilter.js';
 import * as sheets from './features/sources/sheets.js';
 import { renderChart } from './features/dashboard/charts/chart.js';
 import { renderCards } from './features/dashboard/cards/cardsRender.js';
@@ -80,8 +81,9 @@ function renderChips() {
   const ordered = [...selectedDefs, ...unselected];
   document.getElementById('metric-chips').innerHTML = ordered.map(m => {
     const active = selectedSet.has(m.key) ? ' active' : '';
+    const derived = m.type === 'derived' ? ' derived' : '';
     const dragAttr = active ? ` data-drag-key="${m.key}" draggable="true"` : '';
-    return `<button type="button" class="chip${active}" data-metric="${m.key}"${dragAttr}>${m.label}</button>`;
+    return `<button type="button" class="chip${active}${derived}" data-metric="${m.key}"${dragAttr}>${m.label}</button>`;
   }).join('');
 }
 
@@ -542,7 +544,30 @@ document.getElementById('filters-toggle').addEventListener('click', () => {
 document.getElementById('filters').addEventListener('change', e => {
   const input = e.target.closest('input[type=date][data-filter-id]');
   if (!input) return;
-  S.FILTER_VALUES[input.dataset.filterId] = input.value;
+  const id = input.dataset.filterId;
+  if (input.dataset.range) {
+    // 期間フィルタ: {from, to} オブジェクトの該当キーだけ更新
+    const cur = (S.FILTER_VALUES[id] && typeof S.FILTER_VALUES[id] === 'object' && !(S.FILTER_VALUES[id] instanceof Set))
+      ? S.FILTER_VALUES[id] : { from: '', to: '' };
+    cur[input.dataset.range] = input.value;
+    S.FILTER_VALUES[id] = cur;
+  } else {
+    S.FILTER_VALUES[id] = input.value;
+  }
+  render();
+});
+
+// 期間フィルタのクイック選択ボタン (今週/先週/今月/先月)
+document.getElementById('filters').addEventListener('click', e => {
+  const btn = e.target.closest('[data-range-preset]');
+  if (!btn) return;
+  const id = btn.dataset.filterId;
+  const { from, to } = computeRangePreset(btn.dataset.rangePreset);
+  S.FILTER_VALUES[id] = { from, to };
+  const fromEl = document.querySelector(`input[data-filter-id="${id}"][data-range="from"]`);
+  const toEl = document.querySelector(`input[data-filter-id="${id}"][data-range="to"]`);
+  if (fromEl) fromEl.value = from;
+  if (toEl) toEl.value = to;
   render();
 });
 
@@ -611,6 +636,18 @@ document.getElementById('tab-preset').addEventListener('change', async e => {
   emit('renderThresholds');
   render();
   sel.dataset.prev = v;
+});
+
+// カスタムタブの現在内容を新規プリセットとして保存し、そのタブに紐付ける。
+document.getElementById('tab-save-preset').addEventListener('click', async () => {
+  const name = await savePresetPrompt();
+  if (!name) return;
+  const tab = S.CUSTOM_TABS.find(t => t.key === S.CURRENT_VIEW);
+  if (tab) {
+    tab.presetName = name;
+    saveCustomTabs();
+  }
+  renderTabPresetSelect();
 });
 
 // ===== SORTABLE WIRING =====

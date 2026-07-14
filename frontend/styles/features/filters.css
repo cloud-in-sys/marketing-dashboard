@@ -65,6 +65,48 @@ body.settings-mode .filters-bar { display: none; }
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
+/* 期間フィルタ (開始〜終了): date input 2 つ分の幅が要るのでグリッド 2 列を占有。
+   十分な幅が取れない時は折り返して縦積みにし、日付が潰れないようにする。 */
+.filters .filter-daterange { grid-column: span 2; }
+.date-range {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.date-range input[type=date] {
+  flex: 1 1 120px;
+  min-width: 120px;
+}
+.date-range-sep {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+.date-range-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.range-preset {
+  flex: 0 0 auto;
+  background: #ffffff;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.range-preset:hover {
+  background: var(--primary-soft);
+  color: var(--primary-600);
+  border-color: var(--primary);
+}
+
 .filters select[multiple] { padding: 4px; }
 .filters select[multiple] option { padding: 3px 6px; border-radius: 3px; }
 .filters select[multiple] option:checked {
@@ -289,6 +331,12 @@ body.settings-mode .filters-bar { display: none; }
   color: #ffffff;
   font-weight: 600;
   box-shadow: 0 2px 4px rgba(37, 99, 235, 0.25);
+}
+/* 派生メトリクスは基礎より淡い背景 (グラデーションなしのベタ塗り) で区別する。
+   文字色 (白) は基礎と同じ。 */
+.chip.active.derived {
+  background: color-mix(in srgb, var(--primary) 78%, #fff);
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.16);
 }
 
 /* ===== PIVOT / DIM PILLS / ADD MENU ===== */

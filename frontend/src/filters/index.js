@@ -41,6 +41,15 @@ export function applyFilters(rows) {
       const v = S.FILTER_VALUES[f.id];
       if (f.type === 'date_from') { if (v && normDate(r[f.field]) < normDate(v)) return false; }
       else if (f.type === 'date_to') { if (v && normDate(r[f.field]) > normDate(v)) return false; }
+      else if (f.type === 'date_range') {
+        // 値は {from, to} オブジェクト。どちらか一方だけの指定も許容。
+        const from = v && v.from, to = v && v.to;
+        if (from || to) {
+          const cell = normDate(r[f.field]);
+          if (from && cell < normDate(from)) return false;
+          if (to && cell > normDate(to)) return false;
+        }
+      }
       else if (f.type === 'multi') {
         // 値フィルタ
         if (v instanceof Set && v.size && !v.has(r[f.field])) return false;
@@ -107,6 +116,23 @@ export function renderFilters() {
         </div>
       </div>`;
     }
+    if (f.type === 'date_range') {
+      const rv = (S.FILTER_VALUES[f.id] && typeof S.FILTER_VALUES[f.id] === 'object' && !(S.FILTER_VALUES[f.id] instanceof Set))
+        ? S.FILTER_VALUES[f.id] : {};
+      return `<div class="filter-daterange"><label>${escapeHtml(f.label)}</label>
+        <div class="date-range">
+          <input type="date" data-filter-id="${f.id}" data-range="from" value="${escapeHtml(rv.from || '')}">
+          <span class="date-range-sep">〜</span>
+          <input type="date" data-filter-id="${f.id}" data-range="to" value="${escapeHtml(rv.to || '')}">
+        </div>
+        <div class="date-range-presets">
+          <button type="button" class="range-preset" data-range-preset="thisWeek" data-filter-id="${f.id}">今週</button>
+          <button type="button" class="range-preset" data-range-preset="lastWeek" data-filter-id="${f.id}">先週</button>
+          <button type="button" class="range-preset" data-range-preset="thisMonth" data-filter-id="${f.id}">今月</button>
+          <button type="button" class="range-preset" data-range-preset="lastMonth" data-filter-id="${f.id}">先月</button>
+        </div>
+      </div>`;
+    }
     const val = S.FILTER_VALUES[f.id] || '';
     return `<div><label>${escapeHtml(f.label)}</label><input type="date" data-filter-id="${f.id}" value="${escapeHtml(val)}"></div>`;
   }).join('');
@@ -115,6 +141,9 @@ export function renderFilters() {
       if (!(S.FILTER_VALUES[f.id] instanceof Set)) S.FILTER_VALUES[f.id] = new Set();
       if (!S.FILTER_CONDITIONS[f.id]) S.FILTER_CONDITIONS[f.id] = { op: 'none', value: '' };
       setupMSDynamic(f);
+    } else if (f.type === 'date_range') {
+      const cur = S.FILTER_VALUES[f.id];
+      if (!cur || typeof cur !== 'object' || cur instanceof Set) S.FILTER_VALUES[f.id] = { from: '', to: '' };
     } else {
       if (S.FILTER_VALUES[f.id] == null) S.FILTER_VALUES[f.id] = '';
     }
@@ -254,6 +283,9 @@ export function populateFilters() {
       else S.FILTER_VALUES[f.id].clear();
       if (S.FILTER_CONDITIONS?.[f.id]) S.FILTER_CONDITIONS[f.id] = { op: 'none', value: '' };
       renderMSDynamic(f);
+    } else if (f.type === 'date_range') {
+      S.FILTER_VALUES[f.id] = { from: '', to: '' };
+      document.querySelectorAll(`input[data-filter-id="${f.id}"][data-range]`).forEach(el => { el.value = ''; });
     } else {
       S.FILTER_VALUES[f.id] = '';
       const el = document.querySelector(`[data-filter-id="${f.id}"]`);

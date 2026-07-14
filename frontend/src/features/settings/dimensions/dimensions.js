@@ -24,6 +24,7 @@ export function renderDimsDoc() {
     {v: 'value',      l: 'そのまま値'},
     {v: 'date',       l: '日付'},
     {v: 'week',       l: '週 (YYYY-MM-DD〜YYYY-MM-DD)'},
+    {v: 'week_md',    l: '週 (MM-DD〜MM-DD)'},
     {v: 'month',      l: '月 (YYYY-MM)'},
     {v: 'year',       l: '年 (YYYY)'},
     {v: 'dow',        l: '曜日'},
@@ -46,7 +47,7 @@ export function renderDimsDoc() {
       ${defs.map((d, i) => {
         const isExpr = d.type === 'expression';
         const isImage = d.type === 'image';
-        const isWeek = d.type === 'week';
+        const isWeek = d.type === 'week' || d.type === 'week_md';
         const ws = (d.weekStart != null) ? Number(d.weekStart) : 1;
         return `
         <div class="metrics-doc-row dim-row" data-dim-idx="${i}" data-drag-key="${i}" draggable="true">
@@ -136,6 +137,7 @@ export function setupDimensionsEvents() {
         <code>そのまま値</code> — データカラムの値をそのまま使う<br>
         <code>日付</code> — 日付として扱う（YYYY-MM-DD)<br>
         <code>週</code> — 日付を週単位にまとめる。表示は <code>YYYY-MM-DD〜YYYY-MM-DD</code>。週の開始曜日 (日〜土) は各ディメンションで個別に指定可能<br>
+        <code>週 (MM-DD〜MM-DD)</code> — 上記の年を省いた表示。※年をまたぐと同じ月日の週が合算されるため、単一年内での利用を想定<br>
         <code>月 (YYYY-MM)</code> — 日付の先頭7文字を抽出<br>
         <code>年 (YYYY)</code> — 日付の先頭4文字を抽出<br>
         <code>曜日</code> — 日付から曜日(日/月/火/...)に変換<br>
@@ -206,10 +208,10 @@ export function setupDimensionsEvents() {
     if (!def) return;
     if (e.target.matches('[data-dim-type]')) {
       def.type = e.target.value;
-      if (def.type === 'week') {
+      if (def.type === 'week' || def.type === 'week_md') {
         if (def.weekStart == null) def.weekStart = 1;
       } else {
-        // type が week 以外に変わったら weekStart は不要 — 残すと再度 week にした時に古い値が再利用される。
+        // type が week 系以外に変わったら weekStart は不要 — 残すと再度 week にした時に古い値が再利用される。
         delete def.weekStart;
       }
       markDimsDirty();

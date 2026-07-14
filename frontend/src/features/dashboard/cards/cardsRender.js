@@ -3,12 +3,12 @@ import { escapeHtml } from '../../../shared/utils/utils.js';
 import { aggregate, metricUsesHierarchy } from '../../../aggregate/aggregate.js';
 import { formatMetricValue } from '../charts/chart.js';
 import { getBackendCardAgg } from '../../../aggregate/aggregateCache.js';
+import { resolveDateFilter } from '../../../filters/dateFilter.js';
 
 // ===== KPIカード =====
 // 期間フィルタ用のヘルパー: 日付フィルタの field を特定してその月一覧を抽出
 function getCardDateField() {
-  const f = (S.FILTER_DEFS || []).find(x => x.type === 'date_from' || x.type === 'date_to');
-  return f?.field || 'action_date';
+  return resolveDateFilter().field;
 }
 // 日付値の YYYY-MM 部分を取得 (時刻や '/' 区切りも吸収)
 function rowMonth(v) {
@@ -26,12 +26,9 @@ function getMonthsAvailable(rows, field) {
 // 期間フィルタに開始日 or 終了日のどちらかが未入力なら、
 // データから月を拾わずに「昨日の月」を基準にする。
 function isFilterRangeOpen() {
-  const defs = S.FILTER_DEFS || [];
-  const vals = S.FILTER_VALUES || {};
-  const fromDef = defs.find(d => d.type === 'date_from');
-  const toDef = defs.find(d => d.type === 'date_to');
-  if (!fromDef || !toDef) return true;
-  return !vals[fromDef.id] || !vals[toDef.id];
+  // from / to のどちらかが空なら「開いた期間」= データ由来ではなく昨日基準で月を決める。
+  const { from, to } = resolveDateFilter();
+  return !from || !to;
 }
 function yesterdayMonth(offset = 0) {
   const d = new Date();

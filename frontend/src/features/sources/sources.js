@@ -289,15 +289,63 @@ function formatRelativeTime(iso) {
   return `${d}日前`;
 }
 
+// 「定期更新の優先アカウント」= backend meta の connector (createdBy の表示名 + 連携状態)。
+// connector が無い (CSV / 権限なし / レガシー) 場合は空文字を返し、既存文言のみになる。
+// connector.name は user 設定値なので escapeHtml で XSS 対策。
+function renderConnectorMeta(connector) {
+  if (!connector?.name) return '';
+  const name = escapeHtml(connector.name);
+  const label = `定期更新の優先アカウント: ${name}さん`;
+  return connector.connected
+    ? ` ・ ${label}`
+    : ` ・ <span class="snapshot-connector-off">${label}（未連携）</span>`;
+}
+
+// 未連携の閲覧者/管理者 (連携ボタンだけ見える人) にも「このソースは誰の連携で
+// 自動更新されるか」を伝えるための連携ボタンエリア用ノート。form 内の snapshot-meta は
+// 連携済みの人にしか見えない (未連携だと form が hidden) ため、こちらで補う。
+function renderConnectorNote(method, connector) {
+  const el = document.getElementById(method === 'sheets' ? 'sheets-connector-note' : 'bq-connector-note');
+  if (!el) return;
+  if (!connector?.name) { el.innerHTML = ''; return; }
+  const name = escapeHtml(connector.name);
+  el.innerHTML = connector.connected
+    ? `このソースは <strong>${name}さん</strong> の連携で自動更新されます。閲覧・自動更新にあなたの連携は不要です。`
+    : `<span class="snapshot-connector-off">定期更新の優先アカウント <strong>${name}さん</strong> が未連携です。</span>`;
+}
+
+// 現在表示中ソースの connector (定期更新の優先アカウント + 連携状態)。
+// 連携ボタン押下時のガードで参照する。source 切替時に renderSnapshotMeta で更新される。
+let _currentConnector = null;
+
+// 既に連携者がいるソースで、未連携の人が連携ボタンを押した時のガード。
+// A が連携済みなら「あなたの連携は不要」と確認する。誰も連携していなければそのまま連携。
+async function confirmConnectWhenAlreadyConnected() {
+  const c = _currentConnector;
+  if (!c?.connected) return true;
+  const name = c.name || '別のユーザー';
+  return await showModal({
+    title: '連携は不要かもしれません',
+    body: `このソースは既に ${name}さん の連携で自動更新されています。閲覧・自動更新にあなたの連携は不要です。\n（自分で「今すぐ更新」を実行したい場合のみ連携してください）\n\nそれでも連携しますか？`,
+    okText: '連携する',
+    cancelText: 'やめる',
+  });
+}
+
 function renderSnapshotMeta(method, meta) {
+  _currentConnector = meta?.connector || null;
+  // 連携済みの人には form 内メタ行、未連携の人には連携ボタンエリアのノートに connector を出す。
+  // どちらも同じ meta.connector から描画 (表示中の方だけ見える)。
+  renderConnectorNote(method, meta?.connector);
   const el = document.getElementById(method === 'sheets' ? 'sheets-snapshot-meta' : 'bq-snapshot-meta');
   if (!el) return;
+  const connectorHtml = renderConnectorMeta(meta?.connector);
   if (!meta?.exists) {
-    el.textContent = 'まだスナップショットがありません。「今すぐ更新」を押して取得してください。';
+    el.innerHTML = 'まだスナップショットがありません。「今すぐ更新」を押して取得してください。' + connectorHtml;
     return;
   }
   const when = formatRelativeTime(meta.updatedAt);
-  el.textContent = `最終更新: ${when}  (${(meta.rows || 0).toLocaleString()}行)`;
+  el.innerHTML = `最終更新: ${escapeHtml(when)}  (${(meta.rows || 0).toLocaleString()}行)` + connectorHtml;
 }
 
 // source 切替ごとに増えるバージョン。await から戻った時に「呼び出し時の sid と
@@ -617,31 +665,45 @@ function renderSourceView() {
   // Sheets UI state
   const sheetsConnect = document.getElementById('sheets-connect');
   const sheetsForm = document.getElementById('sheets-form');
-  if (sheets.isAuthenticated()) {
-    sheetsConnect.classList.add('hidden');
-    sheetsForm.classList.remove('hidden');
-    document.getElementById('sheets-status').innerHTML = '<span class="api-status-ok" style="font-size:11px">✓ Googleアカウント連携済み</span>';
+  // 連携済み/未連携どちらでも form (URL/シート名の入力欄 + snapshot-meta) を表示して設定を見せる。
+  // 未連携の人は「今すぐ更新」に本人の OAuth が要るので、連携ボタンも併せて残す。
+  {
     const savedInput = loadSheetsInput();
     document.getElementById('sheets-url-input').value = savedInput.url || '';
     document.getElementById('sheets-tab-input').value = savedInput.tab || '';
+  }
+  sheetsForm.classList.remove('hidden');
+  // 「保存」(設定だけ更新、OAuth 不要) は常に表示。「今すぐ更新」(本人 OAuth 必須) と
+  // 「連携を解除」(ソース全体の連携を外す破壊的操作) は連携済みの人にだけ表示。
+  const sheetsAuthed = sheets.isAuthenticated();
+  document.getElementById('sheets-fetch-btn')?.classList.toggle('hidden', !sheetsAuthed);
+  document.getElementById('sheets-disconnect')?.classList.toggle('hidden', !sheetsAuthed);
+  if (sheetsAuthed) {
+    sheetsConnect.classList.add('hidden');
+    document.getElementById('sheets-status').innerHTML = '<span class="api-status-ok" style="font-size:11px">✓ Googleアカウント連携済み</span>';
   } else {
     sheetsConnect.classList.remove('hidden');
-    sheetsForm.classList.add('hidden');
+    document.getElementById('sheets-status').innerHTML = '';
   }
 
   // BQ UI state
   const bqConnect = document.getElementById('bq-connect');
   const bqForm = document.getElementById('bq-form');
-  if (bq.isAuthenticated()) {
-    bqConnect.classList.add('hidden');
-    bqForm.classList.remove('hidden');
-    document.getElementById('bq-status').innerHTML = '<span class="api-status-ok" style="font-size:11px">✓ Googleアカウント連携済み</span>';
+  {
     const savedBq = loadBqInput();
     document.getElementById('bq-project-input').value = savedBq.project || '';
     document.getElementById('bq-query-input').value = savedBq.query || '';
+  }
+  bqForm.classList.remove('hidden');
+  const bqAuthed = bq.isAuthenticated();
+  document.getElementById('bq-fetch-btn')?.classList.toggle('hidden', !bqAuthed);
+  document.getElementById('bq-disconnect')?.classList.toggle('hidden', !bqAuthed);
+  if (bqAuthed) {
+    bqConnect.classList.add('hidden');
+    document.getElementById('bq-status').innerHTML = '<span class="api-status-ok" style="font-size:11px">✓ Googleアカウント連携済み</span>';
   } else {
     bqConnect.classList.remove('hidden');
-    bqForm.classList.add('hidden');
+    document.getElementById('bq-status').innerHTML = '';
   }
 }
 
@@ -740,6 +802,7 @@ document.querySelectorAll('.source-method-card').forEach(card => {
 
 // ----- SHEETS: AUTH -----
 document.getElementById('sheets-auth-btn').addEventListener('click', async () => {
+  if (!(await confirmConnectWhenAlreadyConnected())) return;
   try {
     await sheets.authenticate();
     renderSourceView();
@@ -763,6 +826,25 @@ document.getElementById('sheets-fetch-btn').addEventListener('click', async () =
   await refreshSnapshotNow('sheets');
 });
 
+// ----- SHEETS: 保存 (設定だけ更新。OAuth 不要 = 連携者でない管理者でも設定を保存できる。
+// 次回の定期更新から反映。スナップショットの再取得はしない) -----
+document.getElementById('sheets-save-btn').addEventListener('click', async () => {
+  const url = document.getElementById('sheets-url-input').value.trim();
+  const tab = document.getElementById('sheets-tab-input').value.trim();
+  if (!url) { await showModal({title: '保存できません', body: 'スプレッドシートのURLまたはIDを入力してください', okText: 'OK', cancelText: ''}); return; }
+  if (!tab) { await showModal({title: '保存できません', body: 'タブ名を入力してください', okText: 'OK', cancelText: ''}); return; }
+  try {
+    await api.updateSource(S.CURRENT_SOURCE, { sheetsInput: { url, tab }, method: 'sheets' });
+    S.SHEETS_INPUT = { url, tab };
+    const ds = S.DATA_SOURCES.find(d => d.id === S.CURRENT_SOURCE);
+    if (ds) { ds.sheetsInput = { url, tab }; ds.method = 'sheets'; }
+    _clearSheetsDirty();
+    await showModal({title: '保存しました', body: '設定を保存しました。次回の定期更新から反映されます（今すぐ反映するには連携者が「今すぐ更新」を実行してください）。', okText: 'OK', cancelText: ''});
+  } catch (e) {
+    await showModal({title: '保存に失敗しました', body: e?.message || '保存に失敗しました', okText: 'OK', cancelText: ''});
+  }
+});
+
 // ----- SHEETS: このソースの連携を解除 (method + inputs クリア) -----
 document.getElementById('sheets-disconnect').addEventListener('click', async () => {
   const ok = await showModal({
@@ -777,6 +859,7 @@ document.getElementById('sheets-disconnect').addEventListener('click', async () 
 
 // ----- BQ: AUTH -----
 document.getElementById('bq-auth-btn').addEventListener('click', async () => {
+  if (!(await confirmConnectWhenAlreadyConnected())) return;
   try {
     await bq.authenticate();
     renderSourceView();
@@ -796,6 +879,24 @@ document.getElementById('bq-fetch-btn').addEventListener('click', async () => {
   await saveSourceMethod('bq');
   _clearBqDirty();
   await refreshSnapshotNow('bq');
+});
+
+// ----- BQ: 保存 (設定だけ更新。OAuth 不要。次回の定期更新から反映) -----
+document.getElementById('bq-save-btn').addEventListener('click', async () => {
+  const project = document.getElementById('bq-project-input').value.trim();
+  const query = document.getElementById('bq-query-input').value.trim();
+  if (!project) { await showModal({title: '保存できません', body: 'プロジェクトIDを入力してください', okText: 'OK', cancelText: ''}); return; }
+  if (!query) { await showModal({title: '保存できません', body: 'SQLクエリを入力してください', okText: 'OK', cancelText: ''}); return; }
+  try {
+    await api.updateSource(S.CURRENT_SOURCE, { bqInput: { project, query }, method: 'bq' });
+    S.BQ_INPUT = { project, query };
+    const ds = S.DATA_SOURCES.find(d => d.id === S.CURRENT_SOURCE);
+    if (ds) { ds.bqInput = { project, query }; ds.method = 'bq'; }
+    _clearBqDirty();
+    await showModal({title: '保存しました', body: '設定を保存しました。次回の定期更新から反映されます（今すぐ反映するには連携者が「今すぐ更新」を実行してください）。', okText: 'OK', cancelText: ''});
+  } catch (e) {
+    await showModal({title: '保存に失敗しました', body: e?.message || '保存に失敗しました', okText: 'OK', cancelText: ''});
+  }
 });
 
 // ----- BQ: このソースの連携を解除 (method + inputs クリア) -----

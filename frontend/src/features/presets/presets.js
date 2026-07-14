@@ -209,7 +209,7 @@ export function applyPresetFilters(p) {
 }
 
 export async function savePresetPrompt() {
-  const name = await showModal({title: '\u65b0\u3057\u3044\u30d7\u30ea\u30bb\u30c3\u30c8\u3092\u4fdd\u5b58', body: '\u30d7\u30ea\u30bb\u30c3\u30c8\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', input: true, placeholder: '\u4f8b: \u6708\u6b21\u30ec\u30d3\u30e5\u30fc\u7528', okText: '\u4fdd\u5b58'});
+  const name = await showModal({title: '\u65b0\u3057\u3044\u30d7\u30ea\u30bb\u30c3\u30c8\u3092\u4fdd\u5b58', body: '\u30d7\u30ea\u30bb\u30c3\u30c8\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', input: true, placeholder: '\u4f8b: \u6708\u6b21\u30ec\u30d3\u30e5\u30fc\u7528', okText: '\u4fdd\u5b58', noEnter: true});
   if (!name) return;
   const list = getPresets();
   // \u6a19\u6e96/\u30de\u30a4\u554f\u308f\u305a\u540c\u540d\u304c\u3042\u308c\u3070\u4fdd\u5b58\u4e0d\u53ef (backend \u5074\u306e 409 \u3068\u6319\u52d5\u3092\u63c3\u3048\u308b)
@@ -244,6 +244,7 @@ export async function savePresetPrompt() {
     newItem.closest('.preset-item')?.classList.add('preset-flash');
     setTimeout(() => newItem.closest('.preset-item')?.classList.remove('preset-flash'), 1400);
   }
+  return name; // 呼び出し側 (カスタムタブからの保存) が新規プリセット名を利用できるよう返す
 }
 
 export async function duplicatePreset(i) {
@@ -262,6 +263,7 @@ export async function duplicatePreset(i) {
     placeholder: name,
     defaultValue: name,
     okText: '複製',
+    noEnter: true,
   });
   if (!input) return;
   // 標準/マイ問わず同名があれば複製不可 (backend 側の 409 と挙動を揃える)
@@ -317,6 +319,7 @@ export async function renamePreset(i) {
     input: true,
     defaultValue: target.name,
     okText: '変更',
+    noEnter: true,
   });
   if (!input) return;
   const newName = input.trim();
