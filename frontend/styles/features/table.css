@@ -471,30 +471,33 @@ tbody tr:hover td.col-frozen { background: var(--hover-bg, #c7d2fe) !important; 
   background: var(--depth-4-bg, #ffffff);
 }
 /* 深さ N の親行では、N より浅い (= dim-idx < N) ディメンション列を色付けせず透明に。
-   Excel ピボット風: 「第N ディメンション」階層の色は、その列以降にだけ適用される。 */
-.pivot-depth-1.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
-.pivot-depth-2.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-2.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
-.pivot-depth-3.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-3.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-3.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
-.pivot-depth-4.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-4.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-4.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-4.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
+   Excel ピボット風: 「第N ディメンション」階層の色は、その列以降にだけ適用される。
+   :not(.col-frozen) で固定列は除外 — 固定列を透明にすると横スクロール時に裏のメトリクスが
+   透けるため、固定列は下の col-frozen 塗りつぶしルールに任せる。 */
+.pivot-depth-1.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-depth-2.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-2.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-depth-3.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-3.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-3.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-depth-4.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-4.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-4.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-4.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
 
 /* データ行も親行と同じパターンで、自分の階層より前の dim 列は色を抜く。
-   .pivot-leaf-row.pivot-depth-N の N より小さい data-dim-idx の cell を transparent に。 */
-.pivot-leaf-row.pivot-depth-1 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
-.pivot-leaf-row.pivot-depth-2 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row.pivot-depth-2 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
-.pivot-leaf-row.pivot-depth-3 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row.pivot-depth-3 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row.pivot-depth-3 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
-.pivot-leaf-row.pivot-depth-4 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row.pivot-depth-4 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row.pivot-depth-4 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-leaf-row.pivot-depth-4 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: transparent; }
+   .pivot-leaf-row.pivot-depth-N の N より小さい data-dim-idx の cell を transparent に。
+   固定列は :not(.col-frozen) で除外 (上と同じ理由)。 */
+.pivot-leaf-row.pivot-depth-1 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-leaf-row.pivot-depth-2 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-2 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-leaf-row.pivot-depth-3 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-3 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-3 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-leaf-row.pivot-depth-4 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-4 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-4 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-4 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
 
 /* 固定列の場合、stairstep の transparent だと横スクロール時にメトリクス側のセルが透けてしまう。
    各 dim 列の depth-N-bg で塗りつぶして透過を防ぐ (非固定列は従来どおり transparent)。
