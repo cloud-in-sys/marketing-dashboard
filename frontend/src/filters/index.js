@@ -145,7 +145,9 @@ export function renderFilters() {
       const cur = S.FILTER_VALUES[f.id];
       if (!cur || typeof cur !== 'object' || cur instanceof Set) S.FILTER_VALUES[f.id] = { from: '', to: '' };
     } else {
-      if (S.FILTER_VALUES[f.id] == null) S.FILTER_VALUES[f.id] = '';
+      // date_from / date_to は文字列前提。型変更で残った Set (multi) や
+      // オブジェクト ({from,to} = date_range) を必ず空文字へ矯正する。
+      if (typeof S.FILTER_VALUES[f.id] !== 'string') S.FILTER_VALUES[f.id] = '';
     }
   });
 }

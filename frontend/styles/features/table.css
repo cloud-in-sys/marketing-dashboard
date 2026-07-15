@@ -452,24 +452,22 @@ tbody tr:hover td.col-frozen { background: var(--hover-bg, #c7d2fe) !important; 
 .pivot-depth-4.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
   background: var(--depth-4-bg, #ffffff);
 }
-/* depth 5+ は --depth-4-bg にフォールバック (テーブル設定は depth-0..4 までしか UI に無い) */
-.pivot-depth-5.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-6.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-7.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-8.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-9.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-10.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-11.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-12.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-13.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-14.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-15.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-16.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-17.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-18.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-.pivot-depth-19.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
-  background: var(--depth-4-bg, #ffffff);
-}
+/* 第6〜20ディメンション: それぞれ自分の --depth-N-bg を使う (未設定なら第5の色→白へフォールバック) */
+.pivot-depth-5.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-5-bg, var(--depth-4-bg, #ffffff)); }
+.pivot-depth-6.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-6-bg, var(--depth-4-bg, #ffffff)); }
+.pivot-depth-7.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-7-bg, var(--depth-4-bg, #ffffff)); }
+.pivot-depth-8.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-8-bg, var(--depth-4-bg, #ffffff)); }
+.pivot-depth-9.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-9-bg, var(--depth-4-bg, #ffffff)); }
+.pivot-depth-10.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-10-bg, var(--depth-4-bg, #ffffff)); }
+.pivot-depth-11.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-11-bg, var(--depth-4-bg, #ffffff)); }
+.pivot-depth-12.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-12-bg, var(--depth-4-bg, #ffffff)); }
+.pivot-depth-13.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-13-bg, var(--depth-4-bg, #ffffff)); }
+.pivot-depth-14.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-14-bg, var(--depth-4-bg, #ffffff)); }
+.pivot-depth-15.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-15-bg, var(--depth-4-bg, #ffffff)); }
+.pivot-depth-16.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-16-bg, var(--depth-4-bg, #ffffff)); }
+.pivot-depth-17.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-17-bg, var(--depth-4-bg, #ffffff)); }
+.pivot-depth-18.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-18-bg, var(--depth-4-bg, #ffffff)); }
+.pivot-depth-19.pivot-parent-row td:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-19-bg, var(--depth-4-bg, #ffffff)); }
 /* 深さ N の親行では、N より浅い (= dim-idx < N) ディメンション列を色付けせず透明に。
    Excel ピボット風: 「第N ディメンション」階層の色は、その列以降にだけ適用される。
    :not(.col-frozen) で固定列は除外 — 固定列を透明にすると横スクロール時に裏のメトリクスが
@@ -523,23 +521,22 @@ td.col-frozen[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow)
    固定列が透けないことだけは保証する。
    attribute selector を idx 5〜19 で個別に書く代わりに、より高い特異性が必要な場合の
    フォールバックとしてまとめて当てる。 */
-td.col-frozen[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-td.col-frozen[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-td.col-frozen[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-td.col-frozen[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-td.col-frozen[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-td.col-frozen[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-td.col-frozen[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-td.col-frozen[data-dim-idx="12"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-td.col-frozen[data-dim-idx="13"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-td.col-frozen[data-dim-idx="14"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-td.col-frozen[data-dim-idx="15"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-td.col-frozen[data-dim-idx="16"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-td.col-frozen[data-dim-idx="17"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-td.col-frozen[data-dim-idx="18"]:not(.cell-blue):not(.cell-red):not(.cell-yellow),
-td.col-frozen[data-dim-idx="19"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
-  background: var(--depth-4-bg, #ffffff);
-}
+/* 第6〜20ディメンションの固定列も自分の --depth-N-bg を使う (非固定列と色を揃える) */
+td.col-frozen[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-5-bg, var(--depth-4-bg, #ffffff)); }
+td.col-frozen[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-6-bg, var(--depth-4-bg, #ffffff)); }
+td.col-frozen[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-7-bg, var(--depth-4-bg, #ffffff)); }
+td.col-frozen[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-8-bg, var(--depth-4-bg, #ffffff)); }
+td.col-frozen[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-9-bg, var(--depth-4-bg, #ffffff)); }
+td.col-frozen[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-10-bg, var(--depth-4-bg, #ffffff)); }
+td.col-frozen[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-11-bg, var(--depth-4-bg, #ffffff)); }
+td.col-frozen[data-dim-idx="12"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-12-bg, var(--depth-4-bg, #ffffff)); }
+td.col-frozen[data-dim-idx="13"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-13-bg, var(--depth-4-bg, #ffffff)); }
+td.col-frozen[data-dim-idx="14"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-14-bg, var(--depth-4-bg, #ffffff)); }
+td.col-frozen[data-dim-idx="15"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-15-bg, var(--depth-4-bg, #ffffff)); }
+td.col-frozen[data-dim-idx="16"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-16-bg, var(--depth-4-bg, #ffffff)); }
+td.col-frozen[data-dim-idx="17"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-17-bg, var(--depth-4-bg, #ffffff)); }
+td.col-frozen[data-dim-idx="18"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-18-bg, var(--depth-4-bg, #ffffff)); }
+td.col-frozen[data-dim-idx="19"]:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-19-bg, var(--depth-4-bg, #ffffff)); }
 /* 究極のフォールバック: data-dim-idx 属性を持つ固定列が透明背景になるのを最終的に防ぐ。
    非固定列は別ルールで transparent が当たり続けるので影響なし。 */
 tbody td.col-frozen[data-dim-idx] {
@@ -690,13 +687,11 @@ thead .total-row td.col-frozen { z-index: 4; }
   transform: translateY(-50%);
   border-radius: 4px;
   pointer-events: none;
-  background: linear-gradient(
-    to top right,
-    transparent calc(50% - 1px),
-    #ef4444 calc(50% - 1px),
-    #ef4444 calc(50% + 1px),
-    transparent calc(50% + 1px)
-  );
+  /* 斜線は SVG で描く。linear-gradient のハードストップはアンチエイリアスされず
+     階段状のギザギザ (画質が悪く見える) になるため。SVG の line は AA が効く。 */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='18'%3E%3Cline x1='1.5' y1='16.5' x2='20.5' y2='1.5' stroke='%23ef4444' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
 }
 .table-settings-default-tag {
   font-size: 10px;
@@ -835,3 +830,456 @@ thead .total-row td.col-frozen { z-index: 4; }
   gap: 10px;
   flex-wrap: wrap;
 }
+
+/* ===== 転置表示 (テーブル設定 > 全体 > 行と列を入れ替える) =====
+   メトリクス = 行 / ディメンション値 = 列。
+   tbody の zebra 規則 (:nth-child + :not 多用) が高詳細度なため、
+   転置固有の指定は #data-table を付けて確実に勝たせている。 */
+.transpose-notice {
+  margin: 6px 12px 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  font-size: 12px;
+}
+/* 左上の見出し (ディメンション名) */
+thead th.tpose-corner { text-align: var(--header-text-align, left); }
+/* 列ヘッダー */
+thead th.tpose-col { white-space: nowrap; }
+thead th.tpose-parent-col { font-weight: 800; }
+/* 行頭のメトリクス名は固定ヘッダー列のように見せる (zebra を打ち消す)。
+   メトリクスごとのヘッダースタイルは inline で当たるのでそちらが優先される。 */
+#data-table tbody td.tpose-metric-name { background: #ffffff; }
+/* 総計列: 行版の総計行と同じ --total-* 変数を使い、設定の色/装飾がそのまま効く */
+#data-table thead th.tpose-total-col {
+  background: var(--total-bg, linear-gradient(180deg, #eef2ff 0%, #e0e7ff 100%));
+  color: var(--total-color, var(--text));
+}
+#data-table tbody td.tpose-total-cell {
+  background: var(--total-bg, linear-gradient(180deg, #eef2ff 0%, #e0e7ff 100%));
+  color: var(--total-color, var(--text));
+  font-weight: var(--total-font-weight, 700);
+  font-style: var(--total-font-style, normal);
+  text-decoration: var(--total-text-decoration, none);
+  font-size: var(--total-font-size, 0.95em);
+  /* 通常表示の総計行と意味を揃える (横位置/縦位置も設定を反映) */
+  text-align: var(--total-text-align, right);
+  vertical-align: var(--total-vertical-align, middle);
+  border-right: 2px solid var(--primary);
+}
+
+/* 列の階層に応じた背景。行版の .pivot-depth-N.pivot-parent-row td と同じ変数・既定値を使う。
+   「階層別のスタイルを列ごとより優先」ON で inline が抑制された時にこの色が見える
+   (行版と同じ考え方)。zebra 規則に勝つため #data-table で詳細度を上げている。 */
+#data-table tbody td.tpose-leaf-cell:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--leaf-bg, #ffffff);
+}
+#data-table tbody td.tpose-depth-0:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-0-bg, linear-gradient(180deg, #eef2ff 0%, #e8ecf8 100%));
+}
+#data-table tbody td.tpose-depth-1:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-1-bg, linear-gradient(180deg, #f1f5f9 0%, #edf0f5 100%));
+}
+#data-table tbody td.tpose-depth-2:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-2-bg, #f8fafc);
+}
+#data-table tbody td.tpose-depth-3:not(.cell-blue):not(.cell-red):not(.cell-yellow) {
+  background: var(--depth-3-bg, #fafbfc);
+}
+/* 転置も行版と同じ変数を使う。第5〜20はそれぞれ自分の --depth-N-bg */
+#data-table tbody td.tpose-depth-4:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-4-bg, var(--depth-4-bg, #ffffff)); }
+#data-table tbody td.tpose-depth-5:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-5-bg, var(--depth-4-bg, #ffffff)); }
+#data-table tbody td.tpose-depth-6:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-6-bg, var(--depth-4-bg, #ffffff)); }
+#data-table tbody td.tpose-depth-7:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-7-bg, var(--depth-4-bg, #ffffff)); }
+#data-table tbody td.tpose-depth-8:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-8-bg, var(--depth-4-bg, #ffffff)); }
+#data-table tbody td.tpose-depth-9:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-9-bg, var(--depth-4-bg, #ffffff)); }
+#data-table tbody td.tpose-depth-10:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-10-bg, var(--depth-4-bg, #ffffff)); }
+#data-table tbody td.tpose-depth-11:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-11-bg, var(--depth-4-bg, #ffffff)); }
+#data-table tbody td.tpose-depth-12:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-12-bg, var(--depth-4-bg, #ffffff)); }
+#data-table tbody td.tpose-depth-13:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-13-bg, var(--depth-4-bg, #ffffff)); }
+#data-table tbody td.tpose-depth-14:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-14-bg, var(--depth-4-bg, #ffffff)); }
+#data-table tbody td.tpose-depth-15:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-15-bg, var(--depth-4-bg, #ffffff)); }
+#data-table tbody td.tpose-depth-16:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-16-bg, var(--depth-4-bg, #ffffff)); }
+#data-table tbody td.tpose-depth-17:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-17-bg, var(--depth-4-bg, #ffffff)); }
+#data-table tbody td.tpose-depth-18:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-18-bg, var(--depth-4-bg, #ffffff)); }
+#data-table tbody td.tpose-depth-19:not(.cell-blue):not(.cell-red):not(.cell-yellow) { background: var(--depth-19-bg, var(--depth-4-bg, #ffffff)); }
+/* 転置ヘッダーの画像はヘッダー高さを壊さないよう上限を設ける */
+thead th.tpose-col .dim-image { max-height: 40px; }
+thead th.tpose-col .dim-link-label { max-width: 220px; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: bottom; }
+/* 親自身の集計列「計」の見出し。グループの最終列に来るので控えめに */
+thead th.tpose-subtotal-col { font-weight: 600; opacity: 0.85; }
+/* 親 (グループ) 見出しは配下の列をまたぐ colspan セル。
+   thead th の既定が右寄せのままだとラベルとトグルがグループの右端に離れて
+   どの列を束ねているのか分からなくなるため、常に左寄せにして先頭へ出す。 */
+thead th.tpose-parent-col { text-align: left; }
+/* 通常表示の「計」行 (グループの最終行)。親行と同じ階層色を継ぐが、ラベルは控えめに */
+tbody td.pivot-subtotal-cell { font-weight: 600; opacity: 0.9; }
+
+/* 第6〜20ディメンションの階段表示: depth N の行では自分より浅い dim セルを透過。
+   固定列は横スクロールで透けないよう除外し、自身の --depth-N-bg を保つ。 */
+.pivot-depth-5.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-5.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-5.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-5.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-5.pivot-parent-row td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-depth-6.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-6.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-6.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-6.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-6.pivot-parent-row td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-6.pivot-parent-row td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-depth-7.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-7.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-7.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-7.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-7.pivot-parent-row td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-7.pivot-parent-row td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-7.pivot-parent-row td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-depth-8.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-8.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-8.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-8.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-8.pivot-parent-row td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-8.pivot-parent-row td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-8.pivot-parent-row td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-8.pivot-parent-row td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-depth-9.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-9.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-9.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-9.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-9.pivot-parent-row td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-9.pivot-parent-row td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-9.pivot-parent-row td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-9.pivot-parent-row td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-9.pivot-parent-row td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-depth-10.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-10.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-10.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-10.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-10.pivot-parent-row td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-10.pivot-parent-row td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-10.pivot-parent-row td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-10.pivot-parent-row td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-10.pivot-parent-row td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-10.pivot-parent-row td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-depth-11.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-11.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-11.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-11.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-11.pivot-parent-row td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-11.pivot-parent-row td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-11.pivot-parent-row td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-11.pivot-parent-row td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-11.pivot-parent-row td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-11.pivot-parent-row td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-11.pivot-parent-row td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-depth-12.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-12.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-12.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-12.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-12.pivot-parent-row td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-12.pivot-parent-row td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-12.pivot-parent-row td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-12.pivot-parent-row td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-12.pivot-parent-row td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-12.pivot-parent-row td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-12.pivot-parent-row td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-12.pivot-parent-row td[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-depth-13.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-13.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-13.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-13.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-13.pivot-parent-row td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-13.pivot-parent-row td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-13.pivot-parent-row td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-13.pivot-parent-row td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-13.pivot-parent-row td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-13.pivot-parent-row td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-13.pivot-parent-row td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-13.pivot-parent-row td[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-13.pivot-parent-row td[data-dim-idx="12"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-depth-14.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-14.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-14.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-14.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-14.pivot-parent-row td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-14.pivot-parent-row td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-14.pivot-parent-row td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-14.pivot-parent-row td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-14.pivot-parent-row td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-14.pivot-parent-row td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-14.pivot-parent-row td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-14.pivot-parent-row td[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-14.pivot-parent-row td[data-dim-idx="12"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-14.pivot-parent-row td[data-dim-idx="13"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-depth-15.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-15.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-15.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-15.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-15.pivot-parent-row td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-15.pivot-parent-row td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-15.pivot-parent-row td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-15.pivot-parent-row td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-15.pivot-parent-row td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-15.pivot-parent-row td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-15.pivot-parent-row td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-15.pivot-parent-row td[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-15.pivot-parent-row td[data-dim-idx="12"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-15.pivot-parent-row td[data-dim-idx="13"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-15.pivot-parent-row td[data-dim-idx="14"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-depth-16.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-16.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-16.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-16.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-16.pivot-parent-row td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-16.pivot-parent-row td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-16.pivot-parent-row td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-16.pivot-parent-row td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-16.pivot-parent-row td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-16.pivot-parent-row td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-16.pivot-parent-row td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-16.pivot-parent-row td[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-16.pivot-parent-row td[data-dim-idx="12"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-16.pivot-parent-row td[data-dim-idx="13"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-16.pivot-parent-row td[data-dim-idx="14"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-16.pivot-parent-row td[data-dim-idx="15"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-depth-17.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-17.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-17.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-17.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-17.pivot-parent-row td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-17.pivot-parent-row td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-17.pivot-parent-row td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-17.pivot-parent-row td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-17.pivot-parent-row td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-17.pivot-parent-row td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-17.pivot-parent-row td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-17.pivot-parent-row td[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-17.pivot-parent-row td[data-dim-idx="12"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-17.pivot-parent-row td[data-dim-idx="13"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-17.pivot-parent-row td[data-dim-idx="14"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-17.pivot-parent-row td[data-dim-idx="15"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-17.pivot-parent-row td[data-dim-idx="16"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="12"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="13"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="14"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="15"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="16"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-18.pivot-parent-row td[data-dim-idx="17"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="12"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="13"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="14"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="15"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="16"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="17"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-depth-19.pivot-parent-row td[data-dim-idx="18"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+
+/* 第6〜20階層のデータ行の階段表示: depth N のデータ行では自分より浅い dim セルを透過。
+   親行 (.pivot-parent-row) 側は上で depth19 まで対応済みで、こちらはその対 (leaf) 版。
+   固定列は除外して自身の --depth-N-bg を保ち、横スクロールで透けないようにする。 */
+.pivot-leaf-row.pivot-depth-5 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-5 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-5 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-5 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-5 td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-leaf-row.pivot-depth-6 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-6 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-6 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-6 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-6 td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-6 td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-leaf-row.pivot-depth-7 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-7 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-7 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-7 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-7 td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-7 td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-7 td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-leaf-row.pivot-depth-8 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-8 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-8 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-8 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-8 td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-8 td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-8 td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-8 td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-leaf-row.pivot-depth-9 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-9 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-9 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-9 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-9 td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-9 td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-9 td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-9 td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-9 td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-leaf-row.pivot-depth-10 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-10 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-10 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-10 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-10 td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-10 td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-10 td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-10 td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-10 td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-10 td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-leaf-row.pivot-depth-11 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-11 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-11 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-11 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-11 td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-11 td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-11 td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-11 td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-11 td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-11 td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-11 td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-leaf-row.pivot-depth-12 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-12 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-12 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-12 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-12 td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-12 td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-12 td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-12 td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-12 td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-12 td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-12 td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-12 td[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-leaf-row.pivot-depth-13 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-13 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-13 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-13 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-13 td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-13 td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-13 td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-13 td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-13 td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-13 td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-13 td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-13 td[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-13 td[data-dim-idx="12"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-leaf-row.pivot-depth-14 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-14 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-14 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-14 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-14 td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-14 td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-14 td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-14 td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-14 td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-14 td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-14 td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-14 td[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-14 td[data-dim-idx="12"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-14 td[data-dim-idx="13"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-leaf-row.pivot-depth-15 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-15 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-15 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-15 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-15 td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-15 td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-15 td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-15 td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-15 td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-15 td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-15 td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-15 td[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-15 td[data-dim-idx="12"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-15 td[data-dim-idx="13"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-15 td[data-dim-idx="14"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-leaf-row.pivot-depth-16 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-16 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-16 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-16 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-16 td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-16 td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-16 td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-16 td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-16 td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-16 td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-16 td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-16 td[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-16 td[data-dim-idx="12"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-16 td[data-dim-idx="13"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-16 td[data-dim-idx="14"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-16 td[data-dim-idx="15"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-leaf-row.pivot-depth-17 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-17 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-17 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-17 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-17 td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-17 td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-17 td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-17 td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-17 td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-17 td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-17 td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-17 td[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-17 td[data-dim-idx="12"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-17 td[data-dim-idx="13"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-17 td[data-dim-idx="14"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-17 td[data-dim-idx="15"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-17 td[data-dim-idx="16"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="12"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="13"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="14"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="15"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="16"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-18 td[data-dim-idx="17"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="0"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="1"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="2"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="3"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="4"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="5"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="6"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="7"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="8"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="9"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="10"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="11"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="12"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="13"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="14"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="15"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="16"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="17"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen),
+.pivot-leaf-row.pivot-depth-19 td[data-dim-idx="18"]:not(.cell-blue):not(.cell-red):not(.cell-yellow):not(.col-frozen) { background: transparent; }

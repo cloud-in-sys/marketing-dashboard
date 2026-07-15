@@ -3,14 +3,56 @@
 // 保存時は settings/branding.js から applyBranding(data) を呼ぶ。
 import { api } from '../../api/index.js';
 
+// ブランディング確定までロゴ/タイトルを隠すゲート (index.html の <html class="branding-pending">)
+// を解除する。解除漏れ = ロゴ/タイトルが出ないままになるため、
+// 「成功・失敗・例外・ハング」すべての経路で必ず解除されるようにする。
+function revealBranding() {
+  document.documentElement.classList.remove('branding-pending');
+}
+
+// fetch/デコードがハングした場合の保険。ここで解除しても、後から届いた値は applyBranding が
+// 上書きするので不整合にはならない (誤った既定値を見せるより、空→正で埋まる方が安全)。
+const REVEAL_SAFETY_MS = 4000;
+
+// ロゴ画像が描画可能になるまで待つ。ロゴは data URL で branding JSON に同梱されるため
+// 追加のネットワークは発生せず、実質デコード待ち (数 ms)。
+// これを待ってから解除することで「アプリ名が先、ロゴが後」のズレをなくす。
+// 失敗しても解除を止めないよう、常に resolve する。
+function imgReady(img) {
+  if (!img) return Promise.resolve();
+  if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+  if (typeof img.decode === 'function') return img.decode().catch(() => {});
+  return new Promise(resolve => {
+    img.addEventListener('load', resolve, { once: true });
+    img.addEventListener('error', resolve, { once: true });
+  });
+}
+
+function waitForBrandImages() {
+  // tint 表示時は mask 用 span の裏に sizer の <img> が居るので、どちらの経路でも img を拾える。
+  const imgs = [
+    document.querySelector('#login-brand-logo img'),
+    document.querySelector('#brand-logo img'),
+  ];
+  return Promise.all(imgs.map(imgReady));
+}
+
 export async function fetchAndApplyBranding() {
+  const safety = setTimeout(revealBranding, REVEAL_SAFETY_MS);
   try {
     const data = await api.getBranding();
     applyBranding(data || {});
   } catch (e) {
-    // 取得失敗時はデプロイ時の app-config.js のデフォルトのまま
+    // 取得失敗時は applyBranding のフォールバック値を明示適用する
+    // (ゲート解除後に空表示のままにしないため)。
     console.warn('[branding] fetch failed, using defaults', e?.message || e);
+    try { applyBranding({}); } catch (_) { /* 解除は下で必ず行う */ }
   }
+  // 画像待ちは上の try とは分離する。ここで throw しても applyBranding の結果を
+  // フォールバックで上書きしてしまわないようにするため。
+  try { await waitForBrandImages(); } catch (_) { /* 待てなくても解除する */ }
+  clearTimeout(safety);
+  revealBranding();
 }
 
 export function applyBranding(data) {

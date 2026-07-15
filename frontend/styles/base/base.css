@@ -32,3 +32,12 @@ body {
   flex-direction: column;
   min-height: 100vh;
 }
+
+/* ===== BRANDING GATE =====
+   ブランディング (ロゴ/タイトル) が確定するまで描画しない。
+   <html class="branding-pending"> を index.html に静的に付けているので初回ペイント前から効く。
+   branding.js が適用完了後 (取得失敗・例外・ハング時もフォールバック/保険で) 必ず class を外す。
+   display:none ではなく visibility:hidden にして解除時のレイアウト移動を抑える。 */
+html.branding-pending .login-title,
+html.branding-pending #login-brand-logo,
+html.branding-pending #brand-logo { visibility: hidden; }

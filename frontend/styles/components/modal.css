@@ -18,15 +18,14 @@
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
   text-align: center;
 }
-.login-logo svg {
-  width: 42px;
-  height: 42px;
-  padding: 8px;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
-  color: #ffffff;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-}
+/* ロゴ画像が届く前から高さを確保し、到着時に下の要素が押し下げられる
+   (レイアウトシフト) のを防ぐ。値は .login-brand-logo-img の height と揃えること。 */
+#login-brand-logo { min-height: 73px; }
+/* 認証確認中 (ログイン済みリロード等) はすぐ消える画面なのでロゴ/アプリ名を出さない。
+   visibility ではなく display:none で min-height の余白ごと畳み、
+   スピナーと「認証情報を確認しています...」だけのカードにする。 */
+.login-overlay.checking #login-brand-logo,
+.login-overlay.checking .login-title { display: none; }
 .login-brand-logo-img {
   width: 180px;
   height: 73px;
@@ -35,21 +34,8 @@
   display: block;
   margin: 0 auto;
 }
-.login-brand-logo-wrap {
-  position: relative;
-  display: block;
-  width: fit-content;
-  margin: 0 auto;
-}
-.login-brand-logo-wrap .brand-logo-sizer { visibility: hidden; }
-.login-brand-logo-tinted {
-  position: absolute;
-  inset: 0;
-  border-radius: 14px;
-  background-color: var(--logo-color, currentColor);
-  -webkit-mask: var(--logo-mask) center / contain no-repeat;
-          mask: var(--logo-mask) center / contain no-repeat;
-}
+/* ログイン画面のロゴは常に元画像で表示する (branding.js が tintColor を渡さない) ため、
+   tint 用の wrap / mask スタイルは持たない。ヘッダー側は brand-logo-* を参照。 */
 .login-brand-logo-fallback {
   display: inline-block;
   font-size: 22px;

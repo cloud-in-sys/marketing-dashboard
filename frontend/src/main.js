@@ -5,7 +5,7 @@ import { S,
   initStateFromServer, saveState, saveCustomTabs, saveViewOrder,
   syncCurrentTabState, getPresets,
   loadSourceMethod, flushUserStateNow, flushPresetsNow, setPresetsErrorNotifier,
-  reorderPresetsOp, setUnsavedGuard as setUnsavedGuardState } from './app/state.js';
+  reorderPresetsOp, setUnsavedGuard as setUnsavedGuardState, setTableStateGetter } from './app/state.js';
 import { flushConfigNow } from './app/persistence.js';
 import { escapeHtml, hexToSoft } from './shared/utils/utils.js';
 import { showModal } from './shared/ui/modal.js';
@@ -15,7 +15,7 @@ import { computeRangePreset } from './filters/dateFilter.js';
 import * as sheets from './features/sources/sheets.js';
 import { renderChart } from './features/dashboard/charts/chart.js';
 import { renderCards } from './features/dashboard/cards/cardsRender.js';
-import { renderTable } from './features/dashboard/table/table.js';
+import { renderTable, getTableState } from './features/dashboard/table/table.js';
 import { groupRows } from './aggregate/dimensions.js';
 import { dimLabel } from './aggregate/dimensions.js';
 import { renderCurrentUserLabel, applyPermissionUI, hideLogin, observeAuth, signIn, logout,
@@ -46,6 +46,8 @@ import { prepareSparklineSeries } from './features/dashboard/table/sparkline.js'
 fetchAndApplyBranding();
 
 // ===== Wire up circular dep breakers =====
+// state.js の syncCurrentTabState がタブ毎に tableState (折り畳み/固定列/倍率) を保存できるようにする
+setTableStateGetter(getTableState);
 setExitSettingsModePresets(exitSettingsMode);
 setExitSettingsModeTabs(exitSettingsMode);
 // 未保存変更ガード注入。auth/tabs/state から呼ばれると settings/index.js の confirm を叩く。

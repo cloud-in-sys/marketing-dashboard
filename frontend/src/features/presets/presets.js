@@ -1,4 +1,4 @@
-import { S, DEFAULT_VIEWS_INIT, BUILTIN_SEED_VERSION, DEFAULT_TABLE_CONFIG, getPresets, createPresetOp, updatePresetOp, deletePresetOp, reorderPresetsOp, syncCurrentTabState, getTabFilterState, serializeFilterValues } from '../../app/state.js';
+import { S, DEFAULT_VIEWS_INIT, BUILTIN_SEED_VERSION, DEFAULT_TABLE_CONFIG, normalizeTableConfig, getPresets, createPresetOp, updatePresetOp, deletePresetOp, reorderPresetsOp, syncCurrentTabState, getTabFilterState, serializeFilterValues } from '../../app/state.js';
 import { escapeHtml, hexToSoft } from '../../shared/utils/utils.js';
 import { showModal } from '../../shared/ui/modal.js';
 import { hasPerm } from '../../app/auth.js';
@@ -186,14 +186,13 @@ export function loadPresetIntoGlobals(p) {
   S.SELECTED_METRICS = Array.isArray(p.metrics) && p.metrics.length ? [...p.metrics] : S.METRIC_DEFS.map(m => m.key);
   S.THRESHOLDS = p.thresholds && typeof p.thresholds === 'object' ? JSON.parse(JSON.stringify(p.thresholds)) : {};
   S.THRESHOLD_METRICS = Array.isArray(p.thresholdMetrics) ? [...p.thresholdMetrics] : [];
-  if (p.tableState) setTableState(p.tableState);
+  // tableState が無い旧プリセットでも必ず呼ぶ。呼ばないと直前のプリセットの
+  // 折り畳み/倍率/固定列が残ってしまうため、既定値へ初期化させる。
+  setTableState(p.tableState || {});
   // プリセットにテーブル設定があれば復元、無ければデフォルトでリセット (前タブの設定が残らないように)。
-  S.TABLE_CONFIG = p.tableConfig
-    ? JSON.parse(JSON.stringify(p.tableConfig))
-    : JSON.parse(JSON.stringify(DEFAULT_TABLE_CONFIG));
-  if (!S.TABLE_CONFIG.table)        S.TABLE_CONFIG.table = {};
-  if (!S.TABLE_CONFIG.styles)       S.TABLE_CONFIG.styles = {};
-  if (!S.TABLE_CONFIG.headerStyles) S.TABLE_CONFIG.headerStyles = {};
+  // 正規化して入れる。ensureConfig() が後から補完すると「開いただけで dirty」になるため、
+  // 読み込み時点で既定値を埋めておく (dirty スナップショットも正規化後の値で取られる)。
+  S.TABLE_CONFIG = normalizeTableConfig(p.tableConfig);
 }
 
 // プリセット適用時のフィルタ上書き。
@@ -484,10 +483,9 @@ export function loadTabState(viewKey) {
       S.CHART_ID_SEQ = 1;
       S.CARDS = [];
       S.CARD_ID_SEQ = 1;
-      S.TABLE_CONFIG = JSON.parse(JSON.stringify(DEFAULT_TABLE_CONFIG));
-      if (!S.TABLE_CONFIG.table)        S.TABLE_CONFIG.table = {};
-      if (!S.TABLE_CONFIG.styles)       S.TABLE_CONFIG.styles = {};
-      if (!S.TABLE_CONFIG.headerStyles) S.TABLE_CONFIG.headerStyles = {};
+      S.TABLE_CONFIG = normalizeTableConfig(null);
+      // 直前のタブの折り畳み/固定列/倍率が残らないよう既定へ戻す
+      setTableState({});
     }
     return;
   }
@@ -497,12 +495,9 @@ export function loadTabState(viewKey) {
   S.SELECTED_METRICS = Array.isArray(st.metrics) ? [...st.metrics] : S.METRIC_DEFS.map(m => m.key);
   S.THRESHOLDS = st.thresholds ? JSON.parse(JSON.stringify(st.thresholds)) : {};
   S.THRESHOLD_METRICS = Array.isArray(st.thresholdMetrics) ? [...st.thresholdMetrics] : [];
-  S.TABLE_CONFIG = st.tableConfig
-    ? JSON.parse(JSON.stringify(st.tableConfig))
-    : JSON.parse(JSON.stringify(DEFAULT_TABLE_CONFIG));
-  if (!S.TABLE_CONFIG.table)         S.TABLE_CONFIG.table = {};
-  if (!S.TABLE_CONFIG.styles)        S.TABLE_CONFIG.styles = {};
-  if (!S.TABLE_CONFIG.headerStyles)  S.TABLE_CONFIG.headerStyles = {};
+  S.TABLE_CONFIG = normalizeTableConfig(st.tableConfig);
+  // 折り畳み/固定列/倍率もタブ単位。無い旧タブは既定へ戻す (前タブの状態を持ち込まない)。
+  setTableState(st.tableState || {});
   // カスタムタブは CHARTS/CARDS を持たない (TAB_STATES に保存していない) ので、
   // 標準タブ→カスタムタブ切替で前タブのチャートが残らないようリセット。
   S.CHARTS = [];
@@ -521,6 +516,7 @@ export function initTabStates() {
         thresholds: {},
         thresholdMetrics: [],
         tableConfig: JSON.parse(JSON.stringify(DEFAULT_TABLE_CONFIG)),
+        tableState: {},
       };
     }
   });
@@ -532,6 +528,7 @@ export function initTabStates() {
         thresholds: {},
         thresholdMetrics: [],
         tableConfig: JSON.parse(JSON.stringify(DEFAULT_TABLE_CONFIG)),
+        tableState: {},
       };
     }
   });

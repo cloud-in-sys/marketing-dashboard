@@ -3,18 +3,22 @@
 //
 // データモデル:
 //   { showTotal: bool,
+//     transpose: bool,   // ON でメトリクス=行 / ディメンション値=列 に転置 (table.js の buildTransposed)
+//     subtotalDepths: { [depth]: bool }, // 階層ごとの小計「計」表示 (通常=最終行 / 転置=最終列)。未設定=表示
+//                                        // 旧 showSubtotal (単一 bool) は subtotalAt() が後方互換で解釈
 //     table: {
 //       headerBg, headerColor,                                  // ヘッダー (列ラベル)
-//       totalBg, totalColor,                                    // 総計行 色
-//       totalBold, totalItalic, totalUnderline, totalFontSize,  // 総計行 装飾
-//       totalPriority,                                          // 総計行を列ごとより優先
-//       depthBg0..depthBg7, leafBg,                             // 階層別 行背景
-//       depthPriority,                                          // 階層別を列ごとより優先
-//       hoverBg                                                 // 行 hover 背景
+//       totalBg, totalColor,                                    // 総計 色
+//       totalBold, totalItalic, totalUnderline, totalFontSize,  // 総計 装飾
+//       totalPriority,                                          // 総計を項目ごとより優先
+//       depthBg0..depthBg19, leafBg,                            // 階層別 背景 (最大 20 ディメンション)
+//       depthPriority,                                          // 階層別を項目ごとより優先
+//       hoverBg                                                 // 行 hover 背景 (転置時も行単位)
 //     },
-//     styles:       { [colKey]: { color, bgColor, bold, italic, underline, fontSize, align } },  // 列ごと (データ)
-//     headerStyles: { [colKey]: { color, bgColor, bold, italic, underline, fontSize, align } } } // 列ごと (ヘッダー)
-//   colKey は metric key または 'dim:<dimKey>'。
+//     styles:       { [colKey]: { color, bgColor, bold, italic, underline, fontSize, align } },  // 項目ごと (データ)
+//     headerStyles: { [colKey]: { color, bgColor, bold, italic, underline, fontSize, align } } } // 項目ごと (ヘッダー)
+//   colKey は metric key または 'dim:<dimKey>'。「項目」= メトリクス / ディメンション。
+//   通常表示ではこれが列に対応し、転置表示ではメトリクスが行になる (軸に依存しない単位)。
 import { S } from '../../../app/state.js';
 import { escapeHtml } from '../../../shared/utils/utils.js';
 import { emit, on } from '../../../app/events.js';
@@ -25,6 +29,7 @@ function ensureConfig() {
   if (!S.TABLE_CONFIG) S.TABLE_CONFIG = {};
   const c = S.TABLE_CONFIG;
   if (typeof c.showTotal !== 'boolean') c.showTotal = false;
+  if (typeof c.transpose !== 'boolean') c.transpose = false;
   if (!c.table) c.table = {};
   if (!c.styles) c.styles = {};
   if (!c.headerStyles) c.headerStyles = {};
@@ -46,6 +51,20 @@ function ensureSortList(cfg) {
   }
   return cfg.sort.list;
 }
+// 第 depth ディメンションの小計「計」を出すか。未設定は true (既定で表示)。
+// 旧形式の showSubtotal=false (全階層まとめて非表示) も後方互換で尊重する。
+export function subtotalAt(cfg, depth) {
+  const c = cfg || S.TABLE_CONFIG || {};
+  const map = c.subtotalDepths;
+  // 階層ごとの明示設定が最優先。
+  // normalizeTableConfig が subtotalDepths: {} を必ず付けるので「map の有無」で
+  // 旧設定を判定してはいけない (空オブジェクトでも旧 showSubtotal:false を無視してしまう)。
+  if (map && Object.prototype.hasOwnProperty.call(map, depth)) return map[depth] !== false;
+  // 未設定の階層は旧形式 (showSubtotal: 単一 bool) へフォールバック
+  if (c.showSubtotal === false) return false;
+  return true;
+}
+
 function setField(bucket, key, field, value) {
   const c = ensureConfig();
   if (key == null) {
@@ -215,6 +234,19 @@ export function renderTableSettingsPanel() {
       </div>`);
   }
 
+  // 階層ごとの小計「計」表示。最終ディメンションは配下を持たない = 小計が無いので出さない。
+  // 通常表示ではグループの最終行、転置表示では最終列に出る。
+  const subtotalFields = [];
+  for (let i = 0; i < numDims - 1; i++) {
+    subtotalFields.push(`
+      <div class="table-settings-inline">
+        <label class="table-settings-field" title="${escapeHtml(dimLabel(S.SELECTED_DIMS[i]))} の小計">
+          <input type="checkbox" data-table-role="subtotalDepth:${i}"${subtotalAt(cfg, i) ? ' checked' : ''}>
+          <span>第${i + 1}ディメンション</span>
+        </label>
+      </div>`);
+  }
+
   body.innerHTML = `
     <details class="table-settings-section">
       <summary>全体</summary>
@@ -256,7 +288,7 @@ export function renderTableSettingsPanel() {
             <button type="button" class="table-settings-clear" data-table-role="clear:table.headerVAlign" title="縦配置を指定なしに戻す" aria-label="クリア"${t.headerVAlign ? '' : ' disabled'}>×</button>
           </span>
         </div>
-        <div class="table-settings-field-title">総計行</div>
+        <div class="table-settings-field-title" title="通常表示では上部の総計行、転置表示では左端の総計列に適用されます">総計</div>
         <div class="table-settings-inline">
           ${defField('背景', 'table.totalBg', t.totalBg, '#eef2ff')}
           ${defField('文字', 'table.totalColor', t.totalColor, '#1e293b')}
@@ -309,19 +341,25 @@ export function renderTableSettingsPanel() {
             <button type="button" class="table-settings-clear" data-table-role="clear:table.totalVAlign" title="縦配置を指定なしに戻す" aria-label="クリア"${t.totalVAlign ? '' : ' disabled'}>×</button>
           </span>
         </div>
-        <label class="table-settings-field" style="margin-top:10px">
+        <label class="table-settings-field" style="margin-top:10px" title="ONでメトリクスを行、ディメンションの値を列に入れ替えて表示します">
+          <input type="checkbox" data-table-role="root.transpose"${cfg.transpose ? ' checked' : ''}>
+          <span>行と列を入れ替える (メトリクスを行に)</span>
+        </label>
+        <label class="table-settings-field" style="margin-top:10px" title="通常表示では上部の行、転置表示では左側の列に表示します">
           <input type="checkbox" data-table-role="root.showTotal"${cfg.showTotal ? ' checked' : ''}>
-          <span>総計行をテーブル上部に表示</span>
+          <span>総計を表示</span>
         </label>
-        <label class="table-settings-field" title="ONで総計行のスタイルを列ごとの設定より優先">
+        <label class="table-settings-field" title="ONで総計のスタイルを「項目ごと」の設定より優先">
           <input type="checkbox" data-table-role="table.totalPriority"${t.totalPriority ? ' checked' : ''}>
-          <span>総計行のスタイルを列ごとより優先</span>
+          <span>総計のスタイルを項目ごとより優先</span>
         </label>
-        <div class="table-settings-field-title">階層別 行背景</div>
+        <div class="table-settings-field-title" title="親ディメンションの小計「計」を階層ごとに表示します。通常表示ではグループの最終行、転置表示では最終列に出ます。折り畳み中のグループは唯一の行/列なのでOFFでも集計値を表示します">小計「計」を表示</div>
+        ${subtotalFields.join('') || '<div class="preset-empty">ディメンションが1つのため小計はありません</div>'}
+        <div class="table-settings-field-title" title="第1〜第N-1 は各階層の小計「計」の背景、第N (末端) はデータ行の背景です。通常表示では行、転置表示では列に適用されます">階層別 背景 (小計 / データ)</div>
         ${depthFields.join('') || '<div class="preset-empty">ディメンションを選択してください</div>'}
-        <label class="table-settings-field" style="margin-top:10px" title="ONで親行/データ行のスタイルを列ごとの設定より優先 (閾値カラーは維持)">
+        <label class="table-settings-field" style="margin-top:10px" title="ONで階層別のスタイルを「項目ごと」の設定より優先 (閾値カラーは維持)">
           <input type="checkbox" data-table-role="table.depthPriority"${t.depthPriority ? ' checked' : ''}>
-          <span>階層別のスタイルを列ごとより優先</span>
+          <span>階層別のスタイルを項目ごとより優先</span>
         </label>
         <div class="table-settings-field-title">ホバー</div>
         <div class="table-settings-inline">
@@ -331,15 +369,15 @@ export function renderTableSettingsPanel() {
       </div>
     </details>
     <details class="table-settings-section">
-      <summary>列ごと (ヘッダー)</summary>
+      <summary title="メトリクス / ディメンションごとの設定。通常表示では列、転置表示では行に適用されます">項目ごと (ヘッダー)</summary>
       <div class="table-settings-section-body">
-        ${columns.length ? columns.map(c => colStyleRow(c, 'headerStyles')).join('') : '<div class="preset-empty">表示中の列がありません</div>'}
+        ${columns.length ? columns.map(c => colStyleRow(c, 'headerStyles')).join('') : '<div class="preset-empty">表示中の項目がありません</div>'}
       </div>
     </details>
     <details class="table-settings-section">
-      <summary>列ごと (データ)</summary>
+      <summary title="メトリクス / ディメンションごとの設定。通常表示では列、転置表示では行に適用されます">項目ごと (データ)</summary>
       <div class="table-settings-section-body">
-        ${columns.length ? columns.map(c => colStyleRow(c, 'styles')).join('') : '<div class="preset-empty">表示中の列がありません</div>'}
+        ${columns.length ? columns.map(c => colStyleRow(c, 'styles')).join('') : '<div class="preset-empty">表示中の項目がありません</div>'}
       </div>
     </details>
     <details class="table-settings-section">
@@ -399,8 +437,10 @@ function filterRow(c, cfg) {
 // プルダウンから列を選ぶだけで動き出す。
 function sortBlock(columns, cfg) {
   if (!columns.length) return '<div class="preset-empty">表示中の列がありません</div>';
-  const list = ensureSortList(cfg);
-  if (list.length === 0) list.push({ col: '', dir: 'asc', custom: '' });
+  // 描画では設定を変更しないこと。ensureSortList は cfg.sort.list の「実体」を返すので、
+  // ここで push すると「設定を開いただけ」で保存済みの [] が空条件入りに変わり dirty になる。
+  const savedList = ensureSortList(cfg);
+  const list = savedList.length ? savedList : [{ col: '', dir: 'asc', custom: '' }];  // 表示用
   const renderItem = (item, i) => {
     const colKey = item.col || '';
     const dir = item.dir || 'asc';
@@ -451,6 +491,27 @@ function onPanelChange(e) {
   if (!role) return;
   if (role === 'root.showTotal') {
     ensureConfig().showTotal = !!el.checked;
+    emit('render');
+    return;
+  }
+  if (role === 'root.transpose') {
+    ensureConfig().transpose = !!el.checked;
+    emit('render');
+    return;
+  }
+  if (role.startsWith('subtotalDepth:')) {
+    const cfg = ensureConfig();
+    // 旧形式 (showSubtotal 単一フラグ) から階層別へ移行する。
+    if (!cfg.subtotalDepths) {
+      cfg.subtotalDepths = {};
+      if (cfg.showSubtotal === false) {
+        // 旧「全部非表示」を階層別へ引き写してから、触った階層だけ上書きする
+        const n = (S.SELECTED_DIMS || []).length;
+        for (let i = 0; i < n; i++) cfg.subtotalDepths[i] = false;
+      }
+      delete cfg.showSubtotal;
+    }
+    cfg.subtotalDepths[+role.slice('subtotalDepth:'.length)] = !!el.checked;
     emit('render');
     return;
   }
@@ -641,7 +702,9 @@ export function buildTableStyle() {
   if (t.totalVAlign)    parts.push(`--total-vertical-align:${t.totalVAlign}`);
   if (t.headerVAlign)   parts.push(`--header-vertical-align:${t.headerVAlign}`);
   if (t.headerAlign)    parts.push(`--header-text-align:${t.headerAlign}`);
-  for (let i = 0; i < 8; i++) {
+  // ディメンションは最大 20 まで扱えるので depthBg0..19 を出力する。
+  // (8 までしか出していないと、UI 上は色を変えられるのに反映されず故障に見える)
+  for (let i = 0; i < 20; i++) {
     if (t['depthBg' + i]) parts.push(`--depth-${i}-bg:${t['depthBg' + i]}`);
   }
   if (t.leafBg)    parts.push(`--leaf-bg:${t.leafBg}`);

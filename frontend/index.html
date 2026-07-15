@@ -1,5 +1,7 @@
 <!doctype html>
-<html lang="ja">
+<!-- branding-pending: ブランディング確定までロゴ/タイトルを描画しないゲート。
+     src/features/sources/branding.js が適用完了 (失敗時もフォールバック適用) 後に必ず外す。 -->
+<html lang="ja" class="branding-pending">
 <head>
 <meta charset="utf-8">
 <title>Marketing Metrics Dashboard</title>
@@ -22,12 +24,18 @@
 <link rel="stylesheet" href="styles/components/colorPicker.css">
 </head>
 <body>
-<div class="login-overlay" id="login-overlay">
+<!-- checking を初期状態にしておく: 認証確認中はロゴ/アプリ名を出さない。
+     未ログインと分かった時点で auth.js の showLoginForm() が checking を外して表示する。 -->
+<div class="login-overlay checking" id="login-overlay">
   <div class="login-card">
     <div class="login-logo" id="login-brand-logo"></div>
-    <div class="login-title">Marketing Dashboard</div>
+    <!-- 中身は branding.js が必ず設定する (未設定時のフォールバックも branding.js 側に一元化)。
+         ここに既定値を書くと確定前に一瞬表示されてしまうため空にしておく。 -->
+    <div class="login-title"></div>
     <div class="login-subtitle hidden" id="login-subtitle">ログインしてください</div>
-    <div class="login-checking hidden" id="login-checking">
+    <!-- 初期から表示する: Firebase Auth SDK (外部CDN) のロード〜認証状態確定までの間、
+         空のカードを見せないため。未ログイン確定時に showLoginForm() が hidden を付ける。 -->
+    <div class="login-checking" id="login-checking">
       <div class="login-spinner"></div>
       <div class="login-checking-text">認証情報を確認しています...</div>
     </div>

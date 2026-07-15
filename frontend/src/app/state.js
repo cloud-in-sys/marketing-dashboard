@@ -148,7 +148,39 @@ export const PERM_DEFS = PERM_GROUPS.flatMap(g => g.perms);
 export const ADMIN_PERMS = Object.fromEntries(PERM_DEFS.map(p => [p.key, true]));
 export const VIEWER_PERMS = Object.fromEntries(PERM_DEFS.map(p => [p.key, false]));
 export const PALETTE = ['#2563eb', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#7c3aed', '#ec4899', '#14b8a6'];
-export const DEFAULT_TABLE_CONFIG = Object.freeze({ showTotal: false, table: {}, styles: {}, headerStyles: {} });
+// テーブル設定の既定値。ensureConfig() が実行時に補完する項目をここに揃えておかないと、
+// 「設定画面を開いただけ」で補完差分が出て未保存(dirty)扱いになる。
+export const DEFAULT_TABLE_CONFIG = Object.freeze({
+  showTotal: false,
+  transpose: false,
+  subtotalDepths: {},
+  table: {},
+  styles: {},
+  headerStyles: {},
+  filters: {},
+  sort: { list: [] },
+});
+
+// プリセット/タブから読み込んだ tableConfig を既定値で補完して正規化する。
+// dirty 判定のスナップショットは必ず正規化後に取ること (でないと補完のたびに差分が出る)。
+export function normalizeTableConfig(cfg) {
+  const c = (cfg && typeof cfg === 'object') ? JSON.parse(JSON.stringify(cfg)) : {};
+  if (typeof c.showTotal !== 'boolean') c.showTotal = false;
+  if (typeof c.transpose !== 'boolean') c.transpose = false;
+  // 旧 showSubtotal (単一 bool) は subtotalAt() が後方互換で解釈するのでそのまま残す。
+  if (!c.subtotalDepths || typeof c.subtotalDepths !== 'object') c.subtotalDepths = {};
+  if (!c.table) c.table = {};
+  if (!c.styles) c.styles = {};
+  if (!c.headerStyles) c.headerStyles = {};
+  if (!c.filters) c.filters = {};
+  if (!c.sort || typeof c.sort !== 'object') c.sort = {};
+  // sort は旧形式 { col, dir, custom } → { list: [...] } へ寄せる (ensureSortList と同じ変換)
+  if (!Array.isArray(c.sort.list)) {
+    c.sort.list = c.sort.col ? [{ col: c.sort.col, dir: c.sort.dir || 'asc', custom: c.sort.custom || '' }] : [];
+    delete c.sort.col; delete c.sort.dir; delete c.sort.custom;
+  }
+  return c;
+}
 export const BUILTIN_SEED_VERSION = 3;
 
 // ===== UI-ONLY local storage keys (NOT synced to server) =====
@@ -177,7 +209,9 @@ export const S = {
   CURRENT_FILTER: null,
   // タブごとのピボットテーブル設定 (実体は TAB_STATES[viewKey].tableConfig)。
   // 形式は DEFAULT_TABLE_CONFIG / tableSettings.js のデータモデルコメントを参照。
-  TABLE_CONFIG: { showTotal: false, table: {}, styles: {}, headerStyles: {} },
+  // 初期値も共通の正規化を通す (DEFAULT_TABLE_CONFIG は浅い freeze なので直接共有しないこと)。
+  // 新形式の項目 (transpose / subtotalDepths / filters / sort) が漏れると誤 dirty の温床になる。
+  TABLE_CONFIG: normalizeTableConfig(null),
   TAB_STATES: {},
   CUSTOM_TABS: [],
   PRESET_EDIT_IDX: null,
@@ -281,6 +315,11 @@ export async function flushUserStateNow(opts) {
 export function getTabFilterState(viewKey) {
   return _userStateCache.tabFilters[viewKey] || null;
 }
+// table.js の getTableState を注入で受け取る (state.js から table.js を import すると
+// table.js -> state.js の循環になるため。main.js が起動時に配線する)。
+let _getTableState = () => ({});
+export function setTableStateGetter(fn) { if (typeof fn === 'function') _getTableState = fn; }
+
 export function setTabFilterState(viewKey, filterValues, filterConditions) {
   _userStateCache.tabFilters[viewKey] = { filterValues, filterConditions };
   _scheduleUserStateSave();
@@ -314,6 +353,9 @@ export function syncCurrentTabState() {
     thresholds: JSON.parse(JSON.stringify(S.THRESHOLDS)),
     thresholdMetrics: [...S.THRESHOLD_METRICS],
     tableConfig: JSON.parse(JSON.stringify(S.TABLE_CONFIG || DEFAULT_TABLE_CONFIG)),
+    // 折り畳み (通常/転置)・固定列・倍率もタブ単位で保持する。
+    // 保存しないと別タブ/別プリセットの状態がこのタブへ残る。
+    tableState: _getTableState(),
   };
 }
 

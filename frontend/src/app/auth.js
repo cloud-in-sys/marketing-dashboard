@@ -78,19 +78,25 @@ export function hideLogin() {
 }
 
 function showLoginForm() {
+  const overlay = document.getElementById('login-overlay');
   const body = document.getElementById('login-body');
   const checking = document.getElementById('login-checking');
   const subtitle = document.getElementById('login-subtitle');
+  // ログインフォームではロゴ/アプリ名を出す (どのアプリに入るのか示す必要があるため)
+  if (overlay) overlay.classList.remove('checking');
   if (body) body.classList.remove('hidden');
   if (checking) checking.classList.add('hidden');
   if (subtitle) subtitle.classList.remove('hidden');
 }
 
 function showLoginChecking() {
+  const overlay = document.getElementById('login-overlay');
   const body = document.getElementById('login-body');
   const checking = document.getElementById('login-checking');
   const subtitle = document.getElementById('login-subtitle');
   const errEl = document.getElementById('login-error');
+  // 認証確認中はすぐ消える画面なのでロゴ/アプリ名は出さず、スピナーとテキストだけにする
+  if (overlay) overlay.classList.add('checking');
   if (body) body.classList.add('hidden');
   if (checking) checking.classList.remove('hidden');
   if (subtitle) subtitle.classList.add('hidden');
