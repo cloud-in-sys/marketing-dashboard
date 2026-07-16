@@ -14,8 +14,9 @@ const gzip = promisify(zlib.gzip);
 const gunzip = promisify(zlib.gunzip);
 
 const storage = new Storage();
-// テナント中立: 明示の SNAPSHOT_BUCKET、無ければ GCP_PROJECT_ID から導出。
-// 特定テナントのバケットにフォールバックしない（クロステナント参照を防ぐ）。
+// バケット名は環境ごとの値なので env から取る。無ければ GCP_PROJECT_ID から導出。
+// どちらも無ければ起動時に落とす。既定のバケット名にフォールバックすると、
+// 設定を忘れた環境が別環境のスナップショットを黙って読んでしまう。
 const BUCKET = process.env.SNAPSHOT_BUCKET
   || (process.env.GCP_PROJECT_ID ? `${process.env.GCP_PROJECT_ID}-snapshots` : null);
 if (!BUCKET) throw new Error('SNAPSHOT_BUCKET or GCP_PROJECT_ID must be set');

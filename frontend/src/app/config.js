@@ -13,7 +13,9 @@ export const FIREBASE_CONFIG = {
 export const API_BASE = window.__APP_CONFIG__?.apiBase ?? '';
 
 // App Check (reCAPTCHA v3 site key). Public - safe to ship in client.
-// テナント固有値。未設定なら App Check は無効（特定テナントのキーにフォールバックしない）。
+// 環境ごとの値なので app-config.js (git 管理外) から供給する。
+// 未設定なら App Check は無効にする。既定のキーにフォールバックすると、
+// そのキーでは検証が通らず、原因の分かりにくい認証エラーになるだけ。
 export const APP_CHECK_SITE_KEY = window.__APP_CONFIG__?.appCheckSiteKey || '';
 
 // 機能フラグ。
