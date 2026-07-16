@@ -23,8 +23,6 @@ export function renderFiltersDoc() {
   const defs = S.FILTER_DEFS_DRAFT || S.FILTER_DEFS;
   const typeOpts = [
     {v: 'date_range', l: '期間 (開始〜終了)'},
-    {v: 'date_from',  l: '開始日 (>=)'},
-    {v: 'date_to',    l: '終了日 (<=)'},
     {v: 'multi',      l: '複数選択'},
   ];
   el.innerHTML = `

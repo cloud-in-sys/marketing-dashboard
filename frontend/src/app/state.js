@@ -65,8 +65,7 @@ export const DEFAULT_VIEWS_INIT = {
 };
 
 export const DEFAULT_FILTER_DEFS = [
-  {id: 'from',     type: 'date_from', field: 'action_date', label: '開始日'},
-  {id: 'to',       type: 'date_to',   field: 'action_date', label: '終了日'},
+  {id: 'period',   type: 'date_range', field: 'action_date', label: '期間'},
   {id: 'operator', type: 'multi',     field: 'operator',    label: 'operator'},
   {id: 'media',    type: 'multi',     field: 'media',       label: 'media'},
 ];

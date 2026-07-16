@@ -21,11 +21,7 @@ export function serializeFilters() {
   const conds = S.FILTER_CONDITIONS || {};
   for (const def of defs) {
     const v = values[def.id];
-    if (def.type === 'date_from') {
-      if (v) out.push({ field: def.field, op: 'dateGte', value: v });
-    } else if (def.type === 'date_to') {
-      if (v) out.push({ field: def.field, op: 'dateLte', value: v });
-    } else if (def.type === 'date_range') {
+    if (def.type === 'date_range') {
       // {from, to} を dateGte / dateLte の2条件に展開
       if (v && typeof v === 'object') {
         if (v.from) out.push({ field: def.field, op: 'dateGte', value: v.from });

@@ -39,9 +39,7 @@ export function applyFilters(rows) {
   return rows.filter(r => {
     for (const f of S.FILTER_DEFS) {
       const v = S.FILTER_VALUES[f.id];
-      if (f.type === 'date_from') { if (v && normDate(r[f.field]) < normDate(v)) return false; }
-      else if (f.type === 'date_to') { if (v && normDate(r[f.field]) > normDate(v)) return false; }
-      else if (f.type === 'date_range') {
+      if (f.type === 'date_range') {
         // 値は {from, to} オブジェクト。どちらか一方だけの指定も許容。
         const from = v && v.from, to = v && v.to;
         if (from || to) {
@@ -145,8 +143,8 @@ export function renderFilters() {
       const cur = S.FILTER_VALUES[f.id];
       if (!cur || typeof cur !== 'object' || cur instanceof Set) S.FILTER_VALUES[f.id] = { from: '', to: '' };
     } else {
-      // date_from / date_to は文字列前提。型変更で残った Set (multi) や
-      // オブジェクト ({from,to} = date_range) を必ず空文字へ矯正する。
+      // 想定外の型 (旧データ等)。Set (multi) や {from,to} (date_range) が残っていたら
+      // 空文字へ矯正して、後段の描画・送信が壊れないようにする。
       if (typeof S.FILTER_VALUES[f.id] !== 'string') S.FILTER_VALUES[f.id] = '';
     }
   });

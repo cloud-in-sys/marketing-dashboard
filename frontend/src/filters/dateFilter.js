@@ -1,29 +1,26 @@
 import { S } from '../app/state.js';
 
-// 日付フィルタ (date_range / date_from / date_to) を単一の {field, from, to} に解決する。
+// 期間フィルタ (date_range) を単一の {field, from, to} に解決する。
 //
-// 背景: 期間フィルタは date_range (新形式・単一 def に from/to) と、旧形式の
-// date_from / date_to が共存しうる (移行期は旧を消し忘れる可能性がある)。
 // KPIカードの月モードはフロント描画 (cardsRender) とバックエンド集計 prefetch
-// (aggregateBackend) の 2 経路で「基準となる日付カラム・期間」を必要とするが、
-// 各所で優先順位が異なると同じ期間でも別の月を指すおそれがある。
-// そこで解決ロジックをここに一元化し、両経路が必ず同じ結果を使うようにする。
-//
-// 優先順位: date_range を正規 (新形式) として最優先。無ければ date_from / date_to
-// から組み立てる。混在時も date_range を優先することで挙動を一意に固定する。
+// (aggregateBackend) の 2 経路で「基準となる日付カラム・期間」を必要とする。
+// 各所で解決の仕方が違うと同じ期間でも別の月を指すおそれがあるので、ここに一元化して
+// 両経路が必ず同じ結果を使うようにする。
 // なお実データの絞り込み自体は applyFilters / serializeFilters が各 def を独立に
 // AND 適用するため、この解決関数は「カード月モードの基準決め」専用。
+//
+// 旧形式の date_from / date_to は廃止済み (2026-07-17)。本番の全ソースを date_range へ
+// 移行したことを確認したうえでコードからも削除した。
 export function resolveDateFilter() {
   const defs = S.FILTER_DEFS || [];
   const vals = S.FILTER_VALUES || {};
   const rangeDef = defs.find(d => d.type === 'date_range');
-  const fromDef = defs.find(d => d.type === 'date_from');
-  const toDef = defs.find(d => d.type === 'date_to');
   const rangeVal = rangeDef ? vals[rangeDef.id] : null;
-  const field = rangeDef?.field || fromDef?.field || toDef?.field || 'action_date';
-  const from = (rangeVal && rangeVal.from) || (fromDef ? vals[fromDef.id] : '') || '';
-  const to = (rangeVal && rangeVal.to) || (toDef ? vals[toDef.id] : '') || '';
-  return { field, from, to };
+  return {
+    field: rangeDef?.field || 'action_date',
+    from: (rangeVal && rangeVal.from) || '',
+    to: (rangeVal && rangeVal.to) || '',
+  };
 }
 
 // 期間フィルタのクイック選択 (今週/先週/今月/先月) を {from, to} (YYYY-MM-DD) で返す。
