@@ -5,7 +5,8 @@ import { S,
   initStateFromServer, saveState, saveCustomTabs, saveViewOrder,
   syncCurrentTabState, getPresets,
   loadSourceMethod, flushUserStateNow, flushPresetsNow, setPresetsErrorNotifier,
-  reorderPresetsOp, setUnsavedGuard as setUnsavedGuardState, setTableStateGetter } from './app/state.js';
+  reorderPresetsOp, setUnsavedGuard as setUnsavedGuardState, setTableStateGetter,
+  setCanViewCustom } from './app/state.js';
 import { flushConfigNow } from './app/persistence.js';
 import { escapeHtml, hexToSoft } from './shared/utils/utils.js';
 import { showModal } from './shared/ui/modal.js';
@@ -18,7 +19,7 @@ import { renderCards } from './features/dashboard/cards/cardsRender.js';
 import { renderTable, getTableState } from './features/dashboard/table/table.js';
 import { groupRows } from './aggregate/dimensions.js';
 import { dimLabel } from './aggregate/dimensions.js';
-import { renderCurrentUserLabel, applyPermissionUI, hideLogin, observeAuth, signIn, logout,
+import { renderCurrentUserLabel, applyPermissionUI, hideLogin, observeAuth, signIn, logout, hasPerm,
   setUnsavedGuard as setUnsavedGuardAuth } from './app/auth.js';
 import { seedDefaultPresets, renderPresets, loadPresetIntoGlobals, applyPresetFilters, renderTabPresetSelect,
   enterPresetEdit, syncPresetEdit, deletePreset, duplicatePreset, renamePreset, savePresetPrompt,
@@ -48,6 +49,9 @@ fetchAndApplyBranding();
 // ===== Wire up circular dep breakers =====
 // state.js の syncCurrentTabState がタブ毎に tableState (折り畳み/固定列/倍率) を保存できるようにする
 setTableStateGetter(getTableState);
+// state.js が viewCustom を見られるようにする (直接 import すると auth.js との循環になる)。
+// これが無いと、viewCustom を持たないユーザーにもカスタムタブが初期表示で復元される。
+setCanViewCustom(() => hasPerm('viewCustom'));
 setExitSettingsModePresets(exitSettingsMode);
 setExitSettingsModeTabs(exitSettingsMode);
 // 未保存変更ガード注入。auth/tabs/state から呼ばれると settings/index.js の confirm を叩く。
@@ -275,6 +279,8 @@ document.getElementById('custom-nav').addEventListener('click', e => {
   }
   const del = e.target.closest('[data-del-custom]');
   if (del) {
+    // CSS (no-delete-custom) で隠しているが、権限制御を CSS だけに依存しない
+    if (!hasPerm('deleteCustom')) return;
     const key = del.dataset.delCustom;
     const tab = S.CUSTOM_TABS.find(t => t.key === key);
     const tabName = tab ? tab.label : key;
@@ -310,6 +316,8 @@ document.getElementById('custom-nav').addEventListener('click', e => {
 // \u30c0\u30c3\u30b7\u30e5\u30dc\u30fc\u30c9\u4e0a\u90e8\u306e\u7de8\u96c6\u30dc\u30bf\u30f3 (view-tab-edit) \u30af\u30ea\u30c3\u30af\u3067\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u3092\u7de8\u96c6 (\u540d\u524d + \u30b0\u30eb\u30fc\u30d7)\u3002
 // \u6a19\u6e96\u30bf\u30d6\u306f\u30ea\u30cd\u30fc\u30e0\u4e0d\u53ef\u306a\u306e\u3067\u30dc\u30bf\u30f3\u81ea\u4f53\u304c CSS \u3067\u975e\u8868\u793a\u3002
 document.getElementById('view-tab-edit').addEventListener('click', async () => {
+  // CSS (no-edit-custom) でもボタンを隠しているが、ここでも必ず確認する
+  if (!hasPerm('editCustom')) return;
   const tab = S.CUSTOM_TABS.find(t => t.key === S.CURRENT_VIEW);
   if (!tab) return;
   const existingGroups = listCustomTabGroups();
@@ -345,6 +353,7 @@ document.getElementById('view-tab-edit').addEventListener('click', async () => {
 document.getElementById('custom-nav').addEventListener('input', e => {
   const picker = e.target.closest('[data-color-key]');
   if (!picker) return;
+  if (!hasPerm('editCustom')) return;   // 色も customTabs の変更 = editCustom
   const tab = S.CUSTOM_TABS.find(t => t.key === picker.dataset.colorKey);
   if (!tab) return;
   const newColor = picker.value;
@@ -359,6 +368,9 @@ document.getElementById('custom-nav').addEventListener('input', e => {
   saveCustomTabs();
 });
 document.getElementById('add-custom-tab').addEventListener('click', async () => {
+  // addCustom は単独付与を許可する仕様 (作成したタブは既定の dims/metrics で開ける)。
+  // その後の中身の編集には別途 editCustom が要る。
+  if (!hasPerm('addCustom')) return;
   const label = await showModal({title: '\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u3092\u8ffd\u52a0', body: '\u30bf\u30d6\u306e\u540d\u524d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044', input: true, placeholder: '\u4f8b: \u81ea\u5206\u7528\u306e\u5206\u6790', okText: '\u6b21\u3078', noEnter: true});
   if (!label) return;
   const ok = await showModal({title: '\u4f5c\u6210\u306e\u78ba\u8a8d', body: `\u30ab\u30b9\u30bf\u30e0\u30bf\u30d6\u300c${label}\u300d\u3092\u4f5c\u6210\u3057\u307e\u3059\u304b\uff1f`, okText: '\u4f5c\u6210'});
@@ -617,6 +629,7 @@ document.getElementById('tab-preset').addEventListener('change', async e => {
   const prev = sel.dataset.prev || '';
   if (v === '') { sel.dataset.prev = ''; return; }
   const idx = +v;
+  if (!hasPerm('editCustom')) { sel.value = prev; return; }   // presetName の書き換え = editCustom
   const tab = S.CUSTOM_TABS.find(t => t.key === S.CURRENT_VIEW);
   if (!tab) { sel.value = prev; return; }
   const list = getPresets();
@@ -642,6 +655,8 @@ document.getElementById('tab-preset').addEventListener('change', async e => {
 
 // カスタムタブの現在内容を新規プリセットとして保存し、そのタブに紐付ける。
 document.getElementById('tab-save-preset').addEventListener('click', async () => {
+  // プリセット新規作成 (savePreset) + タブへの紐付け (presetName の書き換え = editCustom)
+  if (!hasPerm('savePreset') || !hasPerm('editCustom')) return;
   const name = await savePresetPrompt();
   if (!name) return;
   const tab = S.CUSTOM_TABS.find(t => t.key === S.CURRENT_VIEW);
@@ -664,6 +679,9 @@ makeSortable(document.getElementById('view-nav'), (from, to, before) => {
   renderViewNav();
 });
 makeSortable(document.getElementById('custom-nav'), (from, to, before) => {
+  // 並べ替え / グループ移動は customTabs の書き換えなので editCustom が要る。
+  // (backend の config PATCH も同じ権限で弾くので、ここで止めないと 403 になる)
+  if (!hasPerm('editCustom')) return;
   const GROUP_PREFIX = '__group__:';
   const isGroupFrom = from.startsWith(GROUP_PREFIX);
   const isGroupTo = to.startsWith(GROUP_PREFIX);

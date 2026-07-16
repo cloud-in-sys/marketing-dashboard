@@ -2,6 +2,7 @@
 import { emit } from '../../../app/events.js';
 import { S, PALETTE, saveState } from '../../../app/state.js';
 import { openChartSettings, closeChartSettings, renderChartSettingsPanel } from './chartSettings.js';
+import { canEditCurrentTab } from '../../../app/auth.js';
 
 function nextColor() {
   return PALETTE[S.CHARTS.length % PALETTE.length];
@@ -12,14 +13,18 @@ function nextColor() {
 // 任意命名のテナントで存在せず初期表示が空になる UX バグを起こすので避ける。
 // ユーザーはチャートを追加した直後に設定パネルからメトリクスを選ぶ。
 document.getElementById('add-main-chart').addEventListener('click', () => {
+  // カスタムタブのグラフは TAB_STATES に保存される = editCustom が要る (CSS 頼みにしない)
+  if (!canEditCurrentTab()) return;
   S.CHARTS.push({id: S.CHART_ID_SEQ++, metric: '', type: 'bar', size: 'main', color: nextColor(), bucket: 'auto', name: ''});
   emit('render');
 });
 document.getElementById('add-sub-chart').addEventListener('click', () => {
+  if (!canEditCurrentTab()) return;
   S.CHARTS.push({id: S.CHART_ID_SEQ++, metric: '', type: 'line', size: 'sub', color: nextColor(), bucket: 'auto', name: ''});
   emit('render');
 });
 document.getElementById('add-mini-chart').addEventListener('click', () => {
+  if (!canEditCurrentTab()) return;
   S.CHARTS.push({id: S.CHART_ID_SEQ++, metric: '', type: 'bar', size: 'mini', color: nextColor(), bucket: 'auto', name: ''});
   emit('render');
 });
@@ -27,6 +32,7 @@ document.getElementById('add-mini-chart').addEventListener('click', () => {
 document.getElementById('charts-grid').addEventListener('click', e => {
   const card = e.target.closest('.chart-card');
   if (!card) return;
+  if (!canEditCurrentTab()) return;
   const id = +card.dataset.id;
   const removeBtn = e.target.closest('[data-role="remove"]');
   if (removeBtn) {

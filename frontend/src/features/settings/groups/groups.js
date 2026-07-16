@@ -1,4 +1,3 @@
-import { S } from '../../../app/state.js';
 import { api } from '../../../api/index.js';
 import { buildSaveErrorMessage, setSaveButtonState } from '../saveFlow.js';
 import { escapeHtml } from '../../../shared/utils/utils.js';
@@ -6,12 +5,20 @@ import { showModal } from '../../../shared/ui/modal.js';
 import { settingsState } from '../state.js';
 
 function markGroupsDirty() { document.getElementById('groups-list')?.classList.add('has-dirty'); }
+// 保存成功後は必ず呼ぶこと。has-dirty は #groups-list (コンテナ) 側に付き、
+// 再描画は innerHTML の差し替えでコンテナ自身は残るためクラスが生き残る。
+// 消し忘れると「保存したのに未保存ガードが出る」状態になる。
+function clearGroupsDirty() { document.getElementById('groups-list')?.classList.remove('has-dirty'); }
 
 export async function loadGroupsAndRender() {
   try {
-    const [gRes, uRes, sRes] = await Promise.all([api.listGroups(), api.listUsers(), api.listSources()]);
+    // メンバー一覧は listGroupMembers (manageGroups で取得可) を使う。
+    // listUsers は adminOnly なので、manageGroups だけを持つ非管理者が開くと
+    // 403 で Promise.all ごと失敗し、画面全体が読み込めなくなる。
+    // 取得結果は S.USERS に入れないこと (perms を持たないため getCurrentUser が壊れる)。
+    const [gRes, mRes, sRes] = await Promise.all([api.listGroups(), api.listGroupMembers(), api.listSources()]);
     settingsState.groupsCache = gRes.groups || [];
-    S.USERS = uRes.users || [];
+    settingsState.groupMembersCache = mRes.members || [];
     settingsState.sourcesCache = sRes.sources || [];
     renderGroupsView();
   } catch (e) {
@@ -37,7 +44,7 @@ function renderGroupsListView(list) {
     return;
   }
   list.innerHTML = `<div class="user-list-compact">${settingsState.groupsCache.map(g => {
-    const memberCount = S.USERS.filter(u => u.groupId === g.id).length;
+    const memberCount = settingsState.groupMembersCache.filter(u => u.groupId === g.id).length;
     return `
       <div class="user-list-row" data-group-open="${g.id}">
         <div class="user-avatar">${escapeHtml((g.name || '?').slice(0, 1).toUpperCase())}</div>
@@ -57,7 +64,7 @@ function renderGroupDetail(list, gid) {
     : settingsState.groupsCache.find(g => g.id === gid);
   if (!group) { settingsState.groupDetailId = null; renderGroupsView(); return; }
 
-  const members = S.USERS.filter(u => u.groupId === group.id);
+  const members = settingsState.groupMembersCache.filter(u => u.groupId === group.id);
   const sourceFilters = group.sourceFilters || {};
 
   // ソース一覧を表示。各ソース行に「見せる/見せない」と行フィルタ設定。
@@ -220,9 +227,12 @@ async function saveGroup() {
       }
     }
 
+    // API 成功時点で dirty を解除する (完了モーダルの表示中に画面遷移されてもガードが残らないように)
+    clearGroupsDirty();
     await showModal({title: '保存完了', body: 'グループを保存しました', okText: 'OK', cancelText: ''});
     settingsState.groupDetailId = null;
     await loadGroupsAndRender();
+    clearGroupsDirty();   // 再描画で input イベントが走った場合に備えて再度解除
   } catch (e) {
     await showModal({title: '保存に失敗しました', body: buildSaveErrorMessage(e), okText: 'OK', cancelText: ''});
   } finally {
@@ -237,7 +247,7 @@ async function deleteGroup() {
   const data = collectGroupDetailData();
   if (!data || data.id === '__new__') return;
   const g = settingsState.groupsCache.find(x => x.id === data.id);
-  const hasMembers = S.USERS.some(u => u.groupId === data.id);
+  const hasMembers = settingsState.groupMembersCache.some(u => u.groupId === data.id);
   const ok = await showModal({
     title: 'グループを削除',
     body: `「${g?.name || data.id}」を削除しますか？` + (hasMembers ? '\n\n所属メンバーは自動的に「未分類」に戻ります。' : ''),
@@ -247,10 +257,12 @@ async function deleteGroup() {
   try {
     await api.deleteGroup(data.id);
     settingsState.groupsCache = settingsState.groupsCache.filter(x => x.id !== data.id);
-    // ローカルのユーザーキャッシュも整合させる
-    S.USERS.forEach(u => { if (u.groupId === data.id) u.groupId = null; });
+    // ローカルのメンバーキャッシュも整合させる (backend 側は groups DELETE が groupId を null にする)
+    settingsState.groupMembersCache.forEach(u => { if (u.groupId === data.id) u.groupId = null; });
     settingsState.groupDetailId = null;
     renderGroupsView();
+    // 編集して dirty のまま削除した場合、対象が消えているので未保存扱いを残さない
+    clearGroupsDirty();
   } catch (e) {
     await showModal({title: '削除失敗', body: e.message || '削除に失敗しました', okText: 'OK', cancelText: ''});
   }

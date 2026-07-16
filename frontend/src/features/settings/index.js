@@ -2,7 +2,7 @@ import { S } from '../../app/state.js';
 import { api } from '../../api/index.js';
 import { escapeHtml } from '../../shared/utils/utils.js';
 import { showModal } from '../../shared/ui/modal.js';
-import { hasPerm, logout } from '../../app/auth.js';
+import { hasPerm, getCurrentUser, logout } from '../../app/auth.js';
 import { renderPresets, exitPresetEdit, isPresetEditDirty } from '../presets/presets.js';
 import { abortInFlightAggregate } from '../../aggregate/aggregateBackend.js';
 import { emit } from '../../app/events.js';
@@ -365,7 +365,8 @@ export function setupSettingsEvents() {
   });
 
   // ----- SETTINGS NAV -----
-  document.getElementById('open-settings').addEventListener('click', () => { if (hasPerm('manageUsers')) enterSettingsMode('users'); });
+  // ユーザー管理は管理者限定 (backend も adminOnly。旧 manageUsers は廃止)
+  document.getElementById('open-settings').addEventListener('click', () => { if (getCurrentUser().isAdmin) enterSettingsMode('users'); });
   document.getElementById('open-metrics-doc').addEventListener('click', () => { if (hasPerm('editMetrics')) enterSettingsMode('metrics'); });
   document.getElementById('open-filters-doc').addEventListener('click', () => { if (hasPerm('editFilters')) enterSettingsMode('filters'); });
   document.getElementById('open-defaults-doc').addEventListener('click', () => { if (hasPerm('editDefaults')) enterSettingsMode('defaults'); });

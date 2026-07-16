@@ -141,8 +141,12 @@ export async function seedDefaultPresets() {
       thresholds: def.thresholds ? JSON.parse(JSON.stringify(def.thresholds)) : {},
       thresholdMetrics: def.thresholdMetrics ? [...def.thresholdMetrics] : [],
     };
+    // 個別失敗は無視して残りを続ける。ただし 1 件でも成功していれば次回起動は
+    // 上の early return で seed 自体が走らないので、失敗した分は補われない。
+    // 該当タブは preset 無しとなり、loadTabState のフォールバックで毎回
+    // charts/cards が空になる (= そのタブではカード/グラフを保存できない)。
     try { await createPresetOp(preset); }
-    catch (e) { /* 個別失敗は無視、次回起動で再 seed される */ }
+    catch (e) { /* 失敗したタブの preset は作られないまま (上のコメント参照) */ }
   }
 }
 
@@ -247,6 +251,12 @@ export async function savePresetPrompt() {
 }
 
 export async function duplicatePreset(i) {
+  // 複製は実質「新規作成」。backend の POST も savePreset を要求するので、
+  // ここで弾かないと権限の無いユーザーが押した時に API エラーになるだけになる。
+  if (!hasPerm('savePreset')) {
+    showModal({title: '権限がありません', body: 'プリセットの新規追加権限がありません', okText: 'OK', cancelText: ''});
+    return;
+  }
   const list = getPresets();
   const src = list[i];
   if (!src) return;
@@ -461,7 +471,22 @@ function restoreFilterStateForTab(viewKey) {
   S.FILTER_CONDITIONS = fs.filterConditions ? JSON.parse(JSON.stringify(fs.filterConditions)) : {};
 }
 
+// 現在のタブ種別に応じた body クラスを確定させる。
+// これを applyView (= タブクリック時) だけでやっていたため、起動時とソース切替時
+// (どちらも loadTabState を直接呼ぶ) には tab-custom が付かず、
+// body.no-edit-custom.tab-custom を前提にした権限ゲートが丸ごと無効だった。
+// loadTabState の冒頭に置いて、タブ状態を読むすべての経路で必ず揃うようにする。
+// preset 編集中は enterPresetEdit が両方外すので、その間は触らない。
+export function syncTabBodyClasses(viewKey) {
+  if (S.PRESET_EDIT_IDX != null) return;
+  const isBuiltin = !!S.VIEWS[viewKey];
+  const isCustom = (S.CUSTOM_TABS || []).some(t => t.key === viewKey);
+  document.body.classList.toggle('tab-custom', isCustom);
+  document.body.classList.toggle('readonly-tab', isBuiltin);
+}
+
 export function loadTabState(viewKey) {
+  syncTabBodyClasses(viewKey);
   if (S.VIEWS[viewKey]) {
     // 標準タブ: preset を全部優先(フィルタも preset の値を強制適用、per-user state からは復元しない)
     const view = S.VIEWS[viewKey];
@@ -489,8 +514,9 @@ export function loadTabState(viewKey) {
     }
     return;
   }
-  const st = S.TAB_STATES[viewKey];
-  if (!st) return;
+  // state を持たないタブ (orphan) でも既定値で開く。early return すると前タブの
+  // dims/charts がそのまま残り、直後の saveState でこのタブの内容として保存される。
+  const st = S.TAB_STATES[viewKey] || {};
   S.SELECTED_DIMS = Array.isArray(st.dims) && st.dims.length ? [...st.dims] : ['action_date'];
   S.SELECTED_METRICS = Array.isArray(st.metrics) ? [...st.metrics] : S.METRIC_DEFS.map(m => m.key);
   S.THRESHOLDS = st.thresholds ? JSON.parse(JSON.stringify(st.thresholds)) : {};
@@ -498,12 +524,16 @@ export function loadTabState(viewKey) {
   S.TABLE_CONFIG = normalizeTableConfig(st.tableConfig);
   // 折り畳み/固定列/倍率もタブ単位。無い旧タブは既定へ戻す (前タブの状態を持ち込まない)。
   setTableState(st.tableState || {});
-  // カスタムタブは CHARTS/CARDS を持たない (TAB_STATES に保存していない) ので、
-  // 標準タブ→カスタムタブ切替で前タブのチャートが残らないようリセット。
-  S.CHARTS = [];
-  S.CHART_ID_SEQ = 1;
-  S.CARDS = [];
-  S.CARD_ID_SEQ = 1;
+  // カード/グラフもタブ単位で復元する。標準タブは preset に持つが、カスタムタブは
+  // preset を経由しないので TAB_STATES から戻す。charts/cards を持たない旧タブは
+  // 空になり、前タブの内容を持ち込まない (= 従来どおりの挙動)。
+  // 正規化は loadPresetIntoGlobals と揃える。
+  S.CHARTS = Array.isArray(st.charts)
+    ? st.charts.map(c => ({...c, color: c.color || '#2563eb', name: c.name || '', bucket: c.bucket || 'auto'}))
+    : [];
+  S.CHART_ID_SEQ = S.CHARTS.length ? Math.max(0, ...S.CHARTS.map(c => c.id)) + 1 : 1;
+  S.CARDS = Array.isArray(st.cards) ? st.cards.map(c => ({...c})) : [];
+  S.CARD_ID_SEQ = S.CARDS.length ? Math.max(0, ...S.CARDS.map(c => c.id)) + 1 : 1;
   restoreFilterStateForTab(viewKey);
 }
 

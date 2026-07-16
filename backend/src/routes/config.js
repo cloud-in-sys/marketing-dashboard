@@ -3,6 +3,7 @@ import { db } from '../firebase.js';
 import { httpError } from '../middleware/error.js';
 import { requireSourceAccess } from '../middleware/auth.js';
 import { validateConfigExpressions, diffExpressionFields } from '../utils/expression.js';
+import { customTabsViolation, sanitizeState, validateCustomTabs } from '../utils/customTabs.js';
 
 const app = new Hono();
 
@@ -14,16 +15,26 @@ const METRICS_FIELDS    = ['metricDefs', 'baseFormulas', 'formulas'];
 const FILTERS_FIELDS    = ['filterDefs'];
 const DIMENSIONS_FIELDS = ['dimensions'];
 const DEFAULTS_FIELDS   = ['views'];
-// viewOrder / customTabs はユーザーが自由に並べ替え/追加するUI寄りの情報なので
-// 権限ゲートしない(shared だが誰でも書ける)
+// viewOrder はタブの並び順のみで、誰でも並べ替えできる仕様なので権限ゲートしない
 const FIELD_PERM = {};
 METRICS_FIELDS.forEach(f => FIELD_PERM[f] = 'editMetrics');
 FILTERS_FIELDS.forEach(f => FIELD_PERM[f] = 'editFilters');
 DIMENSIONS_FIELDS.forEach(f => FIELD_PERM[f] = 'editDimensions');
 DEFAULTS_FIELDS.forEach(f => FIELD_PERM[f] = 'editDefaults');
 
-// UI状態 (per-user 的だが shared config に置いているため誰でも書ける): state, colWidths
+// UI状態 (per-user 的だが shared config に置いているため誰でも書ける): colWidths
 // ※将来的には per-user ドキュメントに分離が望ましい
+
+// customTabs を「形式検証 → 認可」の順で確認する。この順序が重要で、逆にすると
+// 非配列が空配列として認可判定を通り、保存時に生の不正値が書かれてしまう。
+// 問題なければ null、あれば { status, body } を返す。
+function checkCustomTabs(beforeTabs, nextTabs, user) {
+  const invalid = validateCustomTabs(nextTabs);
+  if (invalid) return { status: 400, body: { error: invalid } };
+  const violation = customTabsViolation(beforeTabs, nextTabs, user);
+  if (violation) return { status: 403, body: { error: `Missing permission: ${violation}` } };
+  return null;
+}
 
 function checkFieldPerms(body, user) {
   if (user?.isAdmin) return null;
@@ -120,6 +131,18 @@ app.put('/:sid', requireSourceAccess(), async c => {
       }
     }
   }
+  // customTabs / state も同様に、省略を「削除」と解釈せず既存値を維持する。
+  if (final.customTabs === undefined) {
+    if ('customTabs' in before) final.customTabs = before.customTabs;
+  } else {
+    const err = checkCustomTabs(before.customTabs, final.customTabs, user);
+    if (err) return c.json(err.body, err.status);
+  }
+  if ('state' in final || 'state' in before) {
+    const r = sanitizeState(before.state, final.state, user);
+    if (r.error) return c.json({ error: r.error }, 400);
+    final.state = r.state;
+  }
   final.updatedAt = new Date().toISOString();
   await configDoc(sid).set(final);
   logExpressionHistory(sid, before, final, user);
@@ -143,9 +166,20 @@ app.patch('/:sid', requireSourceAccess(), async c => {
   const docRef = configDoc(sid);
   const beforeSnap = await docRef.get();
   const before = beforeSnap.exists ? beforeSnap.data() : {};
+  // PATCH は送られたフィールドだけを差し替えるので、customTabs / state も
+  // body に含まれている時だけ確認する (省略されたフィールドは触らない)。
+  if ('customTabs' in body) {
+    const err = checkCustomTabs(before.customTabs, body.customTabs, user);
+    if (err) return c.json(err.body, err.status);
+  }
   // update() を使ってトップレベルフィールドを完全置換する。
   // set({merge:true}) だと map 型(views など)が deep merge され、削除キーが残ってしまう。
   const patch = { ...body, updatedAt: new Date().toISOString() };
+  if ('state' in patch) {
+    const r = sanitizeState(before.state, patch.state, user);
+    if (r.error) return c.json({ error: r.error }, 400);
+    patch.state = r.state;
+  }
   if (beforeSnap.exists) {
     await docRef.update(patch);
   } else {

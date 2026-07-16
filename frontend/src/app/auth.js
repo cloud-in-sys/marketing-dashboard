@@ -12,6 +12,15 @@ export function hasPerm(key) {
   return !!(u.isAdmin || u.perms?.[key]);
 }
 
+// 現在のタブの内容 (カード / グラフ / dims / metrics 等) を編集できるか。
+// カスタムタブの内容は TAB_STATES = shared config に保存されるので editCustom が要る。
+// 標準タブのカード/グラフは preset 側に保存されるため、ここでは編集可として扱う
+// (保存にはプリセットの権限が別途かかる)。
+export function canEditCurrentTab() {
+  const isCustom = (S.CUSTOM_TABS || []).some(t => t.key === S.CURRENT_VIEW);
+  return !isCustom || hasPerm('editCustom');
+}
+
 // ロール判定 (settings/users.js getUserRole と一致するロジック):
 // operator = 非 admin かつ「settings 以外の全 perms 持ち」かつ「settings perms 全部なし」
 const _SETTINGS_PERMS = PERM_GROUPS.find(g => g.group === 'settings')?.perms.map(p => p.key) || [];
@@ -51,10 +60,10 @@ export function applyPermissionUI() {
   const u = getCurrentUser();
   document.body.classList.toggle('is-admin', !!u.isAdmin);
   const keys = [
-    'viewSources','manageSources','connectAccount',
-    'viewPresets','viewCustom','addCustom','savePreset',
+    'manageSources','connectAccount',
+    'viewCustom','addCustom','savePreset',
     'editCustom','editPreset','deleteCustom','deletePreset',
-    'editMetrics','editFilters','editDefaults','editDimensions','manageUsers','manageGroups','manageBranding',
+    'editMetrics','editFilters','editDefaults','editDimensions','manageGroups','manageBranding',
   ];
   const camelToKebab = s => s.replace(/([A-Z])/g, '-$1').toLowerCase();
   for (const k of keys) {

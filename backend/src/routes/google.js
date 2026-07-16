@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
-import { db } from '../firebase.js';
 import { getSecret } from '../utils/secrets.js';
 import { httpError } from '../middleware/error.js';
 import { requirePerm } from '../middleware/auth.js';
+import { revokeAndDeleteGoogleToken, googleTokenDoc } from '../utils/googleTokens.js';
 
 // HMAC-sign the state parameter with the OAuth client secret (server-side
 // only) so Google's callback can be trusted without our auth header.
@@ -47,9 +47,7 @@ async function getOAuthClient() {
   return new OAuth2Client(clientId, clientSecret, redirectUri);
 }
 
-function tokenDoc(uid) {
-  return db.collection('users').doc(uid).collection('tokens').doc('google');
-}
+const tokenDoc = googleTokenDoc;
 
 // GET /api/google/status — check if user has connected Google
 app.get('/status', async c => {
@@ -96,18 +94,10 @@ export async function oauthCallback(c) {
 }
 
 // DELETE /api/google/connection — revoke & clear stored tokens
+// 実処理は utils/googleTokens.js に集約 (ユーザー削除時も同じ経路を通す)
 app.delete('/connection', requirePerm('connectAccount'), async c => {
   const uid = c.get('uid');
-  const snap = await tokenDoc(uid).get();
-  if (snap.exists) {
-    const { refreshToken, accessToken } = snap.data();
-    const oauth = await getOAuthClient();
-    try {
-      if (refreshToken) await oauth.revokeToken(refreshToken);
-      else if (accessToken) await oauth.revokeToken(accessToken);
-    } catch (e) { /* ignore */ }
-    await tokenDoc(uid).delete();
-  }
+  await revokeAndDeleteGoogleToken(uid, { reason: 'user_disconnect' });
   return c.json({ ok: true });
 });
 

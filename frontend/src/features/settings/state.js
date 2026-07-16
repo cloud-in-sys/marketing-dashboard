@@ -7,4 +7,8 @@ export const settingsState = {
   sourcesCache: [],
   groupDetailId: null,
   userDetailIdx: null,
+  // グループ管理画面のメンバー一覧 ({ uid, name, email, groupId } のみ / perms なし)。
+  // S.USERS とは別に持つこと。S.USERS は getCurrentUser() が権限判定に使う配列なので、
+  // perms を持たないメンバー一覧で上書きすると hasPerm() が総崩れになる。
+  groupMembersCache: [],
 };

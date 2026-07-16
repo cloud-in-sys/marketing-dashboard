@@ -59,6 +59,8 @@ export const api = {
   putMyState:    (sid, state, opts) => request('PUT', `/api/me/state/${sid}`, { state }, opts),
 
   // Users
+  // listUsers は adminOnly (perms 込みの全ユーザー)。グループ画面からは使わず
+  // listGroupMembers (manageGroups でも取得可 / perms なし) を使うこと。
   listUsers:     () => request('GET', '/api/users'),
   createUser:    (data) => request('POST', '/api/users', data),
   updateUser:    (uid, patch) => request('PUT', `/api/users/${uid}`, patch),
@@ -70,6 +72,8 @@ export const api = {
 
   // Groups
   listGroups:    () => request('GET', '/api/groups'),
+  // グループ画面のメンバー一覧 (uid/name/email/groupId/isAdmin のみ。perms は返らない)
+  listGroupMembers: () => request('GET', '/api/groups/members'),
   createGroup:   (data) => request('POST', '/api/groups', data),
   updateGroup:   (gid, patch) => request('PUT', `/api/groups/${gid}`, patch),
   deleteGroup:   (gid) => request('DELETE', `/api/groups/${gid}`),

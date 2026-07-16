@@ -1,12 +1,27 @@
 import { auth, db } from '../firebase.js';
-import { ADMIN_PERMS, VIEWER_PERMS } from '../utils/perms.js';
+import { ADMIN_PERMS, normalizePresetPerms } from '../utils/perms.js';
+import { sourceVisible } from '../utils/sourceVisibility.js';
+import { readTtlMs } from '../utils/env.js';
 
-// 短 TTL のユーザープロフィールキャッシュ (Cloud Run インスタンス内、60 秒)。
+// 短 TTL のユーザープロフィールキャッシュ (Cloud Run インスタンス内)。
 // 集計 / options / columns / config など API が多発するとリクエストごとの
 // users/{uid} 読み込みが Firestore のコストになるので、ここで間引く。
-// インスタンス内のみなので別インスタンスで作られた変更が即時反映されないが、
-// 60 秒以内に admin 権限変更が即座に反映される必要は通常ない。
-const USER_CACHE_TTL_MS = 60 * 1000;
+//
+// ■ 既知の仕様: 権限失効が最大 TTL 秒ぶん遅れる
+//   キャッシュは Cloud Run インスタンスごとのメモリ上にあり、共有されていない。
+//   invalidateUserCache() は「そのリクエストを処理したインスタンス」しか消せないため、
+//   複数インスタンスが起動している場合、権限の剥奪・管理者降格・グループ変更が
+//   他インスタンスへ伝わるまで最大 TTL 秒かかる。
+//   つまり「権限を外した直後の最大 TTL 秒間、まだ旧権限で操作できる」ことがある。
+//
+//   これは許容している既知のリスク。即時失効が必要になったら、共有キャッシュ
+//   (Redis 等)、users doc の permsVersion をトークンに載せる、Pub/Sub による
+//   インスタンス間の無効化通知、のいずれかを検討すること。
+//   なお「削除」は Firestore doc 自体が消えるため、キャッシュが切れた時点で
+//   認証そのものが通らなくなる (not_registered)。
+//
+//   USER_CACHE_TTL_SECONDS=0 でキャッシュを完全に無効化できる (毎回 Firestore を読む)。
+const USER_CACHE_TTL_MS = readTtlMs('USER_CACHE_TTL_SECONDS', 60);
 const userCache = new Map();  // uid -> { user, expireAt }
 function userCacheGet(uid) {
   const e = userCache.get(uid);
@@ -15,6 +30,7 @@ function userCacheGet(uid) {
   return e.user;
 }
 function userCacheSet(uid, user) {
+  if (USER_CACHE_TTL_MS <= 0) return;   // TTL=0 → キャッシュ無効 (毎回 Firestore を読む)
   userCache.set(uid, { user, expireAt: Date.now() + USER_CACHE_TTL_MS });
 }
 export function invalidateUserCache(uid) {
@@ -84,6 +100,7 @@ export async function authMiddleware(c, next) {
           user = { ...prev.data(), uid: decoded.uid, photoURL: decoded.picture || prev.data().photoURL || '' };
           await userRef.set(user);
           await prev.ref.delete();
+          if (user?.perms) user.perms = normalizePresetPerms(user.perms);
           userCacheSet(decoded.uid, user);
           c.set('user', user);
           c.set('uid', decoded.uid);
@@ -110,6 +127,9 @@ export async function authMiddleware(c, next) {
     }
   }
 
+  // 旧権限 (viewPresets のみ) を editPreset へ引き上げる。読み取り時の正規化なので
+  // Firestore のデータは書き換えず、保存時に新形式へ寄る。
+  if (user?.perms) user.perms = normalizePresetPerms(user.perms);
   userCacheSet(decoded.uid, user);
   c.set('user', user);
   c.set('uid', decoded.uid);
@@ -145,27 +165,25 @@ export function requireAnyPerm(...keys) {
 }
 
 // このユーザーが指定 sid にアクセスできるかを判定。
-// - admin: 常に可
-// - allowedGroupIds が空: 全員可
-// - 上記以外: user.groupId が allowedGroupIds に含まれていれば可
+// 判定ルールは utils/sourceVisibility.js の sourceVisible が唯一の基準
+// (一覧 / 集計 / config / preset / 更新系すべてで同じ関数を使う)。
 export async function canAccessSource(user, sid) {
   if (!user) return false;
   if (user.isAdmin) return true;
   const snap = await db.collection('sources').doc(sid).get();
   if (!snap.exists) return false;
-  const source = snap.data();
-  const allowed = source.allowedGroupIds || [];
-  if (allowed.length === 0 && source.isPublic !== false) return true;
-  if (allowed.length === 0) return false;
-  return !!(user.groupId && allowed.includes(user.groupId));
+  return sourceVisible(user, snap.data());
 }
 
-// :sid パラメータを持つルートで source visibility を確認するミドルウェア
-export function requireSourceAccess() {
+// パスパラメータの source に対する visibility を確認するミドルウェア。
+// param 名はルートに合わせて指定する (/api/config/:sid は 'sid'、/api/sources/:id は 'id')。
+// 権限 (manageSources 等) はスコープ「何をしてよいか」で、こちらはスコープ「どのソースに
+// 対してか」。両方必要なルートでは requirePerm と併用する。
+export function requireSourceAccess(param = 'sid') {
   return async (c, next) => {
     const user = c.get('user');
-    const sid = c.req.param('sid');
-    if (!sid) return c.json({ error: 'sid required' }, 400);
+    const sid = c.req.param(param);
+    if (!sid) return c.json({ error: `${param} required` }, 400);
     const ok = await canAccessSource(user, sid);
     if (!ok) return c.json({ error: 'Source not accessible' }, 403);
     await next();

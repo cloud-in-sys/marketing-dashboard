@@ -326,14 +326,14 @@ body.settings-mode .filters-bar { display: none; }
   color: var(--primary);
 }
 .chip.active {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  /* 旧グラデーション (--primary → --secondary) の末端色でベタ塗り。 */
+  background: var(--secondary);
   border-color: transparent;
   color: #ffffff;
   font-weight: 600;
-  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.25);
+  box-shadow: 0 2px 4px rgba(14, 165, 233, 0.25);
 }
-/* 派生メトリクスは基礎より淡い背景 (グラデーションなしのベタ塗り) で区別する。
-   文字色 (白) は基礎と同じ。 */
+/* 派生メトリクスは基礎より淡い背景で区別する。文字色 (白) は基礎と同じ。 */
 .chip.active.derived {
   background: color-mix(in srgb, var(--primary) 78%, #fff);
   box-shadow: 0 2px 4px rgba(37, 99, 235, 0.16);

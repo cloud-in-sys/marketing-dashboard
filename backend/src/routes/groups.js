@@ -3,6 +3,7 @@ import { db } from '../firebase.js';
 import { requirePerm } from '../middleware/auth.js';
 import { httpError } from '../middleware/error.js';
 import { invalidateSourceAccessCache } from '../aggregate/sourceAccess.js';
+import { validateSourceFilters } from '../utils/groupFilter.js';
 
 // グループ: ユーザーが所属する「テナント」を表す単純な名前付きレコード。
 // - 行フィルタや可視性のロジックは sources 側で定義する
@@ -17,13 +18,41 @@ const app = new Hono();
 const groupsCol = () => db.collection('groups');
 
 // 一覧
-// manageUsers / manageGroups 権限保有者のみ。それ以外には空配列を返してプルダウン表示を壊さない。
+// admin / manageGroups 保有者のみ。それ以外には空配列を返してプルダウン表示を壊さない。
 app.get('/', async c => {
   const user = c.get('user');
-  const allowed = user?.isAdmin || user?.perms?.manageUsers || user?.perms?.manageGroups;
+  const allowed = user?.isAdmin || user?.perms?.manageGroups;
   if (!allowed) return c.json({ groups: [] });
   const snap = await groupsCol().orderBy('createdAt').get();
   return c.json({ groups: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+});
+
+// グループ管理画面用のメンバー一覧。
+// GET /api/users は adminOnly なので、manageGroups だけを持つ非管理者が
+// グループ画面を開くと 403 で画面全体が落ちていた。グループ画面の表示に必要な
+// 項目だけを返す専用エンドポイントを用意する。
+//
+// 返すのは uid / name / email / groupId / isAdmin だけ。
+// perms (権限の中身) は絶対に返さない — グループ画面では使わず、他人がどの権限を
+// 持っているかが漏れるだけだから。isAdmin はメンバー一覧の「（管理者）」表示に使う。
+app.get('/members', async c => {
+  const user = c.get('user');
+  if (!user?.isAdmin && !user?.perms?.manageGroups) {
+    return c.json({ error: 'Missing permission: manageGroups' }, 403);
+  }
+  const snap = await db.collection('users').get();
+  const members = snap.docs.map(d => {
+    const u = d.data();
+    return {
+      uid: u.uid || d.id,
+      name: u.name || '',
+      email: u.email || '',
+      groupId: u.groupId || null,
+      isAdmin: !!u.isAdmin,
+    };
+  });
+  members.sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email, 'ja'));
+  return c.json({ members });
 });
 
 // 作成 (manageGroups)
@@ -32,7 +61,7 @@ app.post('/', requirePerm('manageGroups'), async c => {
   const name = (body.name || '').trim();
   if (!name) throw httpError(400, 'name is required');
   const sourceFilters = body.sourceFilters && typeof body.sourceFilters === 'object' ? body.sourceFilters : {};
-  validateSourceFilters(sourceFilters);
+  assertValidSourceFilters(sourceFilters);
   const doc = {
     name,
     sourceFilters,
@@ -42,15 +71,13 @@ app.post('/', requirePerm('manageGroups'), async c => {
   return c.json({ id: ref.id, ...doc });
 });
 
-// 渡された sourceFilters の正規表現パターンを検証。不正があれば例外。
-function validateSourceFilters(sf) {
-  if (!sf || typeof sf !== 'object') return;
-  for (const [sid, f] of Object.entries(sf)) {
-    if (f && (f.op === 'regex' || f.op === 'notRegex')) {
-      try { new RegExp(String(f.value ?? '')); }
-      catch (e) { throw httpError(400, `Invalid regex for source ${sid}: ${e.message}`); }
-    }
-  }
+// sourceFilters を検証。不正があれば 400。
+// 以前は正規表現の構文しか見ておらず、未知の op や不正な型を保存できてしまい、
+// 実行時に「判定不能 → 全行表示」という fail-open を招いていた。
+// 検証ロジックは実行時 (aggregate/sourceAccess.js) と同じ utils/groupFilter.js を使う。
+function assertValidSourceFilters(sf) {
+  const err = validateSourceFilters(sf);
+  if (err) throw httpError(400, `Invalid row filter: ${err}`);
 }
 
 // 更新
@@ -65,7 +92,7 @@ app.put('/:gid', requirePerm('manageGroups'), async c => {
 
   if (typeof body.name === 'string') patch.name = body.name.trim();
   if (body.sourceFilters && typeof body.sourceFilters === 'object') {
-    validateSourceFilters(body.sourceFilters);
+    assertValidSourceFilters(body.sourceFilters);
     patch.sourceFilters = body.sourceFilters;
   }
 

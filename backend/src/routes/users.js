@@ -3,6 +3,7 @@ import { db, auth } from '../firebase.js';
 import { adminOnly, invalidateUserCache } from '../middleware/auth.js';
 import { ADMIN_PERMS, VIEWER_PERMS, PERM_KEYS } from '../utils/perms.js';
 import { httpError } from '../middleware/error.js';
+import { revokeAndDeleteGoogleToken } from '../utils/googleTokens.js';
 
 const app = new Hono();
 
@@ -71,38 +72,80 @@ app.put('/:uid', adminOnly, async c => {
   if ('groupId' in body) {
     patch.groupId = (typeof body.groupId === 'string' && body.groupId) ? body.groupId : null;
   }
-  // Enforce at least one admin remains
-  if (patch.isAdmin === false) {
-    const adminsSnap = await db.collection('users').where('isAdmin', '==', true).get();
-    const adminUids = adminsSnap.docs.map(d => d.id);
-    if (adminUids.length === 1 && adminUids[0] === uid) {
-      throw httpError(400, 'Cannot demote the last admin');
+  // 管理者数の確認と更新は必ず同一 transaction 内で行う (原子性)。
+  // read → write を分けると、管理者 A と B が同時に互いを降格した場合に
+  // 両方が「管理者は 2 人いる」と読んでから両方が書き込み、管理者 0 人になる。
+  await db.runTransaction(async tx => {
+    const cur = await tx.get(ref);
+    if (!cur.exists) throw httpError(404, 'User not found');
+    if (patch.isAdmin === false) {
+      const admins = await tx.get(db.collection('users').where('isAdmin', '==', true));
+      const remaining = admins.docs.filter(d => d.id !== uid);
+      if (remaining.length === 0) throw httpError(400, 'Cannot demote the last admin');
     }
-  }
-  await ref.update(patch);
+    tx.update(ref, patch);
+  });
   invalidateUserCache(uid);  // 権限/グループ変更を 60s 待たずに反映
   return c.json({ ok: true });
 });
 
 // Delete user (admin only)
+// Firestore は親 doc を消してもサブコレクションを消さないので、users/{uid} を
+// 消すだけでは users/{uid}/tokens/google が残り、退職者の Google 資格情報で
+// 自動更新が回り続ける。ユーザー doc 削除に成功したら必ずトークンも失効させる。
 app.delete('/:uid', adminOnly, async c => {
   const uid = c.req.param('uid');
   const me = c.get('uid');
   if (uid === me) throw httpError(400, 'Cannot delete yourself');
 
   const ref = db.collection('users').doc(uid);
-  const snap = await ref.get();
-  if (!snap.exists) throw httpError(404, 'User not found');
 
-  if (snap.data().isAdmin) {
-    const adminsSnap = await db.collection('users').where('isAdmin', '==', true).get();
-    if (adminsSnap.size <= 1) throw httpError(400, 'Cannot delete the last admin');
-  }
-  // Delete Firestore record and Firebase Auth account
-  await ref.delete();
+  // 「最後の管理者か」の確認と削除を同一 transaction で行う (PUT と同じ理由)
+  await db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw httpError(404, 'User not found');
+    if (snap.data().isAdmin) {
+      const admins = await tx.get(db.collection('users').where('isAdmin', '==', true));
+      const remaining = admins.docs.filter(d => d.id !== uid);
+      if (remaining.length === 0) throw httpError(400, 'Cannot delete the last admin');
+    }
+    tx.delete(ref);
+  });
+
+  // ここから先は「ユーザー doc は既に消えた」後の後始末。個別に失敗しても
+  // 削除自体は成立しているので 500 にせず、構造化ログに残して続行する。
+  // (トークンが万一残っても、refreshAll / findAnyConnectedUser 側で
+  //  ユーザー doc の存在を確認しているので使われることはない)
+  await revokeAndDeleteGoogleToken(uid, { reason: 'user_deleted', deletedBy: me })
+    .catch(e => logCleanupFailure('token cleanup failed', uid, e));
+  await clearCreatedBy(uid).catch(e => logCleanupFailure('createdBy cleanup failed', uid, e));
   try { await auth.deleteUser(uid); } catch (e) { /* already gone */ }
   invalidateUserCache(uid);
   return c.json({ ok: true });
 });
+
+function logCleanupFailure(message, uid, e) {
+  console.log(JSON.stringify({ severity: 'ERROR', message, uid, error: e?.message || String(e) }));
+}
+
+// 削除ユーザーが作成したソースの createdBy を外す。
+// 残すと「定期更新の優先アカウント」に存在しないユーザーが表示され続け、
+// refreshAll も毎回そのユーザーのトークンを探しにいく。null にして
+// 管理者に再設定を促す (フォールバックの連携ユーザーで更新は継続する)。
+async function clearCreatedBy(uid) {
+  const snap = await db.collection('sources').where('createdBy', '==', uid).get();
+  if (snap.empty) return;
+  for (let i = 0; i < snap.docs.length; i += 400) {
+    const batch = db.batch();
+    snap.docs.slice(i, i + 400).forEach(d => batch.update(d.ref, { createdBy: null }));
+    await batch.commit();
+  }
+  console.log(JSON.stringify({
+    severity: 'INFO',
+    message: 'cleared createdBy for deleted user',
+    uid,
+    sources: snap.docs.length,
+  }));
+}
 
 export default app;

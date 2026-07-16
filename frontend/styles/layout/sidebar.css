@@ -69,21 +69,36 @@ body.sidebar-collapsed .sidebar {
 .sidebar-group[data-group="settings"] .group-toggle::before { content: '⚙'; }
 .sidebar-group[data-group="users"] .group-toggle::before { content: '👤'; }
 /* ===== PERMISSION-BASED HIDING (TABS/PRESETS/SOURCES) ===== */
-body.no-view-sources .sidebar-group[data-group="sources"] { display: none; }
 body.no-add-source #add-source { display: none; }
 body.no-delete-source .source-del { display: none; }
-body.no-view-presets #open-presets-settings { display: none; }
+body.no-edit-preset #open-presets-settings { display: none; }
 body.no-view-custom .sidebar-group[data-group="custom"] { display: none; }
 body.no-add-custom #add-custom-tab { display: none; }
 body.no-save-preset #save-preset { display: none; }
 body.no-delete-custom .custom-tab-item .preset-del { display: none; }
 body.no-delete-preset .preset-item .preset-del { display: none; }
 body.no-edit-preset .preset-item .preset-ren { display: none; }
+/* 複製は実質「新規作成」なので savePreset が要る (backend の POST も savePreset を要求) */
+body.no-save-preset .preset-item .preset-dup { display: none; }
 body.no-edit-custom.tab-custom .panel[data-panel="dim"] .panel-body,
 body.no-edit-custom.tab-custom .panel[data-panel="metric"] .panel-body,
 body.no-edit-custom.tab-custom .panel[data-panel="thresholds"] .panel-body,
 body.no-edit-custom.tab-custom .view-preset-wrap { pointer-events: none; opacity: 0.55; }
+/* カード/グラフはカスタムタブでは TAB_STATES に保存される = editCustom の対象。
+   ただし dim/metric パネルと違い、これらは main 側の「表示そのもの」なので、
+   panel-body ごと薄くすると閲覧者にはカード/グラフが白っぽく壊れて見える。
+   値の表示 (.kpi-card-value 等) はそのまま見せ、編集要素だけを隠す。
+   (標準タブのカード/グラフは preset 側に保存されるのでこのゲートは掛けない) */
+body.no-edit-custom.tab-custom .panel[data-panel="cards"] .panel-ctrl .add-btn,
+body.no-edit-custom.tab-custom .panel[data-panel="chart"] .panel-ctrl .add-btn,
+body.no-edit-custom.tab-custom .kpi-card-actions,
+body.no-edit-custom.tab-custom .chart-card .chart-ctrl,
+body.no-edit-custom.tab-custom .chart-card .drag-handle { display: none; }
+/* カード名称は input なので、閲覧時は編集できない見た目にする (値は通常表示のまま) */
+body.no-edit-custom.tab-custom .kpi-card-label { pointer-events: none; }
 body.no-edit-custom .custom-tab-color { display: none; }
+/* タブ名/グループの編集 (⚙) も editCustom が要る (backend の config PATCH も同じ権限で弾く) */
+body.no-edit-custom .view-tab-edit { display: none; }
 /* ===== SIDEBAR GROUP STATES ===== */
 .sidebar-group.collapsed .group-caret { transform: rotate(-90deg); }
 .sidebar-group.collapsed .group-body { display: none; }

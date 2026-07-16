@@ -114,7 +114,8 @@ export async function applyView(viewKey) {
   emit('renderChips');
   emit('renderThresholds');
   renderTabPresetSelect();
-  document.body.classList.toggle('tab-custom', isCustom);
+  // tab-custom / readonly-tab は loadTabState(viewKey) 内の syncTabBodyClasses が
+  // 確定させる (起動・ソース切替でも同じ経路を通すため)。ここでは触らない。
   const viewEl = document.querySelector('.view');
   if (viewEl) {
     viewEl.classList.remove('animating');

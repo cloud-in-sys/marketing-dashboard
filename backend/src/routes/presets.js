@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { db } from '../firebase.js';
-import { requireSourceAccess, requireAnyPerm } from '../middleware/auth.js';
+import { requireSourceAccess, requirePerm } from '../middleware/auth.js';
 import { httpError } from '../middleware/error.js';
 
 const app = new Hono();
@@ -17,7 +17,7 @@ app.get('/:sid', requireSourceAccess(), async c => {
 
 // 新規作成: 1 プリセットだけ追加。他プリセットには一切触れないので他ユーザー編集と衝突しない。
 // 同名 preset が既にあれば 409。race を防ぐため Firestore transaction 内で存在確認 + write。
-app.post('/:sid', requireSourceAccess(), requireAnyPerm('savePreset', 'editPreset'), async c => {
+app.post('/:sid', requireSourceAccess(), requirePerm('savePreset'), async c => {
   const sid = c.req.param('sid');
   const body = await c.req.json();
   if (!body || typeof body !== 'object') throw httpError(400, 'body required');
@@ -41,7 +41,7 @@ app.post('/:sid', requireSourceAccess(), requireAnyPerm('savePreset', 'editPrese
 
 // 個別更新: 単一 preset だけ書き換え。他プリセットは無傷。
 // name 変更時は「別 doc に同名が存在しないか」を transaction で確認。
-app.put('/:sid/:pid', requireSourceAccess(), requireAnyPerm('editPreset', 'savePreset'), async c => {
+app.put('/:sid/:pid', requireSourceAccess(), requirePerm('editPreset'), async c => {
   const sid = c.req.param('sid');
   const pid = c.req.param('pid');
   const body = await c.req.json();
@@ -66,7 +66,7 @@ app.put('/:sid/:pid', requireSourceAccess(), requireAnyPerm('editPreset', 'saveP
 });
 
 // 個別削除
-app.delete('/:sid/:pid', requireSourceAccess(), requireAnyPerm('deletePreset'), async c => {
+app.delete('/:sid/:pid', requireSourceAccess(), requirePerm('deletePreset'), async c => {
   const sid = c.req.param('sid');
   const pid = c.req.param('pid');
   await presetsCol(sid).doc(pid).delete();
@@ -77,7 +77,7 @@ app.delete('/:sid/:pid', requireSourceAccess(), requireAnyPerm('deletePreset'), 
 // preset の中身は書き換えないので他ユーザーの編集を潰さない。
 // 存在しない pid は skip (Firestore batch は 1 件でも NOT_FOUND だと全滅するため、
 // 事前に存在チェックする)。
-app.patch('/:sid', requireSourceAccess(), requireAnyPerm('editPreset'), async c => {
+app.patch('/:sid', requireSourceAccess(), requirePerm('editPreset'), async c => {
   const sid = c.req.param('sid');
   const body = await c.req.json();
   if (!Array.isArray(body?.order)) throw httpError(400, 'order (array) required');

@@ -2,7 +2,7 @@ import { S, PERM_GROUPS, PERM_DEFS, ADMIN_PERMS, VIEWER_PERMS } from '../../../a
 import { api } from '../../../api/index.js';
 import { escapeHtml } from '../../../shared/utils/utils.js';
 import { showModal } from '../../../shared/ui/modal.js';
-import { hasPerm, renderCurrentUserLabel, applyPermissionUI } from '../../../app/auth.js';
+import { getCurrentUser, renderCurrentUserLabel, applyPermissionUI } from '../../../app/auth.js';
 import { settingsState } from '../state.js';
 import { buildSaveErrorMessage, setSaveButtonState } from '../saveFlow.js';
 
@@ -21,14 +21,25 @@ const OPERATOR_PERMS = Object.fromEntries(PERM_DEFS.map(p => {
   return [p.key, !isSettings];
 }));
 
+// 権限セットからロールを逆算する (ロール自体は保存しておらず perms から求める)。
+// 以前は最後が return 'viewer' だったため、運用者に settings 権限を 1 つ足しただけで
+// 「一般」と表示されていた。viewer は本来 VIEWER_PERMS = 全権限なし を指す。
 function getUserRole(u) {
   if (u.isAdmin) return 'admin';
-  const settingsPerms = PERM_GROUPS.find(g => g.group === 'settings')?.perms.map(p => p.key) || [];
-  const nonSettingsPerms = PERM_DEFS.filter(p => !settingsPerms.includes(p.key));
-  const hasAllNonSettings = nonSettingsPerms.every(p => u.perms[p.key]);
-  const hasNoSettings = settingsPerms.every(k => !u.perms[k]);
-  if (hasAllNonSettings && hasNoSettings) return 'operator';
-  return 'viewer';
+  const perms = u.perms || {};
+  const matches = preset => PERM_DEFS.every(p => !!perms[p.key] === !!preset[p.key]);
+  // プリセットちょうどならそのロール名
+  if (matches(OPERATOR_PERMS)) return 'operator';
+  if (matches(VIEWER_PERMS)) return 'viewer';
+  // 運用者の権限を全部持った上で足している → 運用者+
+  const hasAllOperator = PERM_DEFS.every(p => !OPERATOR_PERMS[p.key] || !!perms[p.key]);
+  if (hasAllOperator) return 'operatorPlus';
+  // 運用者の土台には乗らないが、運用者の領域 (settings 以外) を 1 つも持たない
+  //   = 一般 (全部なし) に settings 権限だけ足した状態 → 一般+
+  const hasNoOperatorArea = PERM_DEFS.every(p => !OPERATOR_PERMS[p.key] || !perms[p.key]);
+  if (hasNoOperatorArea) return 'viewerPlus';
+  // 運用者の領域を一部だけ持つ (運用者から減らした等) → どのロールの土台にも乗らない
+  return 'custom';
 }
 
 function applyRole(u, role) {
@@ -45,7 +56,7 @@ function applyRole(u, role) {
 }
 
 // ----- USERS VIEW -----
-const ROLE_LABEL = { admin: '管理者', operator: '運用者', viewer: '一般' };
+const ROLE_LABEL = { admin: '管理者', operator: '運用者', operatorPlus: '運用者+', viewer: '一般', viewerPlus: '一般+', custom: 'カスタム' };
 
 export function renderUsersModal() {
   const list = document.getElementById('users-list');
@@ -86,6 +97,10 @@ function renderUserDetail(list, src, i) {
         <div class="user-row-main">
           <input type="text" class="user-name-input" data-user-name value="${escapeHtml(u.name || '')}" placeholder="表示名">
           <select class="user-role-select" data-user-role>
+            ${ROLE_LABEL[role] && !['admin','operator','viewer'].includes(role)
+              // 派生ロール (運用者+ / 一般+ / カスタム) は「今その状態の時」だけ現在値として出す。
+              // 常時 option に置くと選べない項目がプルダウンに並んで邪魔になる。
+              ? `<option value="${role}" selected>${ROLE_LABEL[role]}</option>` : ''}
             <option value="admin"${role==='admin'?' selected':''}>管理者</option>
             <option value="operator"${role==='operator'?' selected':''}>運用者</option>
             <option value="viewer"${role==='viewer'?' selected':''}>一般</option>
@@ -112,7 +127,18 @@ function renderUserDetail(list, src, i) {
           <div class="user-perms-group">
             <div class="user-perms-group-label">${g.label}</div>
             <div class="user-perms">
-              ${g.perms.map(p => `<label><input type="checkbox" data-perm="${p.key}"${u.perms[p.key]?' checked':''}><span>${p.label}</span></label>`).join('')}
+              ${g.perms.filter(p => !p.parent).map(p => {
+                const children = g.perms.filter(c => c.parent === p.key);
+                const parentOn = !!u.perms[p.key];
+                const self = `<label><input type="checkbox" data-perm="${p.key}"${parentOn?' checked':''}><span>${p.label}</span></label>`;
+                if (!children.length) return self;
+                // 子は親が ON の時だけ出す (親が無いと意味を持たない追加権限のため)
+                return `<div class="perm-with-children">${self}
+                  ${parentOn ? `<div class="perm-children">${children.map(c =>
+                    `<label><input type="checkbox" data-perm="${c.key}"${u.perms[c.key]?' checked':''}><span>${c.label}</span></label>`
+                  ).join('')}</div>` : ''}
+                </div>`;
+              }).join('')}
             </div>
           </div>
         `).join('')}
@@ -174,7 +200,19 @@ export function setupUsersEvents() {
     const u = draft[idx];
     if (!u) return;
     if (e.target.matches('[data-user-name]')) u.name = e.target.value;
-    else if (e.target.matches('[data-perm]')) u.perms[e.target.dataset.perm] = e.target.checked;
+    else if (e.target.matches('[data-perm]')) {
+      const key = e.target.dataset.perm;
+      u.perms[key] = e.target.checked;
+      // 親子の整合を保つ。親 OFF → 配下も OFF (親が無いと機能しないため)。
+      //          子 ON  → 親も ON (設定画面に入れないのに追加だけできる矛盾を防ぐ)。
+      const def = PERM_DEFS.find(p => p.key === key);
+      if (!e.target.checked) {
+        for (const c of PERM_DEFS.filter(p => p.parent === key)) u.perms[c.key] = false;
+      } else if (def?.parent) {
+        u.perms[def.parent] = true;
+      }
+      renderUsersModal();   // 子の表示/非表示を反映
+    }
     else if (e.target.matches('[data-user-group]')) u.groupId = e.target.value || null;
     markUsersDirty();
   });
@@ -192,7 +230,8 @@ export function setupUsersEvents() {
     }
   });
   document.getElementById('users-save-btn').addEventListener('click', async () => {
-    if (!hasPerm('manageUsers')) return;
+    // ユーザー管理は管理者限定 (backend も adminOnly)
+    if (!getCurrentUser().isAdmin) return;
     if (!S.USERS_DRAFT) return;
     if (!S.USERS_DRAFT.some(u => u.isAdmin)) {
       await showModal({title: '保存できません', body: '少なくとも1人の管理者が必要です', okText: 'OK', cancelText: ''});

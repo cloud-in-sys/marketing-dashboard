@@ -117,8 +117,10 @@ export const DOW_LABELS = ['日','月','火','水','木','金','土'];
 export const DOW_ORDER = {'日':0,'月':1,'火':2,'水':3,'木':4,'金':5,'土':6};
 
 export const PERM_GROUPS = [
+  // 閲覧可否はグループ管理 (allowedGroupIds / isPublic) が唯一の判定基準。
+  // 旧 viewSources はサイドバーを隠すだけで backend の認可 (canAccessSource) では
+  // 一切見ておらず、グループ管理と役割が重複していたため廃止した。
   {group: 'sources', label: 'データソース', perms: [
-    {key: 'viewSources',       label: '閲覧'},
     {key: 'manageSources',     label: '管理（追加・編集・削除・更新）'},
     {key: 'connectAccount',    label: 'Googleアカウント連携'},
   ]},
@@ -133,13 +135,19 @@ export const PERM_GROUPS = [
     {key: 'editFilters',    label: 'フィルタ設定'},
     {key: 'editDimensions', label: 'ディメンション設定'},
     {key: 'editDefaults',   label: '標準タブ設定'},
-    // プリセット系（以前は独立グループだったがサイドバーで「設定」に移動したので統合）
-    {key: 'viewPresets',    label: 'プリセット表示'},
-    {key: 'editPreset',     label: 'プリセット編集'},
-    {key: 'savePreset',     label: 'プリセット新規保存'},
-    {key: 'deletePreset',   label: 'プリセット削除'},
+    // プリセット系。editPreset =「プリセット設定」= 設定画面を開ける + 既存プリセットを編集できる。
+    // 旧 viewPresets (表示のみ) は廃止し editPreset に統合した (表示だけ許可しても編集
+    // できなければ意味がないため)。旧データは backend の normalizePresetPerms が引き上げる。
+    {key: 'editPreset',     label: 'プリセット設定'},
+    // parent 付きの権限は「親が ON の時だけ意味を持つ」追加権限。
+    // UI では親配下にネストして表示し、親を OFF にすると自動で外す (users.js)。
+    {key: 'savePreset',     label: '新規追加・複製', parent: 'editPreset'},
+    {key: 'deletePreset',   label: '削除',    parent: 'editPreset'},
     // 管理者設定 (サイドバー「管理者設定」セクション)
-    {key: 'manageUsers',    label: 'ユーザー管理'},
+    // ユーザー管理は isAdmin 限定 (旧 manageUsers は廃止)。backend は元から
+    // adminOnly なので、権限を持たせても一覧・保存・追加・削除すべて 403 だった。
+    // 「画面は出るが何もできない」状態を解消するため isAdmin に一本化した。
+    // (ユーザー管理は自分の権限も変えられる = 実質 admin 昇格なので、権限で配らない)
     {key: 'manageGroups',   label: 'グループ管理'},
     {key: 'manageBranding', label: 'ブランディング (ロゴ・タイトル・テーマ)'},
   ]},
@@ -320,6 +328,20 @@ export function getTabFilterState(viewKey) {
 let _getTableState = () => ({});
 export function setTableStateGetter(fn) { if (typeof fn === 'function') _getTableState = fn; }
 
+// カスタムタブの閲覧権限 (viewCustom) を注入で受け取る。
+// auth.js を直接 import すると auth.js -> state.js (PERM_GROUPS) の循環になり、
+// auth.js のトップレベルで PERM_GROUPS が TDZ に入ってモジュール初期化が落ちる。
+// 未配線の間 (テスト等) は true = 従来どおりの挙動。
+let _canViewCustom = () => true;
+export function setCanViewCustom(fn) { if (typeof fn === 'function') _canViewCustom = fn; }
+// 「このタブを開けるか」。viewCustom が無いユーザーにカスタムタブを復元させない
+// (サイドバーは CSS で隠れているのに、最後に開いたタブとして復元されてしまうため)。
+function isOpenableView(key) {
+  if (!key) return false;
+  if (S.VIEWS[key]) return true;
+  return _canViewCustom() && (S.CUSTOM_TABS || []).some(t => t.key === key);
+}
+
 export function setTabFilterState(viewKey, filterValues, filterConditions) {
   _userStateCache.tabFilters[viewKey] = { filterValues, filterConditions };
   _scheduleUserStateSave();
@@ -356,6 +378,10 @@ export function syncCurrentTabState() {
     // 折り畳み (通常/転置)・固定列・倍率もタブ単位で保持する。
     // 保存しないと別タブ/別プリセットの状態がこのタブへ残る。
     tableState: _getTableState(),
+    // カード/グラフもタブ単位。標準タブは preset に持つが、カスタムタブは
+    // preset を経由しないので、ここに保存しないとリロードで消える。
+    charts: JSON.parse(JSON.stringify(S.CHARTS || [])),
+    cards: JSON.parse(JSON.stringify(S.CARDS || [])),
   };
 }
 
@@ -628,7 +654,8 @@ async function applyConfig(cfg) {
 
   // Restore charts/view/tab state
   const st = cfg.state || {};
-  S.CURRENT_VIEW = (st.currentView && (S.VIEWS[st.currentView] || S.CUSTOM_TABS.some(t => t.key === st.currentView))) ? st.currentView : 'summary_daily';
+  // viewCustom が無ければカスタムタブは復元せず標準タブへフォールバックする
+  S.CURRENT_VIEW = isOpenableView(st.currentView) ? st.currentView : 'summary_daily';
   S.TAB_STATES = st.tabStates && typeof st.tabStates === 'object' ? st.tabStates : {};
   S.CHARTS = Array.isArray(st.charts)
     ? st.charts.map(c => ({...c, color: c.color || '#2563eb', name: c.name || '', bucket: c.bucket || 'auto'}))
@@ -680,8 +707,7 @@ async function loadSourceConfigFromServer(sid) {
   // 最終ビューの復元: ユーザーが最後に開いていたタブを優先
   const userView = getUserCurrentView();
   if (userView) {
-    const exists = !!S.VIEWS[userView] || (S.CUSTOM_TABS || []).some(t => t.key === userView);
-    if (exists) S.CURRENT_VIEW = userView;
+    if (isOpenableView(userView)) S.CURRENT_VIEW = userView;
   }
 }
 

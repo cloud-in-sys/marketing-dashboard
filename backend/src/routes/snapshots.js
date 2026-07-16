@@ -25,14 +25,11 @@ const objectName = (sid) => `snapshots/${sid}.json.gz`;
 const app = new Hono();
 
 // Return latest snapshot for a source.
-// 可視性:
-//   admin                              → 全部 OK
-//   非 admin かつ allowedGroupIds 空   → 拒否 (未設定 = 公開しない)
-//   非 admin かつ allowedGroupIds あり → 自分の groupId が含まれていれば OK
+// 可視性: utils/sourceVisibility.js の sourceVisible が唯一の基準。
 // 行絞り込み:
 //   admin → 絞らない
-//   非 admin かつ groupId なし → 絞らない
 //   非 admin かつ groupId あり → group.sourceFilters[sid] を適用
+//   (非 admin かつ未分類は可視性チェックで弾かれるので到達しない)
 app.get('/:sid', async c => {
   const sid = c.req.param('sid');
   const user = c.get('user');
@@ -142,23 +139,62 @@ app.get('/:sid/meta', async c => {
 
 // Refresh a single source's snapshot.
 // Uses the CALLER's Google OAuth token (not createdBy)
+// manageSources だけでは「どのソースでも更新してよい」ことにならないので、
+// 見えるソースかどうかも確認する (別グループの非公開ソースを更新させない)。
 app.post('/:sid/refresh', requirePerm('manageSources'), async c => {
   const sid = c.req.param('sid');
   const uid = c.get('uid');
+  await requireSourceAccess(c.get('user'), sid);
   const result = await refreshSnapshot(sid, uid);
   return c.json(result);
 });
 
+// ユーザー doc が存在する = まだ在籍しているか。削除済みユーザーの残留トークンを
+// 使わないための確認。users.js の削除処理でトークンも消しているが、そちらが
+// 失敗した場合の保険としてここでも見る (fail-closed)。
+async function isActiveUser(uid) {
+  if (!uid) return false;
+  const snap = await db.collection('users').doc(uid).get();
+  return snap.exists;
+}
+
+// 1 ページあたりのユーザー数と、探索するユーザー数の上限。
+// 上限は無限ループ / 全件大量読み込みの歯止め。到達したらログを出して諦める。
+const USER_SCAN_PAGE = 25;
+const USER_SCAN_MAX = 1000;
+
 // Find any user that has a Google connection (for batch refresh fallback).
+//
+// users をページングして、各ユーザーの google トークンを見る。
+// 以前は collectionGroup('tokens').limit(10) で先頭 10 件だけを見ていたため、
+//   - 有効な連携ユーザーが 11 件目以降にいると見つけられない
+//   - 先頭 10 件が削除済みユーザーの残留トークンだと候補ゼロになる
+// という問題があった。users 側から辿れば、削除済みユーザーのトークンは
+// 構造上いっさい候補に入らない (ユーザー doc が無ければ辿り着かない)。
 async function findAnyConnectedUser() {
-  const tokens = await db.collectionGroup('tokens').limit(10).get();
-  for (const t of tokens.docs) {
-    if (t.id === 'google' && t.data().refreshToken) {
-      // parent is users/{uid}/tokens
-      const uid = t.ref.parent.parent.id;
-      return uid;
+  let last = null;
+  let scanned = 0;
+  while (scanned < USER_SCAN_MAX) {
+    let q = db.collection('users').orderBy('__name__').limit(USER_SCAN_PAGE);
+    if (last) q = q.startAfter(last);
+    const page = await q.get();
+    if (page.empty) return null;
+    // このページぶんのトークンをまとめて確認 (直列だと人数ぶん待つため)
+    const tokens = await Promise.all(
+      page.docs.map(d => d.ref.collection('tokens').doc('google').get())
+    );
+    for (let i = 0; i < tokens.length; i++) {
+      if (tokens[i].exists && tokens[i].data()?.refreshToken) return page.docs[i].id;
     }
+    scanned += page.size;
+    if (page.size < USER_SCAN_PAGE) return null;   // 最終ページまで見て候補なし
+    last = page.docs[page.docs.length - 1];
   }
+  console.log(JSON.stringify({
+    severity: 'WARNING',
+    message: 'findAnyConnectedUser hit scan limit without finding a connected user',
+    scanned, limit: USER_SCAN_MAX,
+  }));
   return null;
 }
 
@@ -170,11 +206,15 @@ export async function refreshAll() {
   const results = [];
   for (const s of sources.docs) {
     try {
-      // Prefer createdBy if they have a Google connection
+      // Prefer createdBy if they are still an active user AND have a Google connection.
+      // 在籍確認をしないと、削除ユーザーの残留トークンで更新が回り続ける。
       let uid = s.data().createdBy;
       if (uid) {
-        const t = await db.collection('users').doc(uid).collection('tokens').doc('google').get();
-        if (!t.exists) uid = fallback;
+        const [active, t] = await Promise.all([
+          isActiveUser(uid),
+          db.collection('users').doc(uid).collection('tokens').doc('google').get(),
+        ]);
+        if (!active || !t.exists) uid = fallback;
       } else {
         uid = fallback;
       }

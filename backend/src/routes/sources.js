@@ -1,13 +1,14 @@
 import { Hono } from 'hono';
 import { db } from '../firebase.js';
-import { requirePerm, canAccessSource } from '../middleware/auth.js';
+import { requirePerm, canAccessSource, requireSourceAccess } from '../middleware/auth.js';
 import { httpError } from '../middleware/error.js';
 import { invalidateSourceAccessCache } from '../aggregate/sourceAccess.js';
 import { canCreateSource } from '../utils/perms.js';
+import { sourceVisible } from '../utils/sourceVisibility.js';
 
-// Shared sources: stored at top-level `sources/{id}`. All users see them.
+// Shared sources: stored at top-level `sources/{id}`.
 // Permissions:
-//   - list:    any logged-in user (visibility filtered by group / isPublic)
+//   - list:    any logged-in user (可視性は sourceVisible で絞り込む)
 //   - create:  admin or operator only (canCreateSource); 一般 (viewer) は manageSources を
 //              個別付与されていても作成不可。初期 config も backend で作成し、
 //              コピー作成も backend 側で完結する。
@@ -15,19 +16,18 @@ import { canCreateSource } from '../utils/perms.js';
 //              allowedGroupIds / isPublic → manageGroups
 //   - delete:  requires `manageSources` permission
 //   - reorder: requires `manageSources` permission
+//
+// 更新系 (update / disconnect / delete / reorder) は権限に加えて requireSourceAccess で
+// 「そのソースが自分に見えるか」も必ず確認する。manageSources は「ソースを操作してよい」
+// という能力であって「全ソースに対して」ではないため、これがないと別グループの
+// 非公開ソースの ID を知るだけで改名・切断・削除できてしまう。
 
 const app = new Hono();
 
 const sourcesCol = () => db.collection('sources');
 
 // List all sources
-// 可視性ルール (aggregate/sourceAccess.js と合わせる):
-//   - admin: 全件
-//   - 非admin かつ未分類 (groupId なし): 0件 (admin が group を設定するまで何も見えない)
-//   - 非admin かつ groupId あり:
-//     - isPublic !== false かつ allowedGroupIds が空 → 全員公開 (見える)
-//     - isPublic === false かつ allowedGroupIds が空 → 非公開 (見えない)
-//     - allowedGroupIds に自分の groupId が含まれる → 見える
+// 可視性ルールは utils/sourceVisibility.js の sourceVisible が唯一の基準。
 app.get('/', async c => {
   const snap = await sourcesCol().get();
   let sources = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -38,33 +38,12 @@ app.get('/', async c => {
     if (ao !== bo) return ao - bo;
     return String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
   });
-  if (sources.length === 0) {
-    const doc = {
-      name: 'デフォルト',
-      method: '',
-      isPublic: true,
-      allowedGroupIds: [],
-      createdAt: new Date().toISOString(),
-      createdBy: c.get('uid'),
-    };
-    const ref = await sourcesCol().add(doc);
-    sources.push({ id: ref.id, ...doc });
-  }
-
+  // ソースが 0 件でもここで自動作成しない。
+  // 以前は「一般ユーザーが一覧を GET しただけで、公開ソースが 1 件作られる」状態で、
+  // 作成権限 (admin / operator のみ) のルールと矛盾していた。GET が副作用で書き込むと
+  // 同時アクセスで重複作成もされうる。初期ソースは admin が POST /api/sources で作る。
   const user = c.get('user');
-  if (!user.isAdmin) {
-    // 未分類 (groupId なし) のユーザーは何も見えない
-    if (!user.groupId) {
-      sources = [];
-    } else {
-      sources = sources.filter(s => {
-        const allowed = s.allowedGroupIds || [];
-        if (allowed.length === 0 && s.isPublic !== false) return true; // 公開
-        if (allowed.length === 0) return false; // 非公開
-        return allowed.includes(user.groupId);
-      });
-    }
-  }
+  sources = sources.filter(s => sourceVisible(user, s));
 
   return c.json({ sources });
 });
@@ -184,11 +163,29 @@ app.post('/', async c => {
   }
 });
 
+// 並び替え: ids 配列の順に order フィールドを 0,1,2... と書き換える
+//   PUT /api/sources/reorder  { ids: ['s1', 's2', ...] }
+// ※ このルートは必ず PUT '/:id' より前に登録すること。Hono は登録順にマッチするので、
+//    後ろに置くと '/reorder' が '/:id' (id='reorder') に食われて無反応になる。
+app.put('/reorder', requirePerm('manageSources'), async c => {
+  const body = await c.req.json();
+  const ids = Array.isArray(body && body.ids) ? body.ids.filter(id => typeof id === 'string') : null;
+  if (!ids) throw httpError(400, 'ids array required');
+  // 見えないソースの order を書き換えられないよう、全 id のアクセス権を先に確認する
+  const user = c.get('user');
+  const okList = await Promise.all(ids.map(id => canAccessSource(user, id)));
+  if (okList.some(ok => !ok)) throw httpError(403, 'アクセスできないデータソースが含まれています');
+  const batch = db.batch();
+  ids.forEach((id, index) => batch.update(sourcesCol().doc(id), { order: index }));
+  await batch.commit();
+  return c.json({ ok: true });
+});
+
 // Update
 // 権限ルール:
 //   - name / method / sheetsInput / bqInput → manageSources
 //   - allowedGroupIds → manageGroups
-app.put('/:id', async c => {
+app.put('/:id', requireSourceAccess('id'), async c => {
   const id = c.req.param('id');
   const body = await c.req.json();
   const user = c.get('user');
@@ -218,22 +215,8 @@ app.put('/:id', async c => {
   return c.json({ ok: true });
 });
 
-// 並び替え: ids 配列の順に order フィールドを 0,1,2... と書き換える
-//   PUT /api/sources/reorder  { ids: ['s1', 's2', ...] }
-app.put('/reorder', requirePerm('manageSources'), async c => {
-  const body = await c.req.json();
-  const ids = Array.isArray(body && body.ids) ? body.ids : null;
-  if (!ids) throw httpError(400, 'ids array required');
-  const batch = db.batch();
-  ids.forEach((id, index) => {
-    if (typeof id === 'string') batch.update(sourcesCol().doc(id), { order: index });
-  });
-  await batch.commit();
-  return c.json({ ok: true });
-});
-
 // Disconnect: clear method + inputs for this source.
-app.post('/:id/disconnect', requirePerm('manageSources'), async c => {
+app.post('/:id/disconnect', requirePerm('manageSources'), requireSourceAccess('id'), async c => {
   const id = c.req.param('id');
   const admin = (await import('firebase-admin')).default;
   const FieldValue = admin.firestore.FieldValue;
@@ -247,7 +230,7 @@ app.post('/:id/disconnect', requirePerm('manageSources'), async c => {
 
 // Delete (also wipes config + presets)
 // Firestore batch は最大 500 operations なので、サブコレクションが大きい場合に備えて分割
-app.delete('/:id', requirePerm('manageSources'), async c => {
+app.delete('/:id', requirePerm('manageSources'), requireSourceAccess('id'), async c => {
   const id = c.req.param('id');
   const ref = sourcesCol().doc(id);
   const docsToDelete = [];

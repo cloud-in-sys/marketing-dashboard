@@ -2,9 +2,12 @@
 import { emit } from '../../../app/events.js';
 import { S, saveState } from '../../../app/state.js';
 import { openCardSettings, closeCardSettings, renderCardSettingsPanel } from './cardsRender.js';
+import { canEditCurrentTab } from '../../../app/auth.js';
 
 // ===== KPI CARDS =====
 document.getElementById('add-card').addEventListener('click', () => {
+  // カスタムタブのカードは TAB_STATES に保存される = editCustom が要る (CSS 頼みにしない)
+  if (!canEditCurrentTab()) return;
   const firstMetric = S.METRIC_DEFS[0]?.key || '';
   S.CARDS.push({ id: S.CARD_ID_SEQ++, metric: firstMetric, label: '', subMetric: '', subLabel: '' });
   emit('render');
@@ -12,6 +15,7 @@ document.getElementById('add-card').addEventListener('click', () => {
 document.getElementById('cards-grid').addEventListener('click', e => {
   const card = e.target.closest('[data-card-id]');
   if (!card) return;
+  if (!canEditCurrentTab()) return;
   const id = +card.dataset.cardId;
   if (e.target.closest('[data-card-role="remove"]')) {
     S.CARDS = S.CARDS.filter(c => c.id !== id);
@@ -27,6 +31,7 @@ document.getElementById('cards-grid').addEventListener('click', e => {
 document.getElementById('cards-grid').addEventListener('input', e => {
   const role = e.target.dataset.cardRole;
   if (role !== 'label') return;
+  if (!canEditCurrentTab()) return;
   const card = e.target.closest('[data-card-id]');
   const c = S.CARDS.find(x => x.id === +card.dataset.cardId);
   if (!c) return;

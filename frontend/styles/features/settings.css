@@ -356,24 +356,15 @@ textarea.metric-label-input {
 }
 .metric-del:hover { background: #fee2e2; border-color: var(--danger); color: var(--danger); }
 /* ===== PERMISSION-BASED VISIBILITY ===== */
-.non-admin-note {
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
-  color: #9a3412;
-  padding: 12px 16px;
-  border-radius: 8px;
-  font-size: 12px;
-}
-body.is-admin .admin-hidden { display: none; }
 body:not(.is-admin) .admin-only { display: none !important; }
-body.no-manage-users.no-manage-groups.no-manage-branding .sidebar-group[data-group="users"] { display: none; }
-body.no-manage-users #open-settings { display: none; }
+/* ユーザー管理は管理者限定 (旧 manageUsers は廃止。backend も adminOnly) */
+body:not(.is-admin).no-manage-groups.no-manage-branding .sidebar-group[data-group="users"] { display: none; }
+body:not(.is-admin) #open-settings { display: none; }
 body.no-manage-groups #open-groups { display: none; }
 body.no-manage-branding #open-branding { display: none; }
 body.no-manage-branding #branding-save-btn { display: none; }
 body.no-manage-branding .branding-form input,
 body.no-manage-branding .branding-form button { pointer-events: none; opacity: 0.6; }
-body:not(.no-manage-branding) .non-admin-note.no-manage-branding { display: none; }
 
 /* ===== Branding form ===== */
 .branding-form { padding: 16px 18px; display: flex; flex-direction: column; gap: 18px; }
@@ -444,7 +435,10 @@ body:not(.no-manage-branding) .non-admin-note.no-manage-branding { display: none
 body.no-edit-metrics #open-metrics-doc { display: none; }
 body.no-edit-filters #open-filters-doc { display: none; }
 body.no-edit-defaults #open-defaults-doc { display: none; }
-body.no-edit-metrics.no-edit-filters.no-edit-defaults.no-edit-dimensions .sidebar-group[data-group="settings"] { display: none; }
+/* 「設定」グループは配下の項目が 1 つも無い時だけ隠す。
+   プリセット設定もこのグループの一員なので no-edit-preset を必ず条件に含めること。
+   (含めないと「プリセット設定だけ許可」したユーザーでグループごと消えて項目が出ない) */
+body.no-edit-metrics.no-edit-filters.no-edit-defaults.no-edit-dimensions.no-edit-preset .sidebar-group[data-group="settings"] { display: none; }
 body.no-edit-defaults #defaults-save-btn,
 body.no-edit-defaults #defaults-add-btn { display: none; }
 body.no-edit-defaults .defaults-doc input,
@@ -562,18 +556,9 @@ body.no-edit-filters #filters-add-btn { display: none; }
 body.no-edit-filters .filters-doc input,
 body.no-edit-filters .filters-doc select,
 body.no-edit-filters .filters-doc .metric-del { pointer-events: none; opacity: 0.6; }
-body.no-manage-users .user-del,
-body.no-manage-users .user-row .user-field input,
-body.no-manage-users .user-row .user-role-select,
-body.no-manage-users .user-row .user-perms input,
-body.no-manage-users .user-row .user-name-input,
-body.no-manage-users #users-save-btn,
-body.no-manage-users #add-user-btn {
-  pointer-events: none;
-  opacity: 0.55;
-}
-body.no-manage-users #users-save-btn,
-body.no-manage-users #add-user-btn { display: none; }
+/* ユーザー画面の非管理者向けロック (旧 no-manage-users) は削除。
+   #open-settings が非管理者に非表示 + ハンドラも isAdmin ガードなので画面に入れず、
+   保存/追加ボタンは .admin-only で覆われているため到達不能だった。 */
 
 /* ===== SETTINGS VIEWS: USERS ===== */
 .users-modal {
@@ -754,6 +739,22 @@ body.no-manage-users #add-user-btn { display: none; }
   grid-template-columns: 1fr 1fr;
   gap: 6px 16px;
 }
+/* 親権限 + その配下 (親が ON の時だけ子が出る)。
+   2 カラムのままだと右カラムに来た時に子が右端で縦に伸びて不格好なので、
+   グリッド全幅を使う独立ブロックにする。 */
+.perm-with-children {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+/* 子は親配下に横並び (親 1 つに対して数個なので 2 カラムに戻す必要はない) */
+.perm-children {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  padding-left: 22px;
+}
 .user-perms label {
   display: flex;
   align-items: center;
@@ -831,6 +832,23 @@ body.no-manage-users #add-user-btn { display: none; }
   background: #f1f5f9;
   color: #475569;
   border: 1px solid #cbd5e1;
+}
+/* ロールを土台に権限を足した状態。元のロールと同系色にして関係が分かるようにする。 */
+.user-list-role-operatorPlus {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px dashed #60a5fa;
+}
+.user-list-role-viewerPlus {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px dashed #94a3b8;
+}
+/* どのロールの土台にも乗らない (プリセットから権限を減らした等) 状態 */
+.user-list-role-custom {
+  background: #ede9fe;
+  color: #5b21b6;
+  border: 1px solid #c4b5fd;
 }
 .user-list-caret {
   color: var(--muted);
