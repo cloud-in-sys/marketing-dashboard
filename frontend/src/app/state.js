@@ -1,6 +1,7 @@
 // ===== CONSTANTS & DEFAULTS =====
 import { api } from '../api/index.js';
 import { setCurrentSourceId, queueConfigPatch, flushConfigNow } from './persistence.js';
+import { parsePath } from './routes.js';
 
 export const DEFAULT_METRIC_DEFS = [
   {key:'ad_cost',        label:'広告費',                      fmt:'yen', type:'base'},
@@ -686,7 +687,20 @@ async function applyConfig(cfg) {
   S.DIM_EXPR_CACHE.clear();
 }
 
+// ソース設定ロードの世代番号。切替のたびに増やし、await から戻るたびに
+// 「まだ自分が最新か」を確認する (sources.js の sourceLoadVersion / isFresh と同じ考え方)。
+//
+// これが無いと、A → B と素早く切り替えて A のレスポンスが後から返った場合に、
+// B を表示しているのに A の metricDefs / presets / CURRENT_VIEW が反映される。
+// 集計は「見えているソースと違う定義」で走るため、数字が黙って狂う。
+let configLoadVersion = 0;
+function isConfigFresh(sid, version) {
+  return S.CURRENT_SOURCE === sid && configLoadVersion === version;
+}
+
+// 戻り値: 'ok' = 反映した / 'stale' = 追い越されたので破棄した
 async function loadSourceConfigFromServer(sid) {
+  const version = ++configLoadVersion;
   const source = S.DATA_SOURCES.find(s => s.id === sid);
   S.SHEETS_INPUT = source?.sheetsInput || { url: '', tab: '' };
   S.BQ_INPUT = source?.bqInput || { project: '', query: '' };
@@ -699,21 +713,30 @@ async function loadSourceConfigFromServer(sid) {
     api.getConfig(sid),
     api.listPresets(sid),
   ]);
+  // 取得中に別のソースへ切り替わっていたら、共有状態を一切書き換えずに捨てる。
+  if (!isConfigFresh(sid, version)) return 'stale';
   await applyConfig(config);
+  if (!isConfigFresh(sid, version)) return 'stale';
   S.PRESETS_CACHE = presets || [];
   // ユーザー毎の状態(フィルタ・最終ビュー等)をロード
   await loadUserStateForCurrentSource();
+  if (!isConfigFresh(sid, version)) return 'stale';
   // 最終ビューの復元: ユーザーが最後に開いていたタブを優先
   const userView = getUserCurrentView();
   if (userView) {
     if (isOpenableView(userView)) S.CURRENT_VIEW = userView;
   }
+  return 'ok';
 }
 
 // ===== SWITCH SOURCE =====
 // main.js から setUnsavedGuard で inject。未保存確認モーダルを await する。
 let _unsavedGuard = () => Promise.resolve(true);
 export function setUnsavedGuard(fn) { _unsavedGuard = fn; }
+// 戻り値: true = 切替が完了して反映済み / false = ガードでキャンセル、または
+// 途中で別のソースへ切り替わって破棄された (stale)。
+// false のときは呼び出し側で reloadFullUI や URL 同期をしないこと。
+// stale の状態で再描画すると、既に別ソースを表示している画面を古い内容で塗り替えてしまう。
 export async function switchSource(id, options = {}) {
   // 削除フローなど、呼び出し側で先に未保存確認済みの場合は skipGuard: true で二重表示を避ける
   if (!options.skipGuard && !(await _unsavedGuard())) return false;
@@ -721,8 +744,8 @@ export async function switchSource(id, options = {}) {
   S.CURRENT_SOURCE = id;
   setCurrentSourceId(id);
   saveCurrentSource();
-  await loadSourceConfigFromServer(id);
-  return true;
+  const result = await loadSourceConfigFromServer(id);
+  return result === 'ok';
 }
 
 // ===== INIT (called once after login) =====
@@ -740,12 +763,22 @@ export async function initStateFromServer() {
   S.SOURCE_DATA = {};
   sources.forEach(s => { S.SOURCE_DATA[s.id] = []; });
 
-  // Restore last selected source if valid
+  // ソースの決定順: URL (/s/:sid) → localStorage の前回 → 先頭。
+  // URL を最優先にしないと、リンクを共有された時に前回のソースが開いてしまう。
+  //
+  // 「そのソースが見えるか」は sources 配列に載っているかだけで判定する。
+  // 一覧は backend が sourceVisible で絞って返しているので、ここで権限を再判定しない
+  // (docs/ROADMAP.md の不変条件 1)。見えないソースの sid は単に一致せず、
+  // 下の localStorage / 先頭へフォールバックする。
   let initial = null;
-  try {
-    const last = localStorage.getItem('dashboard.lastSource');
-    if (last && sources.some(s => s.id === last)) initial = last;
-  } catch (e) {}
+  const routed = parsePath(window.location.pathname);
+  if (routed && sources.some(s => s.id === routed.sid)) initial = routed.sid;
+  if (!initial) {
+    try {
+      const last = localStorage.getItem('dashboard.lastSource');
+      if (last && sources.some(s => s.id === last)) initial = last;
+    } catch (e) {}
+  }
   if (!initial) initial = sources[0]?.id || null;
 
   if (initial) {
@@ -753,6 +786,18 @@ export async function initStateFromServer() {
     setCurrentSourceId(initial);
     saveCurrentSource();
     await loadSourceConfigFromServer(initial);
+    // URL でタブが指定されていて、それが今のソースで開けるなら最優先で採用する。
+    // loadSourceConfigFromServer は per-user の「最後に開いたタブ」を復元するので、
+    // その後に上書きする。開けないタブ (存在しない / viewCustom 無し) は無視して、
+    // 復元済みの既定タブのままにする (= フォールバック)。
+    // ※ loadSourceConfigFromServer 自体はソース切替でも呼ばれるため、URL 依存の処理は
+    //    初期化専用のここに置く。切替時に URL のタブへ引き戻されるのを防ぐ。
+    if (routed && routed.sid === initial && routed.viewKey && isOpenableView(routed.viewKey)) {
+      S.CURRENT_VIEW = routed.viewKey;
+    }
   }
+  // 起動時に URL を解釈した結果を router (main.js) へ渡す。
+  // ここでは画面 (source / settings) までは適用せず、「何が要求されたか」だけを返す。
+  return { routed, resolvedSid: initial };
 }
 

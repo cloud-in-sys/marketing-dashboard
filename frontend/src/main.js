@@ -6,8 +6,9 @@ import { S,
   syncCurrentTabState, getPresets,
   loadSourceMethod, flushUserStateNow, flushPresetsNow, setPresetsErrorNotifier,
   reorderPresetsOp, setUnsavedGuard as setUnsavedGuardState, setTableStateGetter,
-  setCanViewCustom } from './app/state.js';
+  setCanViewCustom, switchSource } from './app/state.js';
 import { flushConfigNow } from './app/persistence.js';
+import { buildPath, parsePath, sameRoute, SCREEN, SETTINGS_TARGETS } from './app/routes.js';
 import { escapeHtml, hexToSoft } from './shared/utils/utils.js';
 import { showModal } from './shared/ui/modal.js';
 import { makeSortable } from './shared/ui/sortable.js';
@@ -19,17 +20,20 @@ import { renderCards } from './features/dashboard/cards/cardsRender.js';
 import { renderTable, getTableState } from './features/dashboard/table/table.js';
 import { groupRows } from './aggregate/dimensions.js';
 import { dimLabel } from './aggregate/dimensions.js';
-import { renderCurrentUserLabel, applyPermissionUI, hideLogin, observeAuth, signIn, logout, hasPerm,
+import { renderCurrentUserLabel, applyPermissionUI, hideLogin, observeAuth, signIn, hasPerm, getCurrentUser,
   setUnsavedGuard as setUnsavedGuardAuth } from './app/auth.js';
 import { seedDefaultPresets, renderPresets, loadPresetIntoGlobals, applyPresetFilters, renderTabPresetSelect,
   enterPresetEdit, syncPresetEdit, deletePreset, duplicatePreset, renamePreset, savePresetPrompt,
   loadTabState, initTabStates, setExitSettingsMode as setExitSettingsModePresets } from './features/presets/presets.js';
 import { renderCustomTabs, renderViewNav, applyView, highlightActiveView, toggleCustomTabGroup, listCustomTabGroups,
-  setExitSettingsMode as setExitSettingsModeTabs, setUnsavedGuard as setUnsavedGuardTabs } from './features/presets/tabs.js';
-import { setupSettingsEvents, exitSettingsMode, confirmDiscardUnsavedChanges, hasUnsavedSettingsChanges } from './features/settings/settings.js';
+  setExitSettingsMode as setExitSettingsModeTabs, setUnsavedGuard as setUnsavedGuardTabs,
+  setSyncUrl as setSyncUrlTabs } from './features/presets/tabs.js';
+import { setupSettingsEvents, exitSettingsMode, enterSettingsMode, confirmDiscardUnsavedChanges, hasUnsavedSettingsChanges,
+  setSyncUrl as setSyncUrlSettings } from './features/settings/settings.js';
 import { FEATURES } from './app/config.js';
 import { getBackendFollowFilteredRows } from './aggregate/aggregateCache.js';
-import { renderSourceNav, loadSnapshotIfNeeded, getCurrentLoadVersion } from './features/sources/sources.js';
+import { renderSourceNav, loadSnapshotIfNeeded, SNAPSHOT, getCurrentLoadVersion, enterSourceView, reloadFullUI,
+  setSyncUrl as setSyncUrlSources } from './features/sources/sources.js';
 import { dlog } from './app/config.js';
 import { loadState } from './features/layout/sidebar.js';
 import './features/dashboard/cards/cards.js';
@@ -58,6 +62,10 @@ setExitSettingsModeTabs(exitSettingsMode);
 setUnsavedGuardAuth(confirmDiscardUnsavedChanges);
 setUnsavedGuardTabs(confirmDiscardUnsavedChanges);
 setUnsavedGuardState(confirmDiscardUnsavedChanges);
+// 遷移後の URL 同期を各モジュールへ注入 (直接 import すると main.js との循環になる)
+setSyncUrlTabs(syncUrl);
+setSyncUrlSettings(syncUrl);
+setSyncUrlSources(syncUrl);
 
 // beforeunload: 未保存変更があれば browser 標準の離脱警告を出す。カスタムモーダルは出せないので e.returnValue のみ。
 window.addEventListener('beforeunload', (e) => {
@@ -94,7 +102,9 @@ function renderChips() {
 }
 
 // バックエンド集計の失敗時に画面上部へ赤バナーを出す。view-header の直下に挿入。
-function showAggregateError(message) {
+// 画面上部の赤バナー。label は用途に応じて変える (既定は集計エラー)。
+// snapshot 取得の失敗は集計より前の段階なので「集計エラー」とは呼ばない。
+function showAggregateError(message, label = '集計エラー') {
   let el = document.getElementById('aggregate-error');
   if (!el) {
     el = document.createElement('div');
@@ -103,7 +113,7 @@ function showAggregateError(message) {
     const header = document.querySelector('.view-header');
     (header?.parentNode || document.body).insertBefore(el, header?.nextSibling || null);
   }
-  el.innerHTML = `<span>集計エラー: ${(message || '不明').toString().replace(/[<>&]/g, '')} — ページをリロードしてください</span><button type="button" onclick="location.reload()" style="background:#991b1b;color:#fff;border:0;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">リロード</button>`;
+  el.innerHTML = `<span>${label}: ${(message || '不明').toString().replace(/[<>&]/g, '')} — ページをリロードしてください</span><button type="button" onclick="location.reload()" style="background:#991b1b;color:#fff;border:0;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">リロード</button>`;
   el.style.display = '';
 }
 function clearAggregateError() {
@@ -121,6 +131,16 @@ function clearAggregateError() {
 let lastRenderedRows = null;
 let renderVersion = 0;
 async function render() {
+  // 設定画面 / データソース画面を見ている間はダッシュボードを描画しない。
+  // これらの画面は表示していないので、集計 API を撃っても結果は使われず、
+  // Cloud Run の CPU 時間と .aggregating スピナーが無駄になるだけ。
+  // emit('render') は 40 箇所以上から飛ぶ (フィルタ変更・メトリクス保存・
+  // snapshot 取得後など) ので、呼び出し側ではなくここで一度に止める。
+  // 画面を戻る時は applyView / applyRoute が改めて render を呼ぶ。
+  if (document.body.classList.contains('settings-mode')) {
+    document.body.classList.remove('aggregating');
+    return;
+  }
   const myVersion = ++renderVersion;
   const sourceAtStart = S.CURRENT_SOURCE;
   const loadVersionAtStart = getCurrentLoadVersion();
@@ -822,6 +842,264 @@ document.getElementById('preset-color-picker').addEventListener('input', e => {
   renderViewNav();
 });
 
+// ===== ROUTING (Phase 1: URL を読むだけ。書き込みは正規化の replaceState のみ) =====
+// 起動時に URL で要求された画面を開き、最後に URL を「実際に開けた状態」へ揃える。
+//
+// 方針 (docs/ROADMAP.md):
+//   - 開けない URL はエラー画面を出さず、黙って既定へフォールバックする
+//     (「権限がありません」はそのソース/画面の存在を教えてしまうため)
+//   - 正規化は必ず replaceState。pushState だと戻るボタンで不正 URL に戻り、
+//     また弾かれて無限ループになる
+//   - 権限判定を router に再実装しない。ソースは S.DATA_SOURCES に載っているか、
+//     タブは isOpenableView (state.js) に任せる
+async function applyBootRoute(boot) {
+  const routed = boot?.routed || null;
+  const sid = boot?.resolvedSid || S.CURRENT_SOURCE || null;
+
+  // URL の sid が実際に開けたソースと違う (見えない / 存在しない) 場合は、
+  // 画面指定 (source / settings) も信用せずダッシュボードへ落とす。
+  const sidMatched = !!routed && routed.sid === sid;
+
+  if (sidMatched && routed.screen === SCREEN.SOURCE) {
+    // メニュー (⚙ 現在のソースの設定) は no-manage-sources で隠しているので、
+    // URL 経由だけ開けるとねじれる。権限が無ければダッシュボードのままにする。
+    if (hasPerm('manageSources')) await enterSourceView();
+  } else if (sidMatched && routed.screen === SCREEN.SETTINGS) {
+    // 権限が無ければ enterSettingsMode を呼ばない = ダッシュボードのまま。
+    // 判定は各画面のメニュー押下時と同じものを使い、ここで独自ルールを作らない。
+    if (canOpenSettings(routed.target)) await enterSettingsMode(routed.target);
+  }
+
+  normalizeUrl();
+}
+
+// snapshot の取得結果が「このまま描画してよい」ものか。
+// LOADED  : 取得できた
+// MISSING : スナップショット未作成。backend が空結果を正常に返すので描画してよい
+// FAILED / STALE : 描画しない (呼び出し側で別途扱う)
+function isSnapshotUsable(result) {
+  return result === SNAPSHOT.LOADED || result === SNAPSHOT.MISSING;
+}
+
+// 設定サブ画面を開ける権限があるか。settings/index.js のメニュー押下時の条件と揃える。
+// (ここがズレると「メニューは出ないのに URL では開ける」等の穴になる)
+function canOpenSettings(target) {
+  switch (target) {
+    case 'users':    return !!getCurrentUser().isAdmin;
+    case 'metrics':  return hasPerm('editMetrics');
+    case 'filters':  return hasPerm('editFilters');
+    case 'dims':     return hasPerm('editDimensions');
+    case 'defaults': return hasPerm('editDefaults');
+    case 'presets':  return hasPerm('editPreset');
+    case 'groups':   return hasPerm('manageGroups');
+    case 'branding': return hasPerm('manageBranding');
+    default:         return false;
+  }
+}
+
+// 現在の画面状態から URL を組み立て、今の URL と違えば replaceState で揃える。
+// 起動直後の正規化に使う (履歴を積まない)。
+function normalizeUrl() {
+  const path = buildPath(currentRoute());
+  if (path !== window.location.pathname) {
+    window.history.replaceState(null, '', path + window.location.search + window.location.hash);
+  }
+}
+
+// 戻る/進む (popstate) を適用している最中かどうか。
+// この間は syncUrl の pushState を止める。popstate の適用で遷移関数を呼ぶと
+// その中の syncUrl が走り、「戻ったのに履歴が 1 つ増える」= 戻れなくなるため。
+let _applyingPop = false;
+// 適用中に新しい戻る/進むが来たことを示すフラグ。適用ループが拾って続けて処理する。
+let _pendingPop = false;
+// 適用中の route 世代。非同期の適用中に新しい適用が始まったら古い方の後処理を捨てる
+// (ROADMAP の route intent token)。
+let _routeVersion = 0;
+
+// 遷移後に呼ぶ URL 同期。画面が実際に変わっていれば履歴を 1 つ積む。
+//
+// 各遷移関数の「中」で URL を作るのではなく、遷移が終わった後に DOM から現在地を
+// 読んで同期する方式にしている。理由:
+//   - exitSettingsMode は 5 箇所から呼ばれ、applyView の中でも呼ばれる。
+//     個別に URL 更新を仕込むと二重 push や順序ズレが起きる。
+//   - ガードでキャンセルされた場合、画面は変わらないので currentRoute も変わらず、
+//     結果として URL も動かない (「キャンセルしたのに URL だけ進む」が構造的に起きない)。
+// 同じ画面なら何もしない (連打やリフレッシュで履歴が膨らまない)。
+export function syncUrl() {
+  if (_applyingPop) return;   // 戻る/進むの適用中は履歴を積まない
+  const route = currentRoute();
+  if (!route) return;
+  const path = buildPath(route);
+  if (path === window.location.pathname) return;
+  window.history.pushState(null, '', path + window.location.search + window.location.hash);
+}
+
+// 現在どの画面を見ているかを組み立てる。
+// 画面種別は DOM (body.settings-mode / 各 view の hidden) が持っているのでそこから読む。
+function currentRoute() {
+  const sid = S.CURRENT_SOURCE;
+  if (!sid) return null;
+  if (document.body.classList.contains('settings-mode')) {
+    if (!document.getElementById('source-view')?.classList.contains('hidden')) {
+      return { screen: SCREEN.SOURCE, sid };
+    }
+    const target = SETTINGS_TARGETS.find(
+      t => !document.getElementById(SETTINGS_VIEW_IDS[t])?.classList.contains('hidden')
+    );
+    if (target) return { screen: SCREEN.SETTINGS, sid, target };
+  }
+  return { screen: SCREEN.DASHBOARD, sid, viewKey: S.CURRENT_VIEW };
+}
+
+// ===== 戻る / 進む (popstate) =====
+//
+// popstate が来た時点で URL と history は既にブラウザ側で動いている。
+// そのため「ガードでキャンセルされたら、URL を元へ戻す」必要がある。
+//
+// 方針 (docs/ROADMAP.md の 4 点):
+//   1. キャンセル時は表示中の画面の URL を pushState で 1 つだけ積み直す
+//   2. 適用中に来た分は捨てずに _pendingPop に畳み、今の適用後に最新状態で処理する
+//   3. 適用中は syncUrl の pushState を止める (_applyingPop)
+//   4. 非同期の適用中に新しい適用が始まったら古い方の後処理を捨てる (_routeVersion)
+window.addEventListener('popstate', () => {
+  // ログイン前 / ソース未確定のうちは何もしない (起動時の applyBootRoute が担当)
+  if (!S.CURRENT_SOURCE) return;
+  applyPopState().catch(e => console.warn('[router] popstate failed', e));
+});
+
+async function applyPopState() {
+  // 適用中に来た分は捨てずに「最後の要求」として覚えておき、今の適用が終わってから
+  // 続けて処理する。捨ててしまうと、戻るを素早く 2 回押したときに 1 回分しか
+  // 戻らない (ブラウザの履歴位置は 2 つ動いているのに画面は 1 つ手前で止まる)。
+  if (_applyingPop) { _pendingPop = true; return; }
+
+  _applyingPop = true;
+  try {
+    do {
+      _pendingPop = false;
+      await applyCurrentUrl();
+      // 適用中に新しい戻る/進むが来ていたら、その最新状態で繰り返す
+    } while (_pendingPop);
+  } finally {
+    _applyingPop = false;
+  }
+}
+
+// 「今の window.location」を画面へ適用して URL を辻褄合わせする 1 回分の処理。
+async function applyCurrentUrl() {
+  const target = parsePath(window.location.pathname);
+  // 解釈できない URL / 同じ画面なら、URL だけ正規化して終わり。
+  // ただし新しい戻る/進むが来ている間は URL を触らない (次のループが処理する)。
+  if (!target || sameRoute(target, currentRoute())) {
+    if (!_pendingPop) normalizeUrl();
+    return;
+  }
+
+  const myVersion = ++_routeVersion;
+  const result = await applyRoute(target);
+  if (myVersion !== _routeVersion) return;   // 新しい適用に追い越された
+
+  if (result.reason === 'cancelled') {
+    // ユーザーが未保存ガードでキャンセルした = 今の画面に留まりたい。
+    // 溜まっている戻る/進むも破棄する。続けると同じモーダルが連打回数ぶん出る。
+    _pendingPop = false;
+    restoreUrlToCurrentScreen();
+    return;
+  }
+  // 適用中に新しい戻る/進むが来ていたら、URL の方が新しい。ここで URL を
+  // 「今の画面」に揃えると、ユーザーが要求した行き先を消してしまう
+  // (戻るを 2 回押しても 1 回分しか戻らない原因になる)。次のループに任せる。
+  if (_pendingPop) return;
+  if (result.ok) {
+    normalizeUrl();   // 開けた画面と URL がズレていれば揃える (フォールバック時など)
+    return;
+  }
+  restoreUrlToCurrentScreen();   // 権限なし / 削除済みタブ
+}
+
+// ブラウザが既に動かした履歴に対して、「実際に表示している画面」の URL を
+// 1 つだけ積み直して辻褄を合わせる。
+// replaceState ではなく pushState なのは、戻る操作で消費された履歴位置を
+// 埋め直すため (replace だと戻る先が 1 つ足りなくなる)。
+function restoreUrlToCurrentScreen() {
+  const path = buildPath(currentRoute());
+  if (path !== window.location.pathname) {
+    window.history.pushState(null, '', path + window.location.search + window.location.hash);
+  }
+}
+
+// route を実際の画面へ適用する。開けたら true、ガードでキャンセル / 権限なしなら false。
+// 既存の遷移入口だけを使う (描画を自前でやらない = ROADMAP 不変条件 3)。
+// 戻り値は理由付き。'cancelled' (ユーザーが未保存ガードでキャンセル) と
+// それ以外 (権限なし / 削除済み) を呼び出し側で区別するため。
+// キャンセルなら「ユーザーは今の画面に留まりたい」ので、溜まっている戻る/進むも含めて
+// 一連の処理をやめる。区別せずに続けると、同じモーダルが連打回数ぶん再表示される。
+const ROUTE_OK = { ok: true };
+const ROUTE_CANCELLED = { ok: false, reason: 'cancelled' };
+const ROUTE_BLOCKED = { ok: false, reason: 'blocked' };   // 権限なし / 存在しない
+
+async function applyRoute(route) {
+  // ソースが違うなら先に切り替える。見えないソースなら何もしない。
+  if (route.sid !== S.CURRENT_SOURCE) {
+    if (!S.DATA_SOURCES.some(s => s.id === route.sid)) return ROUTE_BLOCKED;
+    // switchSource は「ガードでキャンセル」と「別の切替に追い越された (stale)」の
+    // どちらでも false を返す。どちらもユーザーを今の画面に留めるので同じ扱いでよい。
+    if (!(await switchSource(route.sid))) return ROUTE_CANCELLED;
+    await reloadFullUI();
+  }
+
+  if (route.screen === SCREEN.SOURCE) {
+    if (!hasPerm('manageSources')) return ROUTE_BLOCKED;
+    return (await enterSourceView()) ? ROUTE_OK : ROUTE_CANCELLED;
+  }
+  if (route.screen === SCREEN.SETTINGS) {
+    if (!canOpenSettings(route.target)) return ROUTE_BLOCKED;
+    await enterSettingsMode(route.target);
+    // enterSettingsMode はキャンセル時に undefined を返すため、実際に開けたかは
+    // DOM で確認する (戻り値の形に依存しない)
+    return currentRoute()?.screen === SCREEN.SETTINGS ? ROUTE_OK : ROUTE_CANCELLED;
+  }
+  // ダッシュボード
+  const viewKey = route.viewKey;
+  if (viewKey && viewKey !== S.CURRENT_VIEW) {
+    await applyView(viewKey);
+    // applyView は「ガードでキャンセル」でも「開けないタブ (削除済み / viewCustom
+    // なし)」でも黙って何もしないので、DOM の結果で判定する。
+    // 開けないタブなら再試行しても同じなので blocked 扱いにして次へ進ませる。
+    if (S.CURRENT_VIEW === viewKey) return ROUTE_OK;
+    const openable = S.VIEWS[viewKey] || (hasPerm('viewCustom') && (S.CUSTOM_TABS || []).some(t => t.key === viewKey));
+    return openable ? ROUTE_CANCELLED : ROUTE_BLOCKED;
+  }
+  // 同じタブで設定画面から戻ってきたケース: 設定を閉じてタブ表示を復元する。
+  // このルートは applyView を通らない (viewKey が現在のタブと同じため) ので、
+  // 未保存ガードをここで自前に通す必要がある。通さないと、設定を編集したまま
+  // 戻るを押した時に確認なしで破棄される。
+  // 設定へ入る時に _doEnterSettingsMode がタブの active を全部外している
+  // (settings/index.js) ため、閉じるだけだと「どのタブを見ているか分からない」
+  // 状態になる。applyView と同じく標準タブ (highlightActiveView) と
+  // カスタムタブ (renderCustomTabs) の両方を復元する。
+  if (document.body.classList.contains('settings-mode')) {
+    if (!(await confirmDiscardUnsavedChanges())) return ROUTE_CANCELLED;
+    exitSettingsMode();
+    highlightActiveView();
+    renderCustomTabs();
+    emit('render');
+  }
+  return ROUTE_OK;
+}
+
+// 設定サブ画面 → その画面の要素 id (settings/index.js の _doEnterSettingsMode と対応)
+const SETTINGS_VIEW_IDS = {
+  users: 'settings-view',
+  metrics: 'metrics-doc-view',
+  filters: 'filters-doc-view',
+  dims: 'dims-doc-view',
+  defaults: 'defaults-doc-view',
+  presets: 'presets-settings-view',
+  groups: 'groups-view',
+  branding: 'branding-view',
+};
+
 // ===== INITIALIZATION SEQUENCE =====
 // Wire login buttons (logout は settings/index.js:setupSettingsEvents で「ログアウトしますか？」
 // モーダル + 未保存確認付きで登録されるのでここでは不要)。
@@ -830,7 +1108,7 @@ document.getElementById('login-google-btn')?.addEventListener('click', () => sig
 // After user signs in, load data from backend and render.
 observeAuth({
   onReady: async () => {
-    await initStateFromServer();
+    const boot = await initStateFromServer();
     // テナント全体のブランディングを Firestore から取得して反映
     fetchAndApplyBranding();
     // Hydrate Google connection state from backend (shared by sheets+bq)
@@ -854,9 +1132,39 @@ observeAuth({
     emit('renderThresholds');
     renderPresets();
     renderTabPresetSelect();
-    render();
-    // Auto-refresh Sheets/BQ data on startup if configured
-    setTimeout(() => { loadSnapshotIfNeeded(); }, 300);
+    // 先に URL で要求された画面 (source / settings) を開いてから初期ロードを決める。
+    // 順序が逆だと、設定画面を直接開いた場合でもダッシュボードの集計を撃ってから
+    // 中断することになり、無駄な API と一瞬のスピナーが出る。
+    // ソースとタブは initStateFromServer が既に反映済みなので、ここでは画面だけ。
+    await applyBootRoute(boot);
+
+    // 画面ごとに初期ロードを分ける。
+    //   ダッシュボード   : snapshot meta を取ってから集計を 1 回。順序が逆だと
+    //                      集計の cacheKey に入る updatedAt が空のまま 1 回撃ち、
+    //                      取得後にもう 1 回別キーで撃つことになる (dedupe も
+    //                      キャッシュも効かず、Cloud Run 側で 2 回集計が走る)。
+    //   設定画面         : 集計は撃たない (render 側でも settings-mode を弾いている)。
+    //                      ただし snapshot meta とフィルタ選択肢は取る。ここで取らないと
+    //                      設定画面からダッシュボードへ移った時にフィルタが空になる
+    //                      (populateFilters は reloadFullUI からしか呼ばれないため)。
+    //   データソース画面 : enterSourceView が既に loadSnapshotIfNeeded を呼んでいるので
+    //                      ここでは呼ばない (二重取得を避ける)
+    const bootScreen = currentRoute()?.screen;
+    if (bootScreen !== SCREEN.SOURCE) {
+      // emitRender: false で「取得だけ」。描画はこの後 1 回だけ自分で行う。
+      const snapshotResult = await loadSnapshotIfNeeded({ emitRender: false });
+      if (snapshotResult === SNAPSHOT.FAILED) {
+        // 取得に失敗した状態で集計を撃つと、空または前ソースの updatedAt で
+        // cacheKey が作られ、誤ったキーのキャッシュに当たり続ける。
+        // 集計は撃たずにエラーを出す (ユーザーはリロードで復帰できる)。
+        showAggregateError('スナップショットの取得に失敗しました', '読み込みエラー');
+      } else if (bootScreen === SCREEN.DASHBOARD && isSnapshotUsable(snapshotResult)) {
+        // STALE (起動処理中にユーザーがソースを切り替えた) の場合は描画しない。
+        // 切替側が自分で snapshot を取り直して描画するので、ここで撃つと
+        // updatedAt が未確定のまま二重に集計が飛ぶ。
+        render();
+      }
+    }
   },
   onLoggedOut: () => {
     // Clear everything; user sees login overlay

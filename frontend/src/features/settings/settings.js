@@ -2,4 +2,4 @@
 // features/settings/ — split into per-tab modules (users, metrics, dimensions,
 // filterDefs, defaults, groups) plus an index.js that orchestrates them.
 export { setupSettingsEvents, exitSettingsMode, enterSettingsMode, renderCsvColumns,
-  hasUnsavedSettingsChanges, confirmDiscardUnsavedChanges, discardAllDrafts } from './index.js';
+  hasUnsavedSettingsChanges, confirmDiscardUnsavedChanges, discardAllDrafts, setSyncUrl } from './index.js';

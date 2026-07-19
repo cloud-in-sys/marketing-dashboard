@@ -27,6 +27,10 @@ import { invalidateAggregateCache, abortInFlightAggregate } from '../../aggregat
 //    遅延 → 同期 DOM ワークを切り上げてユーザー操作の受付を優先
 // 3) loadSnapshotIfNeeded() を await して snapshot meta + filter options を取得
 //    (loadSnapshotIfNeeded 内で emit('render') が走るので、ここでは追加で render を呼ばない)
+// 遷移後の URL 同期 (main.js から注入。直接 import すると循環になる)
+let _syncUrl = () => {};
+export function setSyncUrl(fn) { if (typeof fn === 'function') _syncUrl = fn; }
+
 export async function reloadFullUI() {
   // 新 source に切り替えた瞬間、前 source / 前タブの aggregate を即 abort。
   // これがないと、後段の loadSnapshotIfNeeded が emit('render') して新 render が
@@ -54,6 +58,9 @@ export async function reloadFullUI() {
     renderTabPresetSelect();
     renderCsvColumns();
   });
+  // ソース切替後の URL 同期。exitSettingsMode + loadTabState が終わって
+  // 画面が確定した後に 1 回だけ呼ぶ (各所に散らすと二重 push になる)。
+  _syncUrl();
   await loadSnapshotIfNeeded();
 }
 
@@ -129,8 +136,9 @@ document.addEventListener('keydown', e => {
 // 「⚙ 現在のソースの設定」ボタン
 document.getElementById('open-source-settings')?.addEventListener('click', async () => {
   toggleSourceDropdown(false);
+  // ドロップダウンを閉じてからガードを出したいので、ここでガードして skipGuard で入る
   if (!(await confirmDiscardUnsavedChanges())) return;
-  enterSourceView();
+  enterSourceView({ skipGuard: true });
 });
 
 // アクセス権はグループ管理側に統合済み
@@ -185,6 +193,7 @@ document.getElementById('source-delete-btn')?.addEventListener('click', async ()
     S.DATA_SOURCES = S.DATA_SOURCES.filter(d => d.id !== ds.id);
     delete S.SOURCE_DATA[ds.id];
     clearSourceRaw(ds.id);
+    // 削除直後は他の切替と競合しないので戻り値は見ない (stale になり得ない)
     await switchSource(S.DATA_SOURCES[0].id, { skipGuard: true });
     exitSettingsMode();
     reloadFullUI();
@@ -215,6 +224,7 @@ document.getElementById('source-nav').addEventListener('click', e => {
         delete S.SOURCE_DATA[id];
         clearSourceRaw(id);
         if (S.CURRENT_SOURCE === id) {
+          // 削除直後は他の切替と競合しないので戻り値は見ない (stale になり得ない)
           await switchSource(S.DATA_SOURCES[0].id, { skipGuard: true });
         }
         reloadFullUI();
@@ -265,7 +275,13 @@ document.getElementById('source-nav').addEventListener('click', e => {
 });
 
 // ===== SOURCE VIEW =====
-function enterSourceView() {
+// 未保存ガードは関数の中で通す (applyView / enterSettingsMode と同じ形に揃えている)。
+// 呼び出し側でガードする形だと、別の入口が増えたときにガードを飛ばしやすい。
+// 呼び出し側で既にガード済みの場合は { skipGuard: true } で二重表示を避ける
+// (switchSource と同じ規約)。
+// ガードでキャンセルされたら false、遷移したら true を返す。
+export async function enterSourceView(options = {}) {
+  if (!options.skipGuard && !(await confirmDiscardUnsavedChanges())) return false;
   closeFloatingMs();
   exitSettingsMode();
   document.body.classList.add('settings-mode');
@@ -275,6 +291,8 @@ function enterSourceView() {
   renderSourceNav();
   // Load snapshot data (cached daily batch or on-demand refresh)
   loadSnapshotIfNeeded();
+  _syncUrl();
+  return true;
 }
 
 function formatRelativeTime(iso) {
@@ -392,9 +410,25 @@ async function populateFilterOptionsFor(sid, version, signal) {
   }
 }
 
-export async function loadSnapshotIfNeeded() {
+// loadSnapshotIfNeeded の結果。呼び出し側が集計を撃つか判断するために使う。
+export const SNAPSHOT = {
+  LOADED: 'loaded',    // 取得できた
+  MISSING: 'missing',  // まだスナップショットが無い (backend は空結果を正常に返す)
+  FAILED: 'failed',    // 取得に失敗した。集計を撃たないこと
+  STALE: 'stale',      // 途中で別ソースへ切り替わった / 対象なし
+};
+
+// snapshot meta (と backend 非使用時は行データ) を取得する。
+//
+// options.emitRender: 取得後に emit('render') して集計を走らせるか。既定 true。
+//   false を渡すと「取得だけ」して描画しない。起動時に呼び出し側で
+//   render() したい場合に使う。集計の cacheKey には snapshot の updatedAt が
+//   入るので、取得前に render すると updatedAt="" の状態で 1 回、取得後に
+//   もう 1 回、別キーで集計が飛んでしまう (dedupe もキャッシュも効かない)。
+export async function loadSnapshotIfNeeded(options = {}) {
+  const emitRender = options.emitRender !== false;
   const sid = S.CURRENT_SOURCE;
-  if (!sid) return;
+  if (!sid) return SNAPSHOT.STALE;
   const version = ++sourceLoadVersion;
   // 前 source の補助 API を一括 cancel (新規 controller を作る)
   if (currentSourceController) currentSourceController.abort();
@@ -403,20 +437,20 @@ export async function loadSnapshotIfNeeded() {
   const signal = controller.signal;
   dlog('source switch start', { sid, version });
   await sheets.refreshConnectionState();
-  if (!isFresh(sid, version)) { dlog('discard: switched during refreshConnectionState'); return; }
+  if (!isFresh(sid, version)) { dlog('discard: switched during refreshConnectionState'); return SNAPSHOT.STALE; }
   const ds = S.DATA_SOURCES.find(d => d.id === sid);
   const method = ds?.method || '';
 
   try {
     const meta = await api.getSnapshotMeta(sid);
-    if (!isFresh(sid, version)) { dlog('discard: switched during getSnapshotMeta'); return; }
+    if (!isFresh(sid, version)) { dlog('discard: switched during getSnapshotMeta'); return SNAPSHOT.STALE; }
     renderSnapshotMeta(method, meta);
     // aggregate cacheKey 用に updatedAt を保存 → snapshot 更新時に自動 invalidate
     if (meta?.updatedAt) {
       if (!S.SOURCE_SNAPSHOT_UPDATED_AT) S.SOURCE_SNAPSHOT_UPDATED_AT = {};
       S.SOURCE_SNAPSHOT_UPDATED_AT[sid] = meta.updatedAt;
     }
-    if (!meta.exists) return;
+    if (!meta.exists) return SNAPSHOT.MISSING;
     document.querySelector('.meta')?.classList.add('meta-loading');
 
     if (FEATURES.useBackendAggregate) {
@@ -433,33 +467,33 @@ export async function loadSnapshotIfNeeded() {
       renderSourceView();
       renderSourceNav();
       renderCsvColumns();
-      emit('render');  // batch aggregate を即座にキック (フィルタオプション待ちしない)
+      if (emitRender) emit('render');  // batch aggregate を即座にキック (フィルタオプション待ちしない)
       // バックグラウンドでフィルタ選択肢をロード。aggregate を優先したいので
       // 80ms 程度遅らせて Cloud Run の同時負荷を下げる (タブ移動や連打時に
       // aggregate と options/columns の snapshot scan が重なるのを防ぐ)。
       setTimeout(() => {
-        if (!isFresh(sid, version)) return;
+        if (!isFresh(sid, version)) return SNAPSHOT.STALE;
         populateFilterOptionsFor(sid, version, signal).then(() => {
-          if (!isFresh(sid, version)) return;
+          if (!isFresh(sid, version)) return SNAPSHOT.STALE;
           for (const f of (S.FILTER_DEFS || [])) {
             if (f.type === 'multi') renderMSDynamic(f);
           }
           dlog('source switch options loaded', { sid, version });
         });
       }, 80);
-      return;
+      return SNAPSHOT.LOADED;
     }
 
     const currentRows = S.SOURCE_DATA[sid] || [];
-    if (currentRows.length > 0) return; // already loaded
+    if (currentRows.length > 0) return SNAPSHOT.LOADED; // already loaded
     const rowCountEl = document.getElementById('row-count');
     if (rowCountEl) rowCountEl.textContent = '読み込み中...';
     const data = await api.getSnapshot(sid);
-    if (!isFresh(sid, version)) { dlog('discard: switched during getSnapshot'); return; }
+    if (!isFresh(sid, version)) { dlog('discard: switched during getSnapshot'); return SNAPSHOT.STALE; }
     S.SOURCE_DATA[sid] = data.rows || [];
     S.RAW = S.SOURCE_DATA[sid];
     await populateFilterOptionsFor(sid, version, signal);
-    if (!isFresh(sid, version)) return;
+    if (!isFresh(sid, version)) return SNAPSHOT.STALE;
     // populateFilters はここで呼ばない (caller で済んでいる、値を消さない)。
     // multi-select の選択肢 UI だけ更新する。
     for (const f of (S.FILTER_DEFS || [])) {
@@ -468,9 +502,14 @@ export async function loadSnapshotIfNeeded() {
     renderSourceView();
     renderSourceNav();
     renderCsvColumns();
-    emit('render');
+    if (emitRender) emit('render');
+    return SNAPSHOT.LOADED;
   } catch (e) {
+    // 呼び出し側が「失敗したので集計を撃たない」と判断できるよう状態を返す。
+    // 握りつぶすと、古い (または空の) sourceUpdatedAt で cacheKey が作られ、
+    // 誤ったキーのキャッシュに当たり続ける。
     console.warn('Snapshot load failed:', e.message);
+    return SNAPSHOT.FAILED;
   } finally {
     document.querySelector('.meta')?.classList.remove('meta-loading');
     dlog('source switch end', { sid, version });

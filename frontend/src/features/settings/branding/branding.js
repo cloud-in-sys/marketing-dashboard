@@ -2,7 +2,7 @@
 // テナント全体のロゴ・タイトル・テーマ色を編集。
 // 保存先: backend の `/api/branding` (Firestore の config/branding doc)。
 // 読み込み・適用は features/sources/branding.js が boot 時に行う。
-import { S } from '../../../app/state.js';
+
 import { api } from '../../../api/index.js';
 import { showModal } from '../../../shared/ui/modal.js';
 import { hasPerm } from '../../../app/auth.js';

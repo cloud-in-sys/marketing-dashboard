@@ -90,6 +90,9 @@ export function renderViewNav() {
 
 let _exitSettingsMode = null;
 export function setExitSettingsMode(fn) { _exitSettingsMode = fn; }
+// 遷移後の URL 同期 (main.js から注入。直接 import すると循環になる)
+let _syncUrl = () => {};
+export function setSyncUrl(fn) { if (typeof fn === 'function') _syncUrl = fn; }
 let _unsavedGuard = () => Promise.resolve(true);
 export function setUnsavedGuard(fn) { _unsavedGuard = fn; }
 
@@ -125,6 +128,7 @@ export async function applyView(viewKey) {
   // タブの active 表示を先にフラッシュしてから重い集計/描画を実行。
   // 連打時は最後の1回分だけ描画(中間の重い計算をスキップ)
   scheduleRender();
+  _syncUrl();
 }
 
 let _renderRafId = null;

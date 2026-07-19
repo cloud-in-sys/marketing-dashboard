@@ -9,10 +9,10 @@
 // allowlist を使うこと。片方だけ緩いと、保存できてしまった不正値が実行時に
 // どう扱われるか分からなくなる。
 
-// 単一値を取る op と、配列を取る op
-export const SINGLE_VALUE_OPS = ['equals', 'regex', 'notRegex'];
-export const MULTI_VALUE_OPS = ['in', 'notIn'];
-export const FILTER_OPS = [...SINGLE_VALUE_OPS, ...MULTI_VALUE_OPS];
+// 単一値を取る op と、配列を取る op (このファイル内でのみ使う)
+const SINGLE_VALUE_OPS = ['equals', 'regex', 'notRegex'];
+const MULTI_VALUE_OPS = ['in', 'notIn'];
+const FILTER_OPS = [...SINGLE_VALUE_OPS, ...MULTI_VALUE_OPS];
 
 // フィルタ 1 件を検証。問題があればエラーメッセージ、なければ null。
 // 「フィルタなし」(null / undefined / field 空) は正当なので null を返す。

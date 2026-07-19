@@ -88,10 +88,16 @@ export function discardAllDrafts() {
 }
 
 // ----- ENTER / EXIT SETTINGS MODE -----
+// 遷移後の URL 同期 (main.js から注入。直接 import すると循環になる)
+let _syncUrl = () => {};
+export function setSyncUrl(fn) { if (typeof fn === 'function') _syncUrl = fn; }
+
 export async function enterSettingsMode(target = 'users') {
   // 別の設定サブ画面 / 通常タブへの切替でも未保存確認を挟む
   if (!(await confirmDiscardUnsavedChanges())) return;
-  return _doEnterSettingsMode(target);
+  const r = _doEnterSettingsMode(target);
+  _syncUrl();
+  return r;
 }
 
 function _doEnterSettingsMode(target) {
@@ -371,7 +377,8 @@ export function setupSettingsEvents() {
   document.getElementById('open-filters-doc').addEventListener('click', () => { if (hasPerm('editFilters')) enterSettingsMode('filters'); });
   document.getElementById('open-defaults-doc').addEventListener('click', () => { if (hasPerm('editDefaults')) enterSettingsMode('defaults'); });
   document.getElementById('open-dims-doc').addEventListener('click', () => { if (hasPerm('editDimensions')) enterSettingsMode('dims'); });
-  document.getElementById('open-presets-settings').addEventListener('click', () => enterSettingsMode('presets'));
+  // 他の設定画面と同様に JS でも権限を確認する (CSS の no-edit-preset だけに依存しない)
+  document.getElementById('open-presets-settings').addEventListener('click', () => { if (hasPerm('editPreset')) enterSettingsMode('presets'); });
   document.getElementById('open-groups').addEventListener('click', () => { if (hasPerm('manageGroups')) enterSettingsMode('groups'); });
   document.getElementById('open-branding').addEventListener('click', () => { if (hasPerm('manageBranding')) enterSettingsMode('branding'); });
 

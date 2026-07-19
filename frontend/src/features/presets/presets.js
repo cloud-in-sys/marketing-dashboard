@@ -341,7 +341,7 @@ export async function renamePreset(i) {
   try { await updatePresetOp(target.id, { ...target, name: newName }); }
   catch (e) { return; }
   // 標準タブが旧名を参照している場合は追従させる (再描画で反映)
-  for (const [k, v] of Object.entries(S.VIEWS)) {
+  for (const v of Object.values(S.VIEWS)) {
     if (v.presetName === target.name) v.presetName = newName;
   }
   renderPresets();

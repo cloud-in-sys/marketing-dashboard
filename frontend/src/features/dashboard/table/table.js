@@ -6,7 +6,7 @@ import { openTableSettings, buildHeaderCellStyle, buildTableStyle, subtotalAt } 
 import { emit } from '../../../app/events.js';
 import { sumAggs, evalDerivedWithContext } from './aggUtils.js';
 import { passesFilter, makeBucketComparator, sortListFrom, customSortIndex } from './query.js';
-import { thresholdClass, metricCellHtml, buildMetricCells, isSafeLink, isSafeImageSrc, dimCellHtml } from './cells.js';
+import { metricCellHtml, buildMetricCells, isSafeLink, isSafeImageSrc, dimCellHtml } from './cells.js';
 
 // ===== Table rendering =====
 // Collapsed state: key = "level:value|level:value..."
