@@ -1,3 +1,4 @@
+// @ts-check
 import { auth, db } from '../firebase.js';
 import { ADMIN_PERMS, normalizePresetPerms } from '../utils/perms.js';
 import { sourceVisible } from '../utils/sourceVisibility.js';

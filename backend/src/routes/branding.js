@@ -1,3 +1,4 @@
+// @ts-check
 // テナント (会社) 全体のブランディング設定。Firestore の単一 doc に保存。
 // GET は public (ログイン画面でも参照するため server.js で auth より前にマウント)、
 // PUT は manageBranding 権限保持者のみ。

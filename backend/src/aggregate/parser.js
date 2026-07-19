@@ -1,3 +1,4 @@
+// @ts-check
 // WHERE 句のトークナイザ + AST パーサー。frontend/src/aggregate/aggregate.js から移植 (純粋ロジック)。
 
 const WORD_OP_REGEX = /^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s+(contains|notContains|startsWith|endsWith)\s+(.+?)\s*$/i;

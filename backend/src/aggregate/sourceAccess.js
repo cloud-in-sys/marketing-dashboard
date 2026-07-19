@@ -1,3 +1,4 @@
+// @ts-check
 // データソースの可視性チェック + group sourceFilter の取得。
 // /api/snapshots と /api/aggregate で共有する。
 //

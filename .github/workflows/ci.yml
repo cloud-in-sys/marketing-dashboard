@@ -1,0 +1,35 @@
+name: CI
+
+# frontend / backend の型チェックとテスト・ビルドをまとめて回す。
+# ローカルの `npm run verify` と同じ内容 (typecheck → typecheck:backend → test → build)。
+# node は 22 系。テストは run.mjs が内部で --experimental-strip-types を付けて .ts を
+# 直接読むため、22.6 以上が必要 (setup-node の 22 で満たす)。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # frontend (ルート) と backend は別パッケージなので両方 install する。
+      # backend typecheck が firebase-admin / hono / @types/node の型を必要とするため。
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install backend deps
+        run: npm ci
+        working-directory: backend
+
+      # typecheck (frontend, strict) → typecheck:backend (checkJs) → test (335 件) → build
+      - name: Verify
+        run: npm run verify

@@ -1,3 +1,4 @@
+// @ts-check
 // フロントと同じ順・キーを保つこと (frontend/src/app/state.js の PERM_GROUPS)
 export const PERM_GROUPS = [
   // 閲覧可否はグループ管理 (canAccessSource) が判定する。旧 viewSources は廃止。
@@ -25,19 +26,24 @@ export const VIEWER_PERMS = Object.fromEntries(PERM_KEYS.map(k => [k, false]));
 // operator = 非 admin かつ「settings 以外の全 perms 持ち」かつ「settings perms 全部なし」
 const SETTINGS_PERMS = PERM_GROUPS.find(g => g.group === 'settings')?.perms || [];
 const NON_SETTINGS_PERMS = PERM_KEYS.filter(k => !SETTINGS_PERMS.includes(k));
+/** @param {{ isAdmin?: boolean, perms?: Record<string, boolean> } | null | undefined} user */
 export function isOperator(user) {
   if (!user || user.isAdmin) return false;
-  if (!user.perms) return false;
-  return NON_SETTINGS_PERMS.every(k => user.perms[k]) && SETTINGS_PERMS.every(k => !user.perms[k]);
+  // const で受けてから使う (closure 内では user.perms の null 絞り込みが保持されないため)。
+  const perms = user.perms;
+  if (!perms) return false;
+  return NON_SETTINGS_PERMS.every(k => perms[k]) && SETTINGS_PERMS.every(k => !perms[k]);
 }
 // データソース作成は admin か operator のみ。一般 (viewer) は manageSources を
 // 個別付与されていても作成不可。
+/** @param {{ isAdmin?: boolean, perms?: Record<string, boolean> } | null | undefined} user */
 export function canCreateSource(user) {
   return !!user && (user.isAdmin || isOperator(user));
 }
 
 // 旧権限 (viewPresets) の互換: viewPresets だけ持つユーザーは editPreset を持つ扱いにする。
 // 「プリセット設定」に統合したことで、旧データのままだと設定画面に入れなくなるため。
+/** @param {Record<string, any> | null | undefined} perms */
 export function normalizePresetPerms(perms) {
   if (!perms || typeof perms !== 'object') return perms;
   if (perms.viewPresets && !perms.editPreset) return { ...perms, editPreset: true };

@@ -1,3 +1,4 @@
+// @ts-check
 import { Hono } from 'hono';
 import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
@@ -53,10 +54,12 @@ const tokenDoc = googleTokenDoc;
 app.get('/status', async c => {
   const uid = c.get('uid');
   const snap = await tokenDoc(uid).get();
-  return c.json({
+  /** @type {import('@pkg/shared/api-types.ts').GoogleStatusResult} */
+  const res = {
     connected: snap.exists,
     scope: snap.exists ? snap.data().scope : null,
-  });
+  };
+  return c.json(res);
 });
 
 // GET /api/google/auth/url — start OAuth, returns URL to redirect to
@@ -70,7 +73,9 @@ app.get('/auth/url', requirePerm('connectAccount'), async c => {
     scope: SCOPES,
     state,
   });
-  return c.json({ url });
+  /** @type {import('@pkg/shared/api-types.ts').GoogleAuthUrlResult} */
+  const res = { url };
+  return c.json(res);
 });
 
 // Exported separately so it can be mounted as a PUBLIC route

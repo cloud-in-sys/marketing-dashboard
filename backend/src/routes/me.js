@@ -1,3 +1,4 @@
+// @ts-check
 import { Hono } from 'hono';
 import { db } from '../firebase.js';
 import { httpError } from '../middleware/error.js';
@@ -7,7 +8,9 @@ const app = new Hono();
 
 app.get('/', c => {
   const user = c.get('user');
-  return c.json({ user });
+  /** @type {import('@pkg/shared/api-types.ts').MeResult} */
+  const res = { user };
+  return c.json(res);
 });
 
 // userState に保存してよいのは tabFilters / currentView だけ (下の sanitizeUserState が
@@ -53,7 +56,9 @@ app.get('/state/:sid', requireSourceAccess(), async c => {
   const sid = c.req.param('sid');
   const snap = await db.collection('users').doc(uid).get();
   const all = snap.exists ? (snap.data().userState || {}) : {};
-  return c.json({ state: all[sid] || {} });
+  /** @type {import('@pkg/shared/api-types.ts').MyStateResult} */
+  const res = { state: all[sid] || {} };
+  return c.json(res);
 });
 
 // 自分のソース毎ユーザー状態を更新

@@ -1,3 +1,4 @@
+// @ts-check
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 
 const client = new SecretManagerServiceClient();
@@ -10,7 +11,8 @@ export async function getSecret(name) {
   const [version] = await client.accessSecretVersion({
     name: `projects/${project}/secrets/${name}/versions/latest`,
   });
-  const value = version.payload.data.toString('utf8');
+  // 実体は Buffer (Uint8Array)。型は string も含む union なので Buffer と明示する。
+  const value = /** @type {Buffer} */ (version.payload.data).toString('utf8');
   cache.set(name, value);
   return value;
 }

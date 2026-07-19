@@ -1,3 +1,4 @@
+// @ts-check
 // ユーザーが保存する式 (view filter / dimension expression 等) を
 // AST で validate + walk 評価する安全なエバリュエータ。
 //

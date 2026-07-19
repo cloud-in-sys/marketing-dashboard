@@ -1,3 +1,4 @@
+// @ts-check
 import { Hono } from 'hono';
 import { Storage } from '@google-cloud/storage';
 import zlib from 'zlib';
@@ -43,7 +44,9 @@ app.get('/:sid', async c => {
   const [exists] = await file.exists();
   if (!exists) return c.json({ rows: [], updatedAt: null });
   const [meta] = await file.getMetadata();
-  const updatedAt = meta.metadata?.updatedAt || meta.updated || '';
+  // GCS メタは string|number|boolean を取り得る型なので、ヘッダ/ハッシュ用に文字列化する
+  // (実体は ISO 文字列。String() は文字列に対しては恒等)。
+  const updatedAt = String(meta.metadata?.updatedAt || meta.updated || '');
 
   // (3) 行絞り込みの条件を決定 (共通ヘルパー)
   const filter = await getGroupFilter(user, sid);
@@ -66,7 +69,8 @@ app.get('/:sid', async c => {
     c.header('ETag', etag);
     c.header('Cache-Control', 'private, no-cache');
     c.header('X-Snapshot-Updated-At', updatedAt);
-    return c.body(buf);
+    // Node の Buffer は Hono の body 型に含まれないが node-server は受理する。
+    return c.body(/** @type {any} */ (buf));
   }
 
   // (6) 絞り込み: 解凍→フィルタ→再圧縮
@@ -81,7 +85,7 @@ app.get('/:sid', async c => {
   c.header('Cache-Control', 'private, no-cache');
   c.header('X-Snapshot-Updated-At', updatedAt);
   c.header('X-Snapshot-Filtered-Rows', String(filtered.length));
-  return c.body(outBuf);
+  return c.body(/** @type {any} */ (outBuf));
 });
 
 // ETag 用の軽量ハッシュ (djb2)
@@ -128,14 +132,16 @@ app.get('/:sid/meta', async c => {
   }
   const file = bucket().file(objectName(sid));
   const [exists] = await file.exists();
-  if (!exists) return c.json({ exists: false, connector });
+  if (!exists) return c.json(/** @type {import('@pkg/shared/api-types.ts').SnapshotMetaResult} */ ({ exists: false, connector }));
   const [meta] = await file.getMetadata();
-  return c.json({
+  /** @type {import('@pkg/shared/api-types.ts').SnapshotMetaResult} */
+  const res = {
     exists: true,
-    updatedAt: meta.metadata?.updatedAt || meta.updated,
+    updatedAt: String(meta.metadata?.updatedAt || meta.updated || ''),
     rows: Number(meta.metadata?.rows || 0),
     connector,
-  });
+  };
+  return c.json(res);
 });
 
 // Refresh a single source's snapshot.
@@ -339,13 +345,14 @@ async function refreshSnapshot(sid, uid) {
   const updatedAt = new Date().toISOString();
 
   const file = bucket().file(objectName(sid));
-  await file.save(compressed, {
+  // contentEncoding は GCS の SaveOptions 型に無いが実行時は有効。options ごとキャストする。
+  await file.save(compressed, /** @type {any} */ ({
     contentType: 'application/json',
     contentEncoding: 'gzip',
     metadata: {
       metadata: { updatedAt, rows: String(rows.length) },
     },
-  });
+  }));
 
   return { updatedAt, rows: rows.length };
 }

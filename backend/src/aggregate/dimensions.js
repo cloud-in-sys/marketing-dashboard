@@ -1,3 +1,4 @@
+// @ts-check
 // ディメンション値抽出 + グルーピング。frontend/src/aggregate/dimensions.js から移植。
 
 import { compileSafeExpr } from '../utils/safeExpr.js';
@@ -47,7 +48,8 @@ function dimValue(row, key, dimMap) {
   }
   if (def.type === 'dow') {
     const dt = new Date(raw);
-    return isNaN(dt) ? '' : DOW_LABELS[dt.getDay()];
+    // isNaN(dt) は内部で Number(dt)=dt.getTime() に変換されるのと同義。明示して型も通す。
+    return isNaN(dt.getTime()) ? '' : DOW_LABELS[dt.getDay()];
   }
   return raw;
 }

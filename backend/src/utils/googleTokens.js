@@ -1,3 +1,4 @@
+// @ts-check
 // Google OAuth トークン (users/{uid}/tokens/google) の共通操作。
 //
 // Firestore は親 doc を消してもサブコレクションを消さないため、users/{uid} を

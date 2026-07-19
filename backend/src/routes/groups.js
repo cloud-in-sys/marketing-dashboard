@@ -1,3 +1,4 @@
+// @ts-check
 import { Hono } from 'hono';
 import { db } from '../firebase.js';
 import { requirePerm } from '../middleware/auth.js';
@@ -22,9 +23,11 @@ const groupsCol = () => db.collection('groups');
 app.get('/', async c => {
   const user = c.get('user');
   const allowed = user?.isAdmin || user?.perms?.manageGroups;
-  if (!allowed) return c.json({ groups: [] });
+  if (!allowed) return c.json(/** @type {import('@pkg/shared/api-types.ts').ListGroupsResult} */ ({ groups: [] }));
   const snap = await groupsCol().orderBy('createdAt').get();
-  return c.json({ groups: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+  /** @type {import('@pkg/shared/api-types.ts').ListGroupsResult} */
+  const res = { groups: snap.docs.map(d => /** @type {any} */ ({ id: d.id, ...d.data() })) };
+  return c.json(res);
 });
 
 // グループ管理画面用のメンバー一覧。
@@ -52,7 +55,9 @@ app.get('/members', async c => {
     };
   });
   members.sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email, 'ja'));
-  return c.json({ members });
+  /** @type {import('@pkg/shared/api-types.ts').ListGroupMembersResult} */
+  const res = { members };
+  return c.json(res);
 });
 
 // 作成 (manageGroups)
@@ -68,7 +73,9 @@ app.post('/', requirePerm('manageGroups'), async c => {
     createdAt: new Date().toISOString(),
   };
   const ref = await groupsCol().add(doc);
-  return c.json({ id: ref.id, ...doc });
+  /** @type {import('@pkg/shared/api-types.ts').Group} */
+  const res = { id: ref.id, ...doc };
+  return c.json(res);
 });
 
 // sourceFilters を検証。不正があれば 400。

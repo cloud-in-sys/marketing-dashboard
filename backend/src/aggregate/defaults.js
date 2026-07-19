@@ -1,3 +1,4 @@
+// @ts-check
 // frontend/src/app/state.js の DEFAULT_* と一致する必要があります。両方を同期して更新してください。
 // (Firestore config に該当フィールドが無いソースで、フロントとバックエンドの解釈を揃えるため)
 

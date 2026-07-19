@@ -1,3 +1,4 @@
+// @ts-check
 import { Hono } from 'hono';
 import { db, auth } from '../firebase.js';
 import { adminOnly, invalidateUserCache } from '../middleware/auth.js';
@@ -13,13 +14,15 @@ const app = new Hono();
 // 全件取って JS 側で並べる: createdAt 無しの doc は最初に置いて UI から見えるようにする。
 app.get('/', adminOnly, async c => {
   const snap = await db.collection('users').get();
-  const users = snap.docs.map(d => d.data());
+  const users = snap.docs.map(d => /** @type {any} */ (d.data()));
   users.sort((a, b) => {
     const ca = a.createdAt || '';
     const cb = b.createdAt || '';
     return ca < cb ? -1 : ca > cb ? 1 : 0;
   });
-  return c.json({ users });
+  /** @type {import('@pkg/shared/api-types.ts').ListUsersResult} */
+  const res = { users };
+  return c.json(res);
 });
 
 // Pre-register a user by email (admin only). Google ログインで本人が初回サインインした時に
@@ -36,6 +39,7 @@ app.post('/', adminOnly, async c => {
   if (!dup.empty) throw httpError(400, 'このメールアドレスは既に登録されています');
 
   const pendingId = 'pending_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  /** @type {import('@pkg/shared/api-types.ts').UserProfile} */
   const profile = {
     uid: pendingId,
     email,

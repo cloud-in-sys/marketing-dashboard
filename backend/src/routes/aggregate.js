@@ -1,3 +1,4 @@
+// @ts-check
 // POST /api/aggregate — ブラウザ側集計のバックエンド版。
 //
 // 入力:
@@ -267,7 +268,9 @@ app.post('/', async c => {
 
   const snap = await getSnapshotRows(sid);
   if (!snap) {
-    return c.json({ groups: [], totals: {}, filteredRows: 0, followFilteredRows: 0, accessibleRows: 0, meta: { sourceUpdatedAt: null, configUpdatedAt } });
+    /** @type {import('@pkg/shared/api-types.ts').AggregateResult} */
+    const empty = { groups: [], totals: {}, filteredRows: 0, followFilteredRows: 0, accessibleRows: 0, meta: { sourceUpdatedAt: null, configUpdatedAt } };
+    return c.json(empty);
   }
   const { rows: rawRows, updatedAt: sourceUpdatedAt } = snap;
 
@@ -279,7 +282,9 @@ app.post('/', async c => {
     rowsAfterGroup, config, input, sourceUpdatedAt, configUpdatedAt, cacheKey,
   });
   c.header('X-Aggregate-Cache', cacheHit ? 'hit' : 'miss');
-  return c.json(result);
+  /** @type {import('@pkg/shared/api-types.ts').AggregateResult} */
+  const out = result;
+  return c.json(out);
 });
 
 // ----- バッチルート -----
@@ -319,7 +324,7 @@ app.post('/batch', async c => {
       emptyResults[v.id] = { groups: [], totals: {}, filteredRows: 0, followFilteredRows: 0, accessibleRows: 0, meta: { sourceUpdatedAt: null, configUpdatedAt } };
     }
     console.log(JSON.stringify({ severity: 'INFO', kind: 'aggregate-batch', sid, requestCount: validated.length, snapshotMissing: true, durationMs: Date.now() - startedAt }));
-    return c.json({ results: emptyResults, meta: { sourceUpdatedAt: null, configUpdatedAt } });
+    return c.json(/** @type {import('@pkg/shared/api-types.ts').AggregateBatchResult} */ ({ results: emptyResults, meta: { sourceUpdatedAt: null, configUpdatedAt } }));
   }
   const { rows: rawRows, updatedAt: sourceUpdatedAt } = snap;
   const groupFilter = await getGroupFilter(user, sid);
@@ -357,7 +362,9 @@ app.post('/batch', async c => {
     totalGroupCount,
     durationMs,
   }));
-  return c.json({ results, meta: { sourceUpdatedAt, configUpdatedAt } });
+  /** @type {import('@pkg/shared/api-types.ts').AggregateBatchResult} */
+  const batchOut = { results, meta: { sourceUpdatedAt, configUpdatedAt } };
+  return c.json(batchOut);
 });
 
 // POST /api/aggregate/options
@@ -408,7 +415,7 @@ app.post('/options', async c => {
 
   await requireSourceAccess(user, sid);
   const snap = await getSnapshotRows(sid);
-  if (!snap) return c.json({ options: {}, meta: { sourceUpdatedAt: null } });
+  if (!snap) return c.json(/** @type {import('@pkg/shared/api-types.ts').AggregateOptionsResult} */ ({ options: {}, meta: { sourceUpdatedAt: null } }));
   const { rows: rawRows, updatedAt: sourceUpdatedAt } = snap;
   const groupFilter = await getGroupFilter(user, sid);
 
@@ -437,6 +444,7 @@ app.post('/options', async c => {
     const arr = [...sets[f]].sort();
     options[f] = arr.slice(0, limit);
   }
+  /** @type {import('@pkg/shared/api-types.ts').AggregateOptionsResult} */
   const result = { options, meta: { sourceUpdatedAt } };
   optionsCacheSet(cacheKey, result);
   c.header('X-Options-Cache', 'miss');
@@ -520,6 +528,7 @@ app.post('/columns', async c => {
     out.push({ name, samples, isNumeric });
   }
 
+  /** @type {import('@pkg/shared/api-types.ts').AggregateColumnsResult} */
   const result = { columns: out, accessibleRows: rows.length, sourceUpdatedAt };
   columnsCacheSet(cacheKey, result);
   c.header('X-Columns-Cache', 'miss');

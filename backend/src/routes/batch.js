@@ -1,3 +1,4 @@
+// @ts-check
 // Batch endpoints - invoked by Cloud Scheduler. Protected via OIDC header from GCP.
 import { Hono } from 'hono';
 import { OAuth2Client } from 'google-auth-library';

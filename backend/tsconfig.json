@@ -1,0 +1,36 @@
+{
+  // backend 型チェックの足場 (Phase 4)。frontend と同じく「型検査だけ・出力なし」。
+  // node は今までどおり .js を実行するので、この設定を足しても実行時の挙動は変わらない。
+  //
+  // checkJs は false から始める。true にすると 30 ファイルが一斉に検査対象になり
+  // 数百件のエラーで動けなくなるため、ファイル先頭に `// @ts-check` を書いて
+  // 1 ファイルずつ opt-in する (frontend の移行と同じ方針)。
+  //
+  // 型だけの参照 (JSDoc の import('@pkg/shared/api-types.ts')) で
+  // packages/shared の型を使えるが、実行時は backend が読めなくてよい
+  // (JSDoc は node からはただのコメントで、Dockerfile の COPY 対象にも影響しない)。
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext"],
+    "types": ["node"],
+    // strict は false で始める。backend の既存 .js は無注釈関数が多く、noImplicitAny を
+    // 効かせると TS7006 が大量に出て動けない。まずは「型付き値への typo・誤 API 使用・
+    // 未定義名・api-types 契約 (@type)」といった strict 非依存の検査で価値を取り、
+    // strictNullChecks 等は各ファイルを固めながら段階的に上げる (frontend と同じ進め方)。
+    "strict": false,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "forceConsistentCasingInFileNames": true,
+    // JSDoc から共有型を参照するための alias (frontend の @pkg/shared/* と同じ実体)。
+    "paths": {
+      "@pkg/shared/*": ["../packages/shared/src/*"]
+    }
+  },
+  "include": ["src", "../packages/shared/src/api-types.ts"]
+}

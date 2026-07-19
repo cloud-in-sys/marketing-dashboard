@@ -1,3 +1,4 @@
+// @ts-check
 // AST 評価ロジック。WHERE 句の各 clause を行データに対して評価する。
 
 export function num(v) { const n = +v; return n === n ? n : 0; }

@@ -1,3 +1,4 @@
+// @ts-check
 import { Hono } from 'hono';
 import { db } from '../firebase.js';
 import { requirePerm, canAccessSource, requireSourceAccess } from '../middleware/auth.js';
@@ -30,7 +31,9 @@ const sourcesCol = () => db.collection('sources');
 // 可視性ルールは utils/sourceVisibility.js の sourceVisible が唯一の基準。
 app.get('/', async c => {
   const snap = await sourcesCol().get();
-  let sources = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  // Firestore doc をそのまま DataSource として返す (実データが従う前提でキャスト)。
+  /** @type {import('@pkg/shared/api-types.ts').DataSource[]} */
+  let sources = snap.docs.map(d => /** @type {any} */ ({ id: d.id, ...d.data() }));
   // 並び順は order フィールド (なければ createdAt 順) で安定化
   sources.sort((a, b) => {
     const ao = typeof a.order === 'number' ? a.order : Infinity;
@@ -45,7 +48,9 @@ app.get('/', async c => {
   const user = c.get('user');
   sources = sources.filter(s => sourceVisible(user, s));
 
-  return c.json({ sources });
+  /** @type {import('@pkg/shared/api-types.ts').ListSourcesResult} */
+  const res = { sources };
+  return c.json(res);
 });
 
 // Create

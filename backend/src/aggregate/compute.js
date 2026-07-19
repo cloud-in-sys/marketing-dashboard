@@ -1,3 +1,4 @@
+// @ts-check
 // メトリクス集計エンジン。frontend/src/aggregate/aggregate.js から移植 (S 依存を context 引数化)。
 
 import { findCloseParen, parseAggregateInner, parseWhereStr } from './parser.js';

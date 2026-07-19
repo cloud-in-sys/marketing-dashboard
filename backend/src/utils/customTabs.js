@@ -1,3 +1,4 @@
+// @ts-check
 // ===== カスタムタブ / 共有 state の検証と認可 =====
 // カスタムタブは shared config の 2 箇所に分かれて入っている:
 //   customTabs        … タブの定義 (key / label / color / group / presetName) と並び順

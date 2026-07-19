@@ -1,3 +1,4 @@
+// @ts-check
 // ユーザーが保存する式 (メトリクス式 / ディメンション式 / ビューフィルタ式) の検証。
 // AST ベースの allowlist 評価器 (safeExpr) で validate する。
 // 旧実装は blocklist + new Function 構文チェック → constructor bracket 経由の脱出が可能だった。

@@ -1,3 +1,4 @@
+// @ts-check
 // ===== データソース可視性の唯一の判定基準 =====
 // かつて middleware/auth.js の canAccessSource と aggregate/sourceAccess.js の
 // requireSourceAccess、routes/sources.js の一覧フィルタに 3 つの実装が並んでいて、

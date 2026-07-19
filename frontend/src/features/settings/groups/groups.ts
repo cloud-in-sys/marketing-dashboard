@@ -1,0 +1,300 @@
+import { api } from '@api/index.ts';
+import { buildSaveErrorMessage, setSaveButtonState } from '../saveFlow.ts';
+import { escapeHtml } from '@shared/utils/utils.ts';
+import { showModal } from '@shared/ui/modal.ts';
+import { settingsState } from '../state.ts';
+
+function markGroupsDirty() { document.getElementById('groups-list')?.classList.add('has-dirty'); }
+// 保存成功後は必ず呼ぶこと。has-dirty は #groups-list (コンテナ) 側に付き、
+// 再描画は innerHTML の差し替えでコンテナ自身は残るためクラスが生き残る。
+// 消し忘れると「保存したのに未保存ガードが出る」状態になる。
+function clearGroupsDirty() { document.getElementById('groups-list')?.classList.remove('has-dirty'); }
+
+export async function loadGroupsAndRender() {
+  try {
+    // メンバー一覧は listGroupMembers (manageGroups で取得可) を使う。
+    // listUsers は adminOnly なので、manageGroups だけを持つ非管理者が開くと
+    // 403 で Promise.all ごと失敗し、画面全体が読み込めなくなる。
+    // 取得結果は S.USERS に入れないこと (perms を持たないため getCurrentUser が壊れる)。
+    const [gRes, mRes, sRes] = await Promise.all([api.listGroups(), api.listGroupMembers(), api.listSources()]);
+    settingsState.groupsCache = gRes.groups || [];
+    settingsState.groupMembersCache = mRes.members || [];
+    settingsState.sourcesCache = sRes.sources || [];
+    renderGroupsView();
+  } catch (e: any) {
+    console.warn('[groups] load failed', e);
+    const list = document.getElementById('groups-list');
+    if (list) list.innerHTML = `<div class="preset-empty">読み込みに失敗しました: ${escapeHtml(e.message || String(e))}</div>`;
+  }
+}
+
+function renderGroupsView() {
+  const list = document.getElementById('groups-list');
+  if (!list) return;
+  if (settingsState.groupDetailId == null) {
+    renderGroupsListView(list);
+  } else {
+    renderGroupDetail(list, settingsState.groupDetailId);
+  }
+}
+
+function renderGroupsListView(list: HTMLElement) {
+  if (settingsState.groupsCache.length === 0) {
+    list.innerHTML = '<div class="preset-empty">まだグループがありません。「+ グループを追加」で作成できます。</div>';
+    return;
+  }
+  list.innerHTML = `<div class="user-list-compact">${settingsState.groupsCache.map((g: any) => {
+    const memberCount = settingsState.groupMembersCache.filter((u: any) => u.groupId === g.id).length;
+    return `
+      <div class="user-list-row" data-group-open="${g.id}">
+        <div class="user-avatar">${escapeHtml((g.name || '?').slice(0, 1).toUpperCase())}</div>
+        <div class="user-list-info">
+          <div class="user-list-name">${escapeHtml(g.name)}</div>
+          <div class="user-list-id">メンバー ${memberCount}人</div>
+        </div>
+        <span class="user-list-caret">›</span>
+      </div>`;
+  }).join('')}</div>`;
+}
+
+function renderGroupDetail(list: HTMLElement, gid: string) {
+  const isNew = gid === '__new__';
+  const group = isNew
+    ? { id: '__new__', name: '', sourceFilters: {} }
+    : settingsState.groupsCache.find((g: any) => g.id === gid);
+  if (!group) { settingsState.groupDetailId = null; renderGroupsView(); return; }
+
+  const members = settingsState.groupMembersCache.filter((u: any) => u.groupId === group.id);
+  const sourceFilters = group.sourceFilters || {};
+
+  // ソース一覧を表示。各ソース行に「見せる/見せない」と行フィルタ設定。
+  // ソースの可視性は source.allowedGroupIds が source-of-truth なので、ここでは
+  // group.id がそのソースの allowedGroupIds に含まれているかをチェックしてレンダ。
+  const sourcesHtml = settingsState.sourcesCache.map((src: any) => {
+    const allowed = src.allowedGroupIds || [];
+    const isPublicSource = allowed.length === 0 && src.isPublic !== false;
+    const isVisible = isPublicSource
+      ? true
+      : allowed.includes(group.id);
+    const visState = isPublicSource ? 'public' : (isVisible ? 'allowed' : 'blocked');
+    const f = sourceFilters[src.id] || { field: '', op: 'equals', value: '' };
+    const fieldVal = f.field || '';
+    const op = f.op || 'equals';
+    const isSingleValue = op === 'equals' || op === 'regex' || op === 'notRegex';
+    const valStr = isSingleValue
+      ? (f.value || '')
+      : (Array.isArray(f.values) ? f.values.join(',') : '');
+    const valuePlaceholder = (op === 'regex' || op === 'notRegex')
+      ? '正規表現 (例: ^広告.*$)'
+      : (op === 'equals' ? '値' : '値（複数はカンマ区切り）');
+    return `<div class="group-source-row" data-source-id="${escapeHtml(src.id)}">
+      <div class="group-source-head">
+        <div class="group-source-name">${escapeHtml(src.name)}</div>
+        <label class="group-source-vis-toggle" title="このソースをこのグループに見せるか">
+          <input type="checkbox" data-group-source-visible${isVisible !== false ? ' checked' : ''}>
+          <span>${visState === 'public' ? '公開中' : isVisible ? '公開中' : '非公開中'}</span>
+        </label>
+      </div>
+      <div class="group-source-filter">
+        <span class="group-source-filter-label">行絞り込み:</span>
+        <input type="text" class="api-input" data-group-filter-field value="${escapeHtml(fieldVal)}" placeholder="フィールド名 (例: operator)">
+        <select data-group-filter-op>
+          <option value="equals"${op === 'equals' ? ' selected' : ''}>等しい</option>
+          <option value="in"${op === 'in' ? ' selected' : ''}>いずれか</option>
+          <option value="notIn"${op === 'notIn' ? ' selected' : ''}>いずれでもない</option>
+          <option value="regex"${op === 'regex' ? ' selected' : ''}>正規表現に一致</option>
+          <option value="notRegex"${op === 'notRegex' ? ' selected' : ''}>正規表現に一致しない</option>
+        </select>
+        <input type="text" class="api-input" data-group-filter-values value="${escapeHtml(valStr)}" placeholder="${escapeHtml(valuePlaceholder)}">
+      </div>
+    </div>`;
+  }).join('');
+
+  list.innerHTML = `
+    <button type="button" class="user-back-btn" data-group-back>← 一覧に戻る</button>
+    <div class="user-row" data-group-id="${escapeHtml(group.id)}">
+      <div class="user-row-top">
+        <div class="user-avatar">${escapeHtml((group.name || '?').slice(0, 1).toUpperCase())}</div>
+        <div class="user-row-main">
+          <input type="text" class="user-name-input" data-group-name value="${escapeHtml(group.name)}" placeholder="グループ名（例: 代理店A）">
+        </div>
+      </div>
+
+      <div class="user-perms-section">
+        <div class="user-perms-title">所属メンバー</div>
+        <div class="group-filters-desc">メンバーの変更は「ユーザー一覧」→ 各ユーザーの詳細画面から行ってください。</div>
+        ${members.length === 0
+          ? '<div class="preset-empty" style="padding:8px 0">まだ所属メンバーがいません</div>'
+          : `<ul class="group-member-list">${members.map((u: any) => `<li>${escapeHtml(u.name || u.email)}${u.isAdmin ? '（管理者）' : ''}</li>`).join('')}</ul>`}
+      </div>
+
+      <div class="user-perms-section">
+        <div class="user-perms-title">データソース別アクセス権</div>
+        <div class="group-filters-desc">
+          ・「見せる」: このグループのメンバーがこのソースを開ける<br>
+          ・「行絞り込み」: 設定すると、行のうち条件に一致するものだけ見せる（空欄なら絞らない）
+        </div>
+        ${isNew
+          ? '<div class="preset-empty" style="padding:8px 0">グループを保存後に設定できます</div>'
+          : (settingsState.sourcesCache.length === 0
+              ? '<div class="preset-empty" style="padding:8px 0">データソースがありません</div>'
+              : `<div class="group-source-list">${sourcesHtml}</div>`)}
+      </div>
+
+      <div class="user-row-actions">
+        <button type="button" class="save-btn" data-group-save>${isNew ? '作成' : '保存'}</button>
+        ${isNew ? '' : '<button type="button" class="link-btn danger" data-group-delete>削除</button>'}
+      </div>
+    </div>`;
+}
+
+// 詳細画面のDOMから編集中のデータを読み取る
+// name + 各ソース行のフィルタ + 可視性チェックボックスを集める
+function collectGroupDetailData() {
+  const row = document.querySelector('[data-group-id]') as HTMLElement | null;
+  if (!row) return null;
+  const id = row.dataset.groupId!;
+  const name = (row.querySelector('[data-group-name]') as HTMLInputElement).value.trim();
+
+  const sourceFilters: Record<string, any> = {};
+  const visibility: Record<string, boolean> = {};  // sid → bool (チェックされたら見せる)
+  row.querySelectorAll<HTMLElement>('.group-source-row').forEach(r => {
+    const sid = r.dataset.sourceId!;
+    const visible = (r.querySelector('[data-group-source-visible]') as HTMLInputElement | null)?.checked;
+    visibility[sid] = !!visible;
+    const field = (r.querySelector('[data-group-filter-field]') as HTMLInputElement | null)?.value.trim() || '';
+    const op = (r.querySelector('[data-group-filter-op]') as HTMLSelectElement | null)?.value || 'equals';
+    const raw = (r.querySelector('[data-group-filter-values]') as HTMLInputElement | null)?.value.trim() || '';
+    if (field) {
+      if (op === 'equals' || op === 'regex' || op === 'notRegex') {
+        sourceFilters[sid] = { field, op, value: raw };
+      } else {
+        sourceFilters[sid] = { field, op, values: raw.split(',').map((s: string) => s.trim()).filter(Boolean) };
+      }
+    }
+  });
+  return { id, name, sourceFilters, visibility };
+}
+
+async function saveGroup() {
+  const data = collectGroupDetailData();
+  if (!data) return;
+  if (!data.name) {
+    await showModal({title: '保存できません', body: 'グループ名を入力してください', okText: 'OK', cancelText: ''});
+    return;
+  }
+  const saveBtn = document.querySelector('[data-group-save]') as HTMLElement | null;
+  const rootEl = document.getElementById('groups-view');
+  setSaveButtonState(saveBtn, true, rootEl);
+  try {
+    let gid = data.id;
+
+    // (1) グループ本体: name と sourceFilters を保存
+    if (gid === '__new__') {
+      const created = await api.createGroup({ name: data.name, sourceFilters: data.sourceFilters });
+      gid = created.id;
+      settingsState.groupsCache.push(created);
+    } else {
+      await api.updateGroup(gid, { name: data.name, sourceFilters: data.sourceFilters });
+      const target = settingsState.groupsCache.find((g: any) => g.id === gid);
+      if (target) { target.name = data.name; target.sourceFilters = data.sourceFilters; }
+    }
+
+    // (2) ソース側 allowedGroupIds の更新 (可視性)
+    for (const src of settingsState.sourcesCache) {
+      const allowed = src.allowedGroupIds || [];
+      const isPublic = allowed.length === 0 && src.isPublic !== false;
+      const want = data.visibility[src.id];
+      if (isPublic && want === false) {
+        // 全員公開 → 制限モードに切替
+        const allGids = settingsState.groupsCache.map((g: any) => g.id).filter((g: any) => g !== gid);
+        await api.updateSource(src.id, { allowedGroupIds: allGids, isPublic: false });
+        src.allowedGroupIds = allGids;
+        src.isPublic = false;
+      } else if (isPublic) {
+        continue;
+      } else {
+        const has = allowed.includes(gid);
+        if (want && !has) {
+          const next = [...allowed, gid];
+          await api.updateSource(src.id, { allowedGroupIds: next });
+          src.allowedGroupIds = next;
+        } else if (!want && has) {
+          const next = allowed.filter((g: any) => g !== gid);
+          await api.updateSource(src.id, { allowedGroupIds: next });
+          src.allowedGroupIds = next;
+        }
+      }
+    }
+
+    // API 成功時点で dirty を解除する (完了モーダルの表示中に画面遷移されてもガードが残らないように)
+    clearGroupsDirty();
+    await showModal({title: '保存完了', body: 'グループを保存しました', okText: 'OK', cancelText: ''});
+    settingsState.groupDetailId = null;
+    await loadGroupsAndRender();
+    clearGroupsDirty();   // 再描画で input イベントが走った場合に備えて再度解除
+  } catch (e) {
+    await showModal({title: '保存に失敗しました', body: buildSaveErrorMessage(e), okText: 'OK', cancelText: ''});
+  } finally {
+    // 成功時は再描画で button/root 内要素が置き換わる。失敗時のみ locked 状態を解除する必要がある。
+    // 再描画後の要素は data-saveflow-* が付いていないので影響なし。
+    const btn = document.querySelector('[data-group-save]') as HTMLElement | null;
+    setSaveButtonState(btn, false, document.getElementById('groups-view'));
+  }
+}
+
+async function deleteGroup() {
+  const data = collectGroupDetailData();
+  if (!data || data.id === '__new__') return;
+  const g = settingsState.groupsCache.find((x: any) => x.id === data.id);
+  const hasMembers = settingsState.groupMembersCache.some((u: any) => u.groupId === data.id);
+  const ok = await showModal({
+    title: 'グループを削除',
+    body: `「${g?.name || data.id}」を削除しますか？` + (hasMembers ? '\n\n所属メンバーは自動的に「未分類」に戻ります。' : ''),
+    okText: '削除', danger: true,
+  });
+  if (!ok) return;
+  try {
+    await api.deleteGroup(data.id);
+    settingsState.groupsCache = settingsState.groupsCache.filter((x: any) => x.id !== data.id);
+    // ローカルのメンバーキャッシュも整合させる (backend 側は groups DELETE が groupId を null にする)
+    settingsState.groupMembersCache.forEach((u: any) => { if (u.groupId === data.id) u.groupId = null; });
+    settingsState.groupDetailId = null;
+    renderGroupsView();
+    // 編集して dirty のまま削除した場合、対象が消えているので未保存扱いを残さない
+    clearGroupsDirty();
+  } catch (e: any) {
+    await showModal({title: '削除失敗', body: e.message || '削除に失敗しました', okText: 'OK', cancelText: ''});
+  }
+}
+
+export function setupGroupsEvents() {
+  document.getElementById('add-group-btn')?.addEventListener('click', () => {
+    settingsState.groupDetailId = '__new__';
+    renderGroupsView();
+  });
+
+  document.getElementById('groups-list')?.addEventListener('click', async e => {
+    // 一覧 → 詳細
+    const openBtn = (e.target as HTMLElement).closest('[data-group-open]') as HTMLElement | null;
+    if (openBtn) { settingsState.groupDetailId = openBtn.dataset.groupOpen!; renderGroupsView(); return; }
+
+    // 詳細 → 一覧に戻る
+    if ((e.target as HTMLElement).closest('[data-group-back]')) { settingsState.groupDetailId = null; renderGroupsView(); return; }
+
+    // 保存
+    if ((e.target as HTMLElement).closest('[data-group-save]')) {
+      await saveGroup();
+      return;
+    }
+
+    // 削除
+    if ((e.target as HTMLElement).closest('[data-group-delete]')) {
+      await deleteGroup();
+      return;
+    }
+  });
+
+  document.getElementById('groups-list')?.addEventListener('input', () => markGroupsDirty());
+  document.getElementById('groups-list')?.addEventListener('change', () => markGroupsDirty());
+}

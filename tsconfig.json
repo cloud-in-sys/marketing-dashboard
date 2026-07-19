@@ -1,0 +1,52 @@
+{
+  // TypeScript 化の足場 (Phase 0)。
+  //
+  // 今は「型チェックだけを行い、何も出力しない」設定 (noEmit)。
+  // 実行されるコードは Vite (frontend) と node (backend) がこれまで通り扱うので、
+  // この設定を足しただけでは実行時の挙動は 1 バイトも変わらない。
+  //
+  // checkJs は false から始める。true にすると既存 .js 全部が一斉に検査対象になり、
+  // 数百件のエラーで身動きが取れなくなるため。ファイル単位で先頭に `// @ts-check` を
+  // 書けば個別に検査できるので、移行はその方式で少しずつ進める。
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    // Vite (bundler) 前提。拡張子なし import をそのまま解決する。
+    "moduleResolution": "bundler",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+
+    "strict": true,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    // node の型剥がし (--experimental-strip-types) で実行できる構文だけを許可する。
+    // frontend/test/*.mjs は node が直接 .ts を読んで検査しているため、
+    // enum / namespace / パラメータプロパティ のような「剥がすだけでは消えない」構文が
+    // 入るとテストが動かなくなる。tsc の側で先に弾く。
+    "erasableSyntaxOnly": true,
+    // import 指定子に .ts をそのまま書く。Vite も node の型剥がしも .ts を解決でき、
+    // 「拡張子は .js と書くが実体は .ts」という食い違いを避けられる (noEmit なので可)。
+    "allowImportingTsExtensions": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // import alias。vite.config.js の resolve.alias と必ず同じ内容に保つこと
+    // (片方だけ足すと「エディタでは解決するがビルドで落ちる」あるいはその逆になる)。
+    // TypeScript 7 で baseUrl は廃止されたので、paths は tsconfig.json からの相対で書く。
+    "paths": {
+      "@app/*": ["./frontend/src/app/*"],
+      "@api/*": ["./frontend/src/api/*"],
+      "@aggregate/*": ["./frontend/src/aggregate/*"],
+      "@features/*": ["./frontend/src/features/*"],
+      "@filters/*": ["./frontend/src/filters/*"],
+      "@shared/*": ["./frontend/src/shared/*"],
+      "@pkg/shared/*": ["./packages/shared/src/*"]
+    }
+  },
+  "include": ["frontend/src", "frontend/test", "packages/shared/src", "vite.config.js"],
+  // vendor/ は取り込んだ外部ライブラリ (vanilla-colorful)。自前で保守しないので検査しない。
+  "exclude": ["node_modules", "frontend/dist", "frontend/src/vendor", "backend"]
+}

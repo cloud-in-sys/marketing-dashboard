@@ -1,3 +1,4 @@
+// @ts-check
 import { Hono } from 'hono';
 import { db } from '../firebase.js';
 import { httpError } from '../middleware/error.js';
@@ -50,7 +51,9 @@ function checkFieldPerms(body, user) {
 app.get('/:sid', requireSourceAccess(), async c => {
   const sid = c.req.param('sid');
   const snap = await configDoc(sid).get();
-  return c.json({ config: snap.exists ? snap.data() : null });
+  /** @type {import('@pkg/shared/api-types.ts').GetConfigResult} */
+  const res = { config: snap.exists ? snap.data() : null };
+  return c.json(res);
 });
 
 // 検証のみ (副作用なし)。frontend の live validation 用。
@@ -136,7 +139,7 @@ app.put('/:sid', requireSourceAccess(), async c => {
     if ('customTabs' in before) final.customTabs = before.customTabs;
   } else {
     const err = checkCustomTabs(before.customTabs, final.customTabs, user);
-    if (err) return c.json(err.body, err.status);
+    if (err) return c.json(err.body, /** @type {any} */ (err.status));
   }
   if ('state' in final || 'state' in before) {
     const r = sanitizeState(before.state, final.state, user);
@@ -170,7 +173,7 @@ app.patch('/:sid', requireSourceAccess(), async c => {
   // body に含まれている時だけ確認する (省略されたフィールドは触らない)。
   if ('customTabs' in body) {
     const err = checkCustomTabs(before.customTabs, body.customTabs, user);
-    if (err) return c.json(err.body, err.status);
+    if (err) return c.json(err.body, /** @type {any} */ (err.status));
   }
   // update() を使ってトップレベルフィールドを完全置換する。
   // set({merge:true}) だと map 型(views など)が deep merge され、削除キーが残ってしまう。

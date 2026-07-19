@@ -14,7 +14,7 @@ import {
   ReCaptchaV3Provider,
   getToken as getAppCheckToken,
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app-check.js';
-import { FIREBASE_CONFIG, APP_CHECK_SITE_KEY } from './config.js';
+import { FIREBASE_CONFIG, APP_CHECK_SITE_KEY } from './config.ts';
 
 const app = initializeApp(FIREBASE_CONFIG);
 
