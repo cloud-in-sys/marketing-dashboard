@@ -30,6 +30,7 @@ export function toReplacePresetRequest(preset: Preset): ReplacePresetRequest {
     cards: asArray(preset.cards),
     dims: asStrArray(preset.dims),
     metrics: asStrArray(preset.metrics),
+    metricOrder: asStrArray(preset.metricOrder),
     thresholds: asObject(preset.thresholds),
     thresholdMetrics: asStrArray(preset.thresholdMetrics),
     tableState: preset.tableState ?? null,

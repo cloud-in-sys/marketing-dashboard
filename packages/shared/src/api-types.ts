@@ -155,6 +155,12 @@ export interface Preset {
   cards?: any[];
   dims?: string[];
   metrics?: string[];
+  /**
+   * メトリクスの**全並び順** (表示中 + 非表示 の両方)。チップ行の並び・列順の元。
+   * `metrics` は「このうち表示中のもの」= `metricOrder` の可視サブセット。
+   * 未設定の旧プリセットは frontend が `[...metrics, ...残りの定義順]` で導出する。
+   */
+  metricOrder?: string[];
   thresholds?: Record<string, any>;
   thresholdMetrics?: string[];
   tableState?: any;
@@ -193,6 +199,8 @@ export interface ReplacePresetRequest {
   cards: unknown[];
   dims: string[];
   metrics: string[];
+  /** メトリクスの全並び順 (表示中+非表示)。`metrics` はこの可視サブセット。Preset の同名項目参照 */
+  metricOrder: string[];
   thresholds: Record<string, unknown>;
   thresholdMetrics: string[];
   tableState: unknown | null;

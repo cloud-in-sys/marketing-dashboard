@@ -37,6 +37,7 @@ export function validateReplacePreset(body) {
   if (!Array.isArray(d.cards)) return { error: 'cards must be an array' };
   if (!isStringArray(d.dims)) return { error: 'dims must be an array of strings' };
   if (!isStringArray(d.metrics)) return { error: 'metrics must be an array of strings' };
+  if (!isStringArray(d.metricOrder)) return { error: 'metricOrder must be an array of strings' };
   if (!isPlainObject(d.thresholds)) return { error: 'thresholds must be an object' };
   if (!isStringArray(d.thresholdMetrics)) return { error: 'thresholdMetrics must be an array of strings' };
   if (!(d.tableState === null || isPlainObject(d.tableState))) return { error: 'tableState must be an object or null' };
@@ -56,6 +57,7 @@ export function validateReplacePreset(body) {
       cards: d.cards,
       dims: d.dims,
       metrics: d.metrics,
+      metricOrder: d.metricOrder,
       thresholds: d.thresholds,
       thresholdMetrics: d.thresholdMetrics,
       tableState: d.tableState,

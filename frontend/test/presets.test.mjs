@@ -32,8 +32,8 @@ console.log('\n═══ B. toReplacePresetRequest 正規化 ═══');
   const out = toReplacePresetRequest({ id: 'p1', name: '  売上  ', charts: [9], order: 3 });
   t('★id は除外される', 'id' in out, false);
   t('name は trim される', out.name, '売上');
-  t('★未設定の配列は [] に埋まる (cards/dims/metrics/thresholdMetrics)',
-    [out.cards, out.dims, out.metrics, out.thresholdMetrics], [[], [], [], []]);
+  t('★未設定の配列は [] に埋まる (cards/dims/metrics/metricOrder/thresholdMetrics)',
+    [out.cards, out.dims, out.metrics, out.metricOrder, out.thresholdMetrics], [[], [], [], [], []]);
   t('★未設定の map は {} に埋まる (thresholds/filterValues/filterConditions)',
     [out.thresholds, out.filterValues, out.filterConditions], [{}, {}, {}]);
   t('★未設定の nullable は null に埋まる (color/tableState/tableConfig/seedVersion)',
@@ -56,7 +56,7 @@ console.log('\n═══ B. toReplacePresetRequest 正規化 ═══');
 {
   // 完全なプリセットはそのまま完全な形で通る
   const full = { id: 'p', name: 'A', builtin: true, color: '#fff', order: 2, seedVersion: 3,
-    charts: [1], cards: [2], dims: ['d'], metrics: ['m'], thresholds: { a: 1 },
+    charts: [1], cards: [2], dims: ['d'], metrics: ['m'], metricOrder: ['m', 'n'], thresholds: { a: 1 },
     thresholdMetrics: ['t'], tableState: { x: 1 }, tableConfig: { y: 2 },
     filterValues: { f: 1 }, filterConditions: { c: 1 } };
   const out = toReplacePresetRequest(full);
@@ -168,7 +168,7 @@ t('preset 系 state op に preset?: any が残っていない', /preset\?: any/.
 console.log('\n═══ F. validateReplacePreset (backend 実行時検証) ═══');
 const complete = () => ({
   name: 'X', builtin: false, color: null, order: 0, seedVersion: null,
-  charts: [], cards: [], dims: [], metrics: [], thresholds: {},
+  charts: [], cards: [], dims: [], metrics: [], metricOrder: [], thresholds: {},
   thresholdMetrics: [], tableState: null, tableConfig: null,
   filterValues: {}, filterConditions: {},
 });
@@ -178,7 +178,7 @@ const isErr = (input) => 'error' in validateReplacePreset(input);
 {
   const r = validateReplacePreset(complete());
   t('完全なリクエストは通る (preset を返す)', 'preset' in r, true);
-  t('★preset は許可 15 項目ちょうど (未知/ id なし)', Object.keys(r.preset).sort(), Object.keys(complete()).sort());
+  t('★preset は許可 16 項目ちょうど (未知/ id なし)', Object.keys(r.preset).sort(), Object.keys(complete()).sort());
 }
 // 各必須項目が欠けると 400
 for (const k of Object.keys(complete())) {

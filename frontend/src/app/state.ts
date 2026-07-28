@@ -2,6 +2,7 @@
 import { api } from '@api/index.ts';
 import { setCurrentSourceId, queueConfigPatch, flushConfigNow } from './persistence.ts';
 import { parsePath } from './routes.ts';
+import { resolveMetricSelection } from './metricSelection.ts';
 import type { AppState, AppUser } from './models.ts';
 
 export const DEFAULT_METRIC_DEFS = [
@@ -179,6 +180,7 @@ export const S: AppState = {
   CURRENT_VIEW: 'summary_daily',
   SELECTED_DIMS: ['action_date'],
   SELECTED_METRICS: [],
+  METRIC_ORDER: [],
   CHARTS: [{id: 1, metric: 'ad_cost', type: 'bar', size: 'main', color: '#2563eb', bucket: 'auto'}],
   CHART_ID_SEQ: 2,
   CHART_POINTS: new Map(),
@@ -330,6 +332,43 @@ export function setUserCurrentView(viewKey: string | null) {
   _scheduleUserStateSave();
 }
 
+// メトリクスの並び順 (METRIC_ORDER) と表示中集合 (SELECTED_METRICS) を管理する。
+//
+// モデル: METRIC_ORDER = 全メトリクスの並び順 (表示中 + 非表示)。SELECTED_METRICS は
+//   「そのうち表示中のもの」= METRIC_ORDER の可視サブセット (常に METRIC_ORDER と同じ順)。
+//   列/集計は従来どおり SELECTED_METRICS を読むので下流は不変。チップの並び替えは
+//   METRIC_ORDER を動かし、非表示メトリクスも並べ替え・位置固定できる。
+
+/**
+ * 保存データ (metrics=表示中, metricOrder=全順) から METRIC_ORDER と SELECTED_METRICS を復元する。
+ * ロジックは resolveMetricSelection (純粋・テスト可) に委譲。
+ * - `metrics` が **undefined** → 全表示 (旧データ・初期状態)。
+ * - `metrics` が **[]** → 全非表示 (明示的にすべて隠した状態。これを維持する)。
+ * - `metrics` が ['a', ...] → その値だけ表示。
+ * 「全表示にしたい」フォールバックでは **[] ではなく undefined を渡すこと** ([] は全非表示になる)。
+ */
+export function setMetricSelection(savedMetrics: unknown, savedOrder?: unknown) {
+  const { order, selected } = resolveMetricSelection(
+    S.METRIC_DEFS.map((m: any) => m.key), savedMetrics, savedOrder,
+  );
+  S.METRIC_ORDER = order;
+  S.SELECTED_METRICS = selected;
+}
+
+/**
+ * METRIC_ORDER を現在の定義に整合させる (欠損キーを落とし新規キーを末尾へ)。
+ * 表示中集合 (SELECTED_METRICS) はそのまま維持し、並び順どおりに詰め直す。
+ * 現在の SELECTED_METRICS を配列として渡すので「空=全表示」の復元ルールは働かない
+ * (全非表示のまま整合される)。実行時の再整合用。
+ */
+export function ensureMetricOrder() {
+  const { order, selected } = resolveMetricSelection(
+    S.METRIC_DEFS.map((m: any) => m.key), S.SELECTED_METRICS, S.METRIC_ORDER,
+  );
+  S.METRIC_ORDER = order;
+  S.SELECTED_METRICS = selected;
+}
+
 export function syncCurrentTabState() {
   if (S.PRESET_EDIT_IDX != null) return;
   if (!S.CURRENT_VIEW) return;
@@ -347,6 +386,7 @@ export function syncCurrentTabState() {
   S.TAB_STATES[S.CURRENT_VIEW] = {
     dims: [...S.SELECTED_DIMS],
     metrics: [...S.SELECTED_METRICS],
+    metricOrder: [...S.METRIC_ORDER],
     thresholds: JSON.parse(JSON.stringify(S.THRESHOLDS)),
     thresholdMetrics: [...S.THRESHOLD_METRICS],
     tableConfig: JSON.parse(JSON.stringify(S.TABLE_CONFIG || DEFAULT_TABLE_CONFIG)),
@@ -588,7 +628,9 @@ async function applyConfig(cfg?: any): Promise<void> {
   S.METRIC_DEFS = Array.isArray(cfg.metricDefs)
     ? cfg.metricDefs.map((m: any) => ({key: m.key, label: m.label, fmt: m.fmt || 'int', type: m.type || 'derived'}))
     : ('metricDefs' in cfg ? [] : JSON.parse(JSON.stringify(DEFAULT_METRIC_DEFS)));
+  // 既定は全メトリクス表示。並び順も定義順で初期化 (この後 loadTabState/preset が上書きする)。
   S.SELECTED_METRICS = S.METRIC_DEFS.map(m => m.key);
+  S.METRIC_ORDER = S.METRIC_DEFS.map(m => m.key);
 
   S.DIMENSIONS = Array.isArray(cfg.dimensions)
     ? cfg.dimensions.map((d: any) => ({

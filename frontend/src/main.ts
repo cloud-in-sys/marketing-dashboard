@@ -3,7 +3,7 @@ import '@shared/ui/colorPicker.ts'; // <dashboard-color-picker> カスタム要�
 import { on, emit } from '@app/events.ts';
 import { S,
   initStateFromServer, saveState, saveCustomTabs, saveViewOrder,
-  syncCurrentTabState, getPresets,
+  syncCurrentTabState, ensureMetricOrder, getPresets,
   loadSourceMethod, flushUserStateNow, flushPresetsNow, setPresetsErrorNotifier,
   reorderPresetsOp, setUnsavedGuard as setUnsavedGuardState, setTableStateGetter,
   setCanViewCustom, switchSource } from '@app/state.ts';
@@ -89,15 +89,16 @@ function renderDimPills() {
 
 function renderChips() {
   renderDimPills();
+  // 全メトリクスを METRIC_ORDER の順で描画。非表示 (inactive) も含めて全チップをドラッグ可に
+  // することで、非表示メトリクスも並び替え・位置固定できる。定義との整合はここで担保する。
+  ensureMetricOrder();
   const selectedSet = new Set(S.SELECTED_METRICS);
-  const selectedDefs = S.SELECTED_METRICS.map((k: string) => S.METRIC_DEFS.find((m) => m.key === k)).filter(Boolean);
-  const unselected = S.METRIC_DEFS.filter((m) => !selectedSet.has(m.key));
-  const ordered = [...selectedDefs, ...unselected];
+  const defByKey = new Map(S.METRIC_DEFS.map((m: any) => [m.key, m]));
+  const ordered = S.METRIC_ORDER.map((k: string) => defByKey.get(k)).filter(Boolean);
   document.getElementById('metric-chips')!.innerHTML = ordered.map((m: any) => {
     const active = selectedSet.has(m.key) ? ' active' : '';
     const derived = m.type === 'derived' ? ' derived' : '';
-    const dragAttr = active ? ` data-drag-key="${m.key}" draggable="true"` : '';
-    return `<button type="button" class="chip${active}${derived}" data-metric="${m.key}"${dragAttr}>${m.label}</button>`;
+    return `<button type="button" class="chip${active}${derived}" data-metric="${m.key}" data-drag-key="${m.key}" draggable="true">${m.label}</button>`;
   }).join('');
 }
 
@@ -440,13 +441,17 @@ document.getElementById('metric-chips')!.addEventListener('click', e => {
   const btn = (e.target as HTMLElement).closest('[data-metric]') as HTMLElement | null;
   if (!btn) return;
   const k = btn.dataset.metric!;
-  if (S.SELECTED_METRICS.includes(k)) S.SELECTED_METRICS = S.SELECTED_METRICS.filter((x: string) => x !== k);
-  else S.SELECTED_METRICS = [...S.SELECTED_METRICS, k];
+  // 表示/非表示のトグル。並び順 (METRIC_ORDER) は動かさないので、表示にした時は
+  // 末尾ではなく「元の位置」に列が入る。SELECTED は常に METRIC_ORDER の可視サブセット。
+  const sel = new Set(S.SELECTED_METRICS);
+  if (sel.has(k)) sel.delete(k); else sel.add(k);
+  S.SELECTED_METRICS = S.METRIC_ORDER.filter((x: string) => sel.has(x));
   btn.classList.toggle('active');
   render();
 });
 document.getElementById('metric-all')!.addEventListener('click', () => {
-  S.SELECTED_METRICS = S.METRIC_DEFS.map((m) => m.key);
+  ensureMetricOrder();
+  S.SELECTED_METRICS = [...S.METRIC_ORDER];  // 全表示 (並び順は維持)
   renderChips();
   render();
 });
@@ -813,13 +818,17 @@ makeSortable(document.getElementById('dim-pills')!, (from, to, before) => {
   render();
 });
 makeSortable(document.getElementById('metric-chips')!, (from, to, before) => {
-  const fromIdx = S.SELECTED_METRICS.indexOf(from);
+  // 並び替えは全並び順 (METRIC_ORDER) を動かす。非表示メトリクスも掴めるので from/to は
+  // 表示中とは限らない。SELECTED_METRICS は動かした後に可視サブセットとして詰め直す。
+  const fromIdx = S.METRIC_ORDER.indexOf(from);
   if (fromIdx < 0) return;
-  const [moved] = S.SELECTED_METRICS.splice(fromIdx, 1);
-  let toIdx = S.SELECTED_METRICS.indexOf(to);
-  if (toIdx < 0) toIdx = S.SELECTED_METRICS.length;
+  const [moved] = S.METRIC_ORDER.splice(fromIdx, 1);
+  let toIdx = S.METRIC_ORDER.indexOf(to);
+  if (toIdx < 0) toIdx = S.METRIC_ORDER.length;
   if (!before) toIdx += 1;
-  S.SELECTED_METRICS.splice(toIdx, 0, moved);
+  S.METRIC_ORDER.splice(toIdx, 0, moved);
+  const sel = new Set(S.SELECTED_METRICS);
+  S.SELECTED_METRICS = S.METRIC_ORDER.filter((x: string) => sel.has(x));
   syncCurrentTabState();
   renderChips();
   render();

@@ -1,4 +1,4 @@
-import { S, DEFAULT_VIEWS_INIT, BUILTIN_SEED_VERSION, DEFAULT_TABLE_CONFIG, normalizeTableConfig, getPresets, createPresetOp, updatePresetOp, deletePresetOp, reorderPresetsOp, syncCurrentTabState, getTabFilterState, serializeFilterValues } from '@app/state.ts';
+import { S, DEFAULT_VIEWS_INIT, BUILTIN_SEED_VERSION, DEFAULT_TABLE_CONFIG, normalizeTableConfig, getPresets, createPresetOp, updatePresetOp, deletePresetOp, reorderPresetsOp, syncCurrentTabState, setMetricSelection, getTabFilterState, serializeFilterValues } from '@app/state.ts';
 import { escapeHtml, hexToSoft } from '@shared/utils/utils.ts';
 import { showModal } from '@shared/ui/modal.ts';
 import { hasPerm } from '@app/auth.ts';
@@ -195,7 +195,8 @@ export function loadPresetIntoGlobals(p: any) {
   S.CARDS = Array.isArray(p.cards) ? p.cards.map((c: any) => ({...c})) : [];
   S.CARD_ID_SEQ = S.CARDS.length ? Math.max(0, ...S.CARDS.map((c: any) => c.id)) + 1 : 1;
   S.SELECTED_DIMS = Array.isArray(p.dims) && p.dims.length ? [...p.dims] : ['action_date'];
-  S.SELECTED_METRICS = Array.isArray(p.metrics) && p.metrics.length ? [...p.metrics] : S.METRIC_DEFS.map((m: any) => m.key);
+  // 表示中 (metrics) と全並び順 (metricOrder) を復元。旧プリセットは metricOrder 未設定なので導出。
+  setMetricSelection(p.metrics, p.metricOrder);
   S.THRESHOLDS = p.thresholds && typeof p.thresholds === 'object' ? JSON.parse(JSON.stringify(p.thresholds)) : {};
   S.THRESHOLD_METRICS = Array.isArray(p.thresholdMetrics) ? [...p.thresholdMetrics] : [];
   // tableState が無い旧プリセットでも必ず呼ぶ。呼ばないと直前のプリセットの
@@ -237,6 +238,7 @@ export async function savePresetPrompt() {
     cards: S.CARDS.map((c: any) => ({...c})),
     dims: [...S.SELECTED_DIMS],
     metrics: [...S.SELECTED_METRICS],
+    metricOrder: [...S.METRIC_ORDER],
     thresholds: JSON.parse(JSON.stringify(S.THRESHOLDS)),
     thresholdMetrics: [...S.THRESHOLD_METRICS],
     tableState: getTableState(),
@@ -383,6 +385,7 @@ function computePresetEditSnapshot(): string | null {
     cards: S.CARDS || [],
     dims: S.SELECTED_DIMS || [],
     metrics: S.SELECTED_METRICS || [],
+    metricOrder: S.METRIC_ORDER || [],
     thresholds: S.THRESHOLDS || {},
     thresholdMetrics: S.THRESHOLD_METRICS || [],
     tableConfig: S.TABLE_CONFIG || DEFAULT_TABLE_CONFIG,
@@ -414,6 +417,7 @@ export function syncPresetEdit() {
     cards: S.CARDS.map((c: any) => ({...c})),
     dims: [...S.SELECTED_DIMS],
     metrics: [...S.SELECTED_METRICS],
+    metricOrder: [...S.METRIC_ORDER],
     thresholds: JSON.parse(JSON.stringify(S.THRESHOLDS)),
     thresholdMetrics: [...S.THRESHOLD_METRICS],
     tableState: getTableState(),
@@ -511,7 +515,8 @@ export function loadTabState(viewKey: string | null) {
       // preset 未存在のフォールバック。CHARTS / CARDS / TABLE_CONFIG も一緒にリセットしないと
       // 直前のタブの内容が残って見える (削除タブの内容が残るバグの一因)。
       S.SELECTED_DIMS = [...view.dims];
-      S.SELECTED_METRICS = S.METRIC_DEFS.map((m: any) => m.key);
+      // preset 未存在のフォールバックは「全表示」。[] は全非表示になるので undefined を渡す。
+      setMetricSelection(undefined, undefined);
       S.THRESHOLDS = {};
       S.THRESHOLD_METRICS = [];
       S.FILTER_VALUES = {};
@@ -530,7 +535,7 @@ export function loadTabState(viewKey: string | null) {
   // dims/charts がそのまま残り、直後の saveState でこのタブの内容として保存される。
   const st = S.TAB_STATES[viewKey!] || {};
   S.SELECTED_DIMS = Array.isArray(st.dims) && st.dims.length ? [...st.dims] : ['action_date'];
-  S.SELECTED_METRICS = Array.isArray(st.metrics) ? [...st.metrics] : S.METRIC_DEFS.map((m: any) => m.key);
+  setMetricSelection(st.metrics, st.metricOrder);
   S.THRESHOLDS = st.thresholds ? JSON.parse(JSON.stringify(st.thresholds)) : {};
   S.THRESHOLD_METRICS = Array.isArray(st.thresholdMetrics) ? [...st.thresholdMetrics] : [];
   S.TABLE_CONFIG = normalizeTableConfig(st.tableConfig);

@@ -94,6 +94,8 @@ export interface DimensionDefinition {
 export interface TabState {
   dims?: string[];
   metrics?: string[];
+  /** メトリクスの全並び順 (表示中+非表示)。metrics はこの可視サブセット。未設定は導出 */
+  metricOrder?: string[];
   thresholds?: Record<string, any>;
   thresholdMetrics?: string[];
   /** 保存時点の tableConfig (normalizeTableConfig を通す前の生データ) */
@@ -260,7 +262,10 @@ export interface AppState {
    */
   CURRENT_VIEW: string | null;
   SELECTED_DIMS: string[];
+  /** 表示中メトリクス (= METRIC_ORDER の可視サブセット・その順序)。列/集計はこれを読む */
   SELECTED_METRICS: string[];
+  /** メトリクスの全並び順 (表示中+非表示)。チップの並び替えはこれを動かす */
+  METRIC_ORDER: string[];
   CHARTS: ChartConfig[];
   CHART_ID_SEQ: number;
   CHART_POINTS: Map<any, any>;
