@@ -1,6 +1,7 @@
 import type { MetricDefinition } from '@app/models.ts';
 import { S, DEFAULT_BASE_FORMULAS, DEFAULT_FORMULAS,
-  saveMetricDefs, saveFormulas, saveBaseFormulas } from '@app/state.ts';
+  saveMetricDefs, saveFormulas, saveBaseFormulas, getPresets, updatePresetOp, saveState } from '@app/state.ts';
+import { computeRenames, remapMetricRefs } from './metricKeyRename.ts';
 import { flushConfigNow, clearPendingConfigKeys } from '@app/persistence.ts';
 import { escapeHtml } from '@shared/utils/utils.ts';
 import { showModal } from '@shared/ui/modal.ts';
@@ -10,6 +11,44 @@ import { renderViewNav } from '../../presets/tabs.ts';
 import { emit } from '@app/events.ts';
 import { makeSortable } from '@shared/ui/sortable.ts';
 import { buildSaveErrorMessage, setSaveButtonState } from '../saveFlow.ts';
+
+// メトリクスキーのリネーム (old->new) をライブ状態とタブ状態の全参照サイトへ波及させる。
+function applyMetricRenamesToStateAndTabs(renames: Record<string, string>) {
+  const live = remapMetricRefs({
+    metrics: S.SELECTED_METRICS,
+    metricOrder: S.METRIC_ORDER,
+    thresholdMetrics: S.THRESHOLD_METRICS,
+    thresholds: S.THRESHOLDS,
+    charts: S.CHARTS,
+    cards: S.CARDS,
+    tableConfig: S.TABLE_CONFIG,
+  }, renames);
+  if (live.changed) {
+    S.SELECTED_METRICS = live.bundle.metrics;
+    S.METRIC_ORDER = live.bundle.metricOrder;
+    S.THRESHOLD_METRICS = live.bundle.thresholdMetrics;
+    S.THRESHOLDS = live.bundle.thresholds;
+    S.CHARTS = live.bundle.charts;
+    S.CARDS = live.bundle.cards;
+    S.TABLE_CONFIG = live.bundle.tableConfig;
+  }
+  for (const view of Object.keys(S.TAB_STATES || {})) {
+    const r = remapMetricRefs(S.TAB_STATES[view], renames);
+    if (r.changed) S.TAB_STATES[view] = r.bundle;
+  }
+}
+
+// リネームを全プリセットへ波及させる (変更があったものだけ PUT)。失敗したプリセット名を返す。
+async function applyMetricRenamesToPresets(renames: Record<string, string>): Promise<string[]> {
+  const ops: Array<Promise<string | null>> = [];
+  for (const p of getPresets()) {
+    const r = remapMetricRefs(p, renames);
+    if (r.changed && p.id) {
+      ops.push(updatePresetOp(p.id, r.bundle).then(() => null).catch(() => (p.name || p.id)));
+    }
+  }
+  return (await Promise.all(ops)).filter((x): x is string => !!x);
+}
 
 // 式の validation は保存ボタン押下時の backend PATCH に任せる。
 // 旧実装は keystroke ごとに debounce validate していたが、
@@ -396,7 +435,9 @@ CTR / CPC / CPM 等の割り算は派生型にして、基礎メトリクスを�
     const prevMetricFormulas = S.METRIC_FORMULAS;
     const prevBaseFormulas = S.BASE_FORMULAS;
     try {
-      if (S.METRIC_DEFS_DRAFT) { S.METRIC_DEFS = JSON.parse(JSON.stringify(S.METRIC_DEFS_DRAFT)); saveMetricDefs(); }
+      // キーのリネーム (old->new) を検出。_origKey は永続化する METRIC_DEFS からは除外する。
+      const renames = computeRenames(S.METRIC_DEFS_DRAFT || []);
+      if (S.METRIC_DEFS_DRAFT) { S.METRIC_DEFS = S.METRIC_DEFS_DRAFT.map(({ _origKey, ...d }) => d); saveMetricDefs(); }
       const validKeys = new Set(S.METRIC_DEFS.map((d) => d.key));
       if (S.METRICS_DRAFT) {
         const next: Record<string, string> = {};
@@ -429,7 +470,19 @@ CTR / CPC / CPM 等の割り算は派生型にして、基礎メトリクスを�
         await showModal({title: '保存に失敗しました', body: buildSaveErrorMessage(e), okText: 'OK', cancelText: ''});
         return;
       }
-      // 成功: draft と dirty を確定
+      // 成功: draft と dirty を確定。
+      // metricDefs PATCH 成功後に、キーのリネームをライブ状態・タブ状態・全プリセットへ波及させる
+      // (メトリクスが列/カード/グラフ/しきい値から孤立しないように)。
+      if (Object.keys(renames).length) {
+        applyMetricRenamesToStateAndTabs(renames);
+        const failed = await applyMetricRenamesToPresets(renames);
+        saveState();
+        emit('renderChips');
+        emit('renderThresholds');
+        if (failed.length) {
+          await showModal({ title: '一部プリセットのキー更新に失敗', body: `次のプリセットでキーの付け替えに失敗しました:\n${failed.join(', ')}\nもう一度保存すると再試行されます。`, okText: 'OK', cancelText: '' });
+        }
+      }
       clearMetricsDirty();
       emit('render');
       await showModal({title: '保存完了', body: 'メトリクスを保存しました', okText: 'OK', cancelText: ''});

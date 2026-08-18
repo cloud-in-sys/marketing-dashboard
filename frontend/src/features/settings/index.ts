@@ -163,7 +163,8 @@ function _doEnterSettingsMode(target: string) {
     S.USERS_DRAFT = null;
     S.METRICS_DRAFT = {...S.METRIC_FORMULAS};
     S.METRICS_DRAFT_BASE = {...S.BASE_FORMULAS};
-    S.METRIC_DEFS_DRAFT = JSON.parse(JSON.stringify(S.METRIC_DEFS));
+    // _origKey を仕込む (保存時に old->new のキーリネームを検出し、プリセット等へ波及させる)。
+    S.METRIC_DEFS_DRAFT = S.METRIC_DEFS.map((d) => ({ ...JSON.parse(JSON.stringify(d)), _origKey: d.key }));
     S.FILTER_DEFS_DRAFT = null;
     clearUsersDirty();
     clearMetricsDirty();

@@ -56,6 +56,9 @@ export interface MetricDefinition {
   label: string;
   fmt: MetricFormat;
   type: MetricKind;
+  /** 一時項目: メトリクス設定ドラフト作成時の元キー。保存時に old->new のリネーム検出に使い、
+   *  永続化する METRIC_DEFS からは除外する (キー変更をプリセット等へ波及させるため)。 */
+  _origKey?: string;
 }
 
 /** ディメンションの種別。dimValue() の分岐と 1:1 */
