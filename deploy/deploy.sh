@@ -68,18 +68,7 @@ if [ "${#MISSING[@]}" -gt 0 ]; then
   echo "ERROR: $ENV_FILE に必須変数が未設定です: ${MISSING[*]}" >&2
   exit 1
 fi
-# backend を実デプロイするなら OAuth client id も必須（dry-run では警告のみ）
-if { [ "$TARGET" = "backend" ] || [ "$TARGET" = "all" ]; } && [ -z "${GOOGLE_OAUTH_CLIENT_ID:-}" ]; then
-  msg_oauth_get="既存 Cloud Run から取得: gcloud run services describe dashboard-backend --project $PROJECT_ID --region ${REGION:-asia-northeast1} --format='value(spec.template.spec.containers[0].env)'"
-  if [ "$DRY_RUN" = "1" ]; then
-    echo "WARN: GOOGLE_OAUTH_CLIENT_ID 未設定（dry-run のため続行）。実 backend デプロイ前に $ENV_FILE へ記入してください。" >&2
-    echo "      $msg_oauth_get" >&2
-  else
-    echo "ERROR: backend デプロイには GOOGLE_OAUTH_CLIENT_ID が必要です ($ENV_FILE に記入してください)。" >&2
-    echo "       $msg_oauth_get" >&2
-    exit 1
-  fi
-fi
+# 更新用の認証は Cloud Run ランタイム SA(ADC)。OAuth 関連の変数・シークレットは不要。
 
 USE_BACKEND_AGGREGATE="${USE_BACKEND_AGGREGATE:-true}"
 
@@ -161,7 +150,7 @@ do_backend() {
   # --update-env-vars を使う（--set-env-vars は総入れ替えで、別途設定済みの
   # CLOUD_RUN_URL / SCHEDULER_SA_EMAIL 等を消してしまうため）。指定キーのみ更新し他は保持。
   local env_vars
-  env_vars="GCP_PROJECT_ID=$PROJECT_ID,SNAPSHOT_BUCKET=$PROJECT_ID-snapshots,GOOGLE_OAUTH_CLIENT_ID=$GOOGLE_OAUTH_CLIENT_ID,OAUTH_REDIRECT_URI=https://dashboard-backend-$PROJECT_NUMBER.$REGION.run.app/api/google/auth/callback,NODE_ENV=production"
+  env_vars="GCP_PROJECT_ID=$PROJECT_ID,SNAPSHOT_BUCKET=$PROJECT_ID-snapshots,NODE_ENV=production"
   ( cd "$ROOT_DIR/backend" && run gcloud run deploy dashboard-backend \
       --source . \
       --region "$REGION" \

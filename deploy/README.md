@@ -39,7 +39,7 @@ GCP プロジェクト自体の初期構築（プロジェクト作成・API 有
 
 ```bash
 cp deploy/tenants/_example.env deploy/tenants/<新テナント名>.env
-# エディタで値を記入（PROJECT_ID / PROJECT_NUMBER / API_KEY / APP_ID / GOOGLE_OAUTH_CLIENT_ID 等）
+# エディタで値を記入（PROJECT_ID / PROJECT_NUMBER / API_KEY / APP_ID 等）
 ./deploy/deploy.sh <新テナント名> all --dry-run   # 確認
 ./deploy/deploy.sh <新テナント名> all
 ```
@@ -56,13 +56,9 @@ cp deploy/tenants/_example.env deploy/tenants/<新テナント名>.env
 | `API_KEY` / `APP_ID` | Firebase Console > プロジェクト設定 > マイアプリ > SDK snippet |
 | `APP_NAME` | 表示名（任意） |
 | `APP_CHECK_SITE_KEY` | App Check の reCAPTCHA v3 site key（未使用なら空） |
-| `GOOGLE_OAUTH_CLIENT_ID` | OAuth 2.0 クライアントID（backend デプロイ時に必須） |
 | `USE_BACKEND_AGGREGATE` | 集計を Cloud Run に委譲するか（既定 `true`） |
 
-`GOOGLE_OAUTH_CLIENT_ID` が手元に無い場合、既存 Cloud Run から取得できる:
-
-```bash
-gcloud run services describe dashboard-backend \
-  --project <PROJECT_ID> --region asia-northeast1 \
-  --format='value(spec.template.spec.containers[0].env)'
-```
+スナップショット更新は Cloud Run ランタイム SA（`dashboard-backend@<project>.iam.gserviceaccount.com`）が
+ADC で行う。OAuth クライアント ID / シークレットは不要。データソースの接続は、対象シートを
+この SA に「閲覧者」で共有（BigQuery は対象プロジェクトで `bigquery.jobUser` / `bigquery.dataViewer` を付与）
+することで有効になる。SA メールはアプリのソース設定画面に表示される。

@@ -157,23 +157,23 @@ for role in \
 done
 ```
 
-## Step 9: OAuth 2.0 クライアント ID 作成（ブラウザ）
+## Step 9: スナップショット更新の権限（サービスアカウント方式）
 
-1. <https://console.cloud.google.com/apis/credentials?project={{PROJECT_ID}}>
-2. 「認証情報を作成」→「OAuth クライアント ID」
-3. 同意画面未設定なら先に設定（内部 or 外部）
-4. タイプ: ウェブアプリケーション
-5. 名前: `Dashboard Backend`
-6. 承認済みリダイレクトURI:
-   `https://dashboard-backend-{{PROJECT_NUMBER}}.{{REGION}}.run.app/api/google/auth/callback`
-7. クライアントIDとシークレットをメモ
+スナップショット更新は Cloud Run のランタイム SA（Step 8 で作成した
+`dashboard-backend@{{PROJECT_ID}}.iam.gserviceaccount.com`）が ADC で実行する。
+**OAuth クライアント ID / シークレットの作成は不要**（旧 OAuth 方式は廃止）。
 
-## Step 10: Secret Manager にシークレット登録
+実データへの接続は、テナント運用者がアプリの「データソース」設定画面で行う:
 
-```bash
-echo -n "GOCSPX-xxxx-あなたのクライアントシークレット" | \
-  gcloud secrets create google-oauth-client-secret --data-file=- --project={{PROJECT_ID}}
-```
+- **Google スプレッドシート**: 対象シートを上記 SA に「閲覧者」で共有
+- **BigQuery（別プロジェクト可）**: 対象プロジェクトで上記 SA に
+  `roles/bigquery.jobUser` と `roles/bigquery.dataViewer` を付与
+
+SA のメールアドレスと共有手順はソース設定画面に自動表示される
+（backend の `/api/updater-service-account` がランタイム SA を返す）。
+必要な API（`sheets.googleapis.com` / `bigquery.googleapis.com`）は Step 3 で有効化済み。
+
+> 旧「Step 10: Secret Manager に OAuth シークレット登録」は廃止。
 
 ## Step 11: Firebase Auth プロバイダ有効化（ブラウザ）
 
@@ -209,7 +209,6 @@ API_KEY=xxx                              # Step 4 の apiKey
 APP_ID={{APP_ID}}
 APP_NAME={{PROJECT_NAME}}
 APP_CHECK_SITE_KEY=                       # App Check 未使用なら空
-GOOGLE_OAUTH_CLIENT_ID=xxx.apps.googleusercontent.com
 USE_BACKEND_AGGREGATE=true
 ```
 
@@ -259,7 +258,7 @@ USE_BACKEND_AGGREGATE=true
 ./deploy/deploy.sh {{TENANT}} all
 ```
 
-> backend デプロイには `GOOGLE_OAUTH_CLIENT_ID` が必要（`{{TENANT}}.env` に記入）。
+> backend デプロイに OAuth 関連の変数は不要（更新はランタイム SA が行う）。
 > 個別 target やフラグの詳細は [deploy/README.md](../deploy/README.md) を参照。
 
 ## Step 15: 初期管理者ユーザーを Firestore に作成
@@ -320,7 +319,7 @@ firebase deploy --only hosting --project={{PROJECT_ID}}
 
 1. `https://{{PROJECT_ID}}.web.app` にアクセス
 2. 管理者アカウントでログイン
-3. データソース追加 → Google連携 → データ取得
+3. データソース追加 → 画面に表示される更新用 SA へ対象シートを共有（BQ は権限付与）→ 「今すぐ更新」で取得
 
 ## トラブルシューティング
 
@@ -357,8 +356,11 @@ gcloud org-policies set-policy /tmp/allow-all-domains.yaml --project={{PROJECT_I
 - `firebase.json` の rewrites が `dashboard-backend` を指しているか確認
 - Cloud Run のサービス名が `dashboard-backend` か確認（違う名前でデプロイするとリライトが効かない）
 
-### `invalid_grant` エラー
-Google Workspace の再認証ポリシー（RAPT）。Google連携を解除→再接続。
+### スナップショット更新が「権限がない / 403」で失敗する
+更新はランタイム SA（`dashboard-backend@{{PROJECT_ID}}.iam.gserviceaccount.com`）が行う。
+対象スプレッドシートがこの SA に「閲覧者」で共有されているか、BigQuery の場合は対象プロジェクトで
+この SA に `bigquery.jobUser` / `bigquery.dataViewer` が付与されているかを確認する。
+SA のメールはソース設定画面に表示される。
 
 ### ログ確認
 ```bash
