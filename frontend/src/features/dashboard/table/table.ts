@@ -15,6 +15,8 @@ import { metricCellHtml, buildMetricCells, isSafeLink, isSafeImageSrc, dimCellHt
 // 転置を切り替えた瞬間に畳んでいないはずの側まで畳まれてしまう。
 const collapsedRowGroups = new Set<string>();
 const collapsedColumnGroups = new Set<string>();
+// 折り畳みレイアウトが未保存 (旧プリセット / 新規タブ) のとき、次の描画で全折りたたみにする。
+let pendingDefaultCollapse = false;
 // いま操作対象になる折り畳み状態 (toggle / ツールバーの展開・折りたたみ用)。
 function activeCollapsed(): Set<string> {
   return S.TABLE_CONFIG?.transpose ? collapsedColumnGroups : collapsedRowGroups;
@@ -66,12 +68,18 @@ export function setTableState(state: any = {}) {
   collapsedRowGroups.clear();
   collapsedColumnGroups.clear();
   // 旧形式 (collapsedGroups のみ) は通常表示用として読み込み、転置用は空で初期化する。
-  if (Array.isArray(state.collapsedGroups)) {
+  const hasRowLayout = Array.isArray(state.collapsedGroups);
+  const hasColLayout = Array.isArray(state.collapsedColumnGroups);
+  if (hasRowLayout) {
     state.collapsedGroups.forEach((k: string) => collapsedRowGroups.add(k));
   }
-  if (Array.isArray(state.collapsedColumnGroups)) {
+  if (hasColLayout) {
     state.collapsedColumnGroups.forEach((k: string) => collapsedColumnGroups.add(k));
   }
+  // 折り畳みレイアウトが 1 つも保存されていない (旧プリセット / 新規タブ) 場合のみ、
+  // 次の描画でデフォルト全折りたたみにする。プリセットにレイアウトがあれば
+  // (空=全展開 を含め) それを尊重して開いたままにする。
+  pendingDefaultCollapse = !hasRowLayout && !hasColLayout;
   tableZoom = (typeof state.tableZoom === 'number' && state.tableZoom >= 50 && state.tableZoom <= 200)
     ? state.tableZoom : DEFAULT_ZOOM;
   try { localStorage.setItem(ZOOM_KEY, String(tableZoom)); } catch (e) {}
@@ -97,6 +105,15 @@ let levelKeys: Set<string>[] = [];
 // collapse-all で「DOM に出ていない deeper level の key」も拾うのに使う。
 // これが無いと: 「全閉じ → +」で開いたとき、未登録の子 key が default=展開扱いになり cascade してしまう。
 let allGroupKeys = new Set<string>();
+
+// 保存された折り畳みレイアウトが無い場合の「デフォルト全折りたたみ」を、描画時
+// (group key 確定後) に一度だけ適用する。プリセットにレイアウトがある場合
+// (空配列=全展開 を含む) は pendingDefaultCollapse=false なので何もしない (=開いたまま尊重)。
+function applyPendingDefaultCollapse(activeSet: Set<string>) {
+  if (!pendingDefaultCollapse) return;
+  pendingDefaultCollapse = false;
+  for (const k of allGroupKeys) activeSet.add(k);
+}
 
 function collectGroupKeys(groups: any[], totalDimCount: number): Set<string> {
   const keys = new Set<string>();
@@ -126,6 +143,7 @@ function buildFromGroups(groups: any[], dims: string[], metrics: any[], totalDim
   }
 
   allGroupKeys = collectGroupKeys(groups, totalDimCount);
+  applyPendingDefaultCollapse(collapsedRowGroups);
 
   // Build nested structure: group by dim[0], then dim[1], etc.
   // 最上位レベルの parent は total 自身 (parent(X) と total(X) が同じ値になる)。
@@ -391,6 +409,7 @@ function buildTransposed(groups: any[], dims: string[], metrics: any[], totalAgg
     if (!groups[i].agg) groups[i].agg = aggregate(groups[i].rows);
   }
   allGroupKeys = collectGroupKeys(groups, dims.length);
+  applyPendingDefaultCollapse(collapsedColumnGroups);
 
   // 「計」(親の小計列) を階層ごとに出すか。折り畳み中の親は設定に関わらず必ず出す (唯一の列のため)。
   const showSub = (d: number) => subtotalAt(S.TABLE_CONFIG, d);

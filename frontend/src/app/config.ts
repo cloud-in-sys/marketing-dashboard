@@ -19,6 +19,11 @@ export const API_BASE = window.__APP_CONFIG__?.apiBase ?? '';
 // そのキーでは検証が通らず、原因の分かりにくい認証エラーになるだけ。
 export const APP_CHECK_SITE_KEY = window.__APP_CONFIG__?.appCheckSiteKey || '';
 
+// スナップショット更新を行うサービスアカウントのメール (テナントごと)。
+// データソース設定画面で「このアドレスにスプレッドシートを共有してください」の
+// 案内に使う。未設定なら汎用文にフォールバックする (ハードコードしない)。
+export const UPDATER_SA = window.__APP_CONFIG__?.updaterServiceAccount || '';
+
 interface Features {
   useBackendAggregate: boolean;
   /** true で console.debug('[debug] ...') を出す */

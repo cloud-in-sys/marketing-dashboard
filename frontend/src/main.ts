@@ -14,7 +14,6 @@ import { showModal } from '@shared/ui/modal.ts';
 import { makeSortable } from '@shared/ui/sortable.ts';
 import { applyFilters, renderFilters, closeFloatingMs } from '@filters/index.ts';
 import { computeRangePreset } from '@filters/dateFilter.ts';
-import * as sheets from '@features/sources/sheets.ts';
 import { renderChart } from '@features/dashboard/charts/chart.ts';
 import { renderCards } from '@features/dashboard/cards/cardsRender.ts';
 import { renderTable, getTableState } from '@features/dashboard/table/table.ts';
@@ -1143,8 +1142,6 @@ observeAuth({
     const boot = await initStateFromServer();
     // テナント全体のブランディングを Firestore から取得して反映
     fetchAndApplyBranding();
-    // Hydrate Google connection state from backend (shared by sheets+bq)
-    await sheets.refreshConnectionState();
     renderFilters();
     renderCurrentUserLabel();
     applyPermissionUI();

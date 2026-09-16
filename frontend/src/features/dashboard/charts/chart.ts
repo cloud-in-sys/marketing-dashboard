@@ -506,6 +506,10 @@ export function renderChart(rows: any[]) {
     if (!body) return;
     const W = body.clientWidth || (c.size === 'main' ? 800 : c.size === 'mini' ? 260 : 400);
     const H = c.size === 'main' ? 280 : c.size === 'mini' ? 140 : 180;
+    // 先に古いホバー点を消す。メトリクス未選択などでプレースホルダを返す描画関数は
+    // CHART_POINTS を set しないため、消さないと前回描画のゴースト・ツールチップが残る
+    // (空チャートに hover すると前のメトリクスの数値が出るバグ)。描画関数は plot 時に再 set する。
+    S.CHART_POINTS.delete(c.id);
     body.innerHTML = buildChartSVG(c, rows, W, H);
   });
   // 設定パネルが開いていたら中身を更新

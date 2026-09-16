@@ -95,7 +95,7 @@ t('★PERM_GROUPS に as const が付いている (外すと typo が検出で�
   /\]\s*as const;/.test(sharedRaw), true);
 t('★PermissionKey を PERM_GROUPS から導出している (キー一覧を書き写していない)',
   /export type PermissionKey = typeof PERM_GROUPS\[number\]\['perms'\]\[number\]\['key'\]/.test(sharedRaw), true);
-t('PermissionKey の候補数が実キー数と一致', sharedKeys.length, 15);
+t('PermissionKey の候補数が実キー数と一致', sharedKeys.length, 14);
 
 console.log('\n═══ 定義が 1 箇所にしか無い (再定義の再発防止) ═══');
 const stateSrc = fs.readFileSync(new URL('../src/app/state.ts', import.meta.url), 'utf8');

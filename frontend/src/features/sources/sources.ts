@@ -12,12 +12,11 @@ import { renderViewNav, highlightActiveView, renderCustomTabs } from '../presets
 import { initTabStates, loadTabState, renderPresets, renderTabPresetSelect } from '../presets/presets.ts';
 import { exitSettingsMode, renderCsvColumns, confirmDiscardUnsavedChanges } from '../settings/settings.ts';
 import { api } from '@api/index.ts';
-import * as sheets from './sheets.ts';
-import * as bq from './bq.ts';
+import { extractSpreadsheetId } from './sheets.ts';
 import { getCurrentSourceSignal, startNewSourceSignal } from './sourceSignal.ts';
 import { makeSortable } from '@shared/ui/sortable.ts';
 import { hasPerm } from '@app/auth.ts';
-import { FEATURES, dlog } from '@app/config.ts';
+import { FEATURES, dlog, UPDATER_SA } from '@app/config.ts';
 import { getOptions } from '@shared/utils/utils.ts';
 import { invalidateAggregateCache, abortInFlightAggregate } from '@aggregate/aggregateBackend.ts';
 
@@ -308,63 +307,44 @@ function formatRelativeTime(iso?: string | null): string {
   return `${d}日前`;
 }
 
-// 「定期更新の優先アカウント」= backend meta の connector (createdBy の表示名 + 連携状態)。
-// connector が無い (CSV / 権限なし / レガシー) 場合は空文字を返し、既存文言のみになる。
-// connector.name は user 設定値なので escapeHtml で XSS 対策。
-function renderConnectorMeta(connector: any): string {
-  if (!connector?.name) return '';
-  const name = escapeHtml(connector.name);
-  const label = `定期更新の優先アカウント: ${name}さん`;
-  return connector.connected
-    ? ` ・ ${label}`
-    : ` ・ <span class="snapshot-connector-off">${label}（未連携）</span>`;
+// 更新はサービスアカウント (SA) が行うため、対象データへの SA 共有を促す固定ノート。
+// SA メールは app-config (UPDATER_SA / per-tenant) から読む。ハードコードしない。
+// 空なら汎用文にフォールバック。SA メールは XSS 防止に escapeHtml を通す。
+// 更新用 SA のメール。backend (ランタイム SA を metadata から取得) を優先し、
+// 無ければ app-config の UPDATER_SA、それも無ければ空 (汎用文)。一度取得したらキャッシュ。
+let _updaterSa: string | null | undefined;  // undefined=未取得
+async function resolveUpdaterSa(): Promise<string> {
+  if (_updaterSa === undefined) {
+    try { _updaterSa = (await api.getUpdaterServiceAccount()).serviceAccount || null; }
+    catch { _updaterSa = null; }
+  }
+  return _updaterSa || UPDATER_SA || '';
 }
 
-// 未連携の閲覧者/管理者 (連携ボタンだけ見える人) にも「このソースは誰の連携で
-// 自動更新されるか」を伝えるための連携ボタンエリア用ノート。form 内の snapshot-meta は
-// 連携済みの人にしか見えない (未連携だと form が hidden) ため、こちらで補う。
-function renderConnectorNote(method: string, connector: any) {
+async function renderSaShareNote(method: string) {
   const el = document.getElementById(method === 'sheets' ? 'sheets-connector-note' : 'bq-connector-note');
   if (!el) return;
-  if (!connector?.name) { el.innerHTML = ''; return; }
-  const name = escapeHtml(connector.name);
-  el.innerHTML = connector.connected
-    ? `このソースは <strong>${name}さん</strong> の連携で自動更新されます。閲覧・自動更新にあなたの連携は不要です。`
-    : `<span class="snapshot-connector-off">定期更新の優先アカウント <strong>${name}さん</strong> が未連携です。</span>`;
-}
-
-// 現在表示中ソースの connector (定期更新の優先アカウント + 連携状態)。
-// 連携ボタン押下時のガードで参照する。source 切替時に renderSnapshotMeta で更新される。
-let _currentConnector: any = null;
-
-// 既に連携者がいるソースで、未連携の人が連携ボタンを押した時のガード。
-// A が連携済みなら「あなたの連携は不要」と確認する。誰も連携していなければそのまま連携。
-async function confirmConnectWhenAlreadyConnected() {
-  const c = _currentConnector;
-  if (!c?.connected) return true;
-  const name = c.name || '別のユーザー';
-  return await showModal({
-    title: '連携は不要かもしれません',
-    body: `このソースは既に ${name}さん の連携で自動更新されています。閲覧・自動更新にあなたの連携は不要です。\n（自分で「今すぐ更新」を実行したい場合のみ連携してください）\n\nそれでも連携しますか？`,
-    okText: '連携する',
-    cancelText: 'やめる',
-  });
+  const sa = escapeHtml(await resolveUpdaterSa());
+  if (method === 'sheets') {
+    el.innerHTML = sa
+      ? `更新はサービスアカウントが自動で行います。このスプレッドシートを <strong>${sa}</strong> に「閲覧者」で共有してください。`
+      : '更新はサービスアカウントが自動で行います。このスプレッドシートを更新用サービスアカウントに「閲覧者」で共有してください。';
+  } else {
+    el.innerHTML = sa
+      ? `BigQuery で更新用サービスアカウント <strong>${sa}</strong> にクエリ実行・データ閲覧の権限を付与してください。`
+      : 'BigQuery で更新用サービスアカウントにクエリ実行・データ閲覧の権限を付与してください。';
+  }
 }
 
 function renderSnapshotMeta(method: string, meta: any) {
-  _currentConnector = meta?.connector || null;
-  // 連携済みの人には form 内メタ行、未連携の人には連携ボタンエリアのノートに connector を出す。
-  // どちらも同じ meta.connector から描画 (表示中の方だけ見える)。
-  renderConnectorNote(method, meta?.connector);
   const el = document.getElementById(method === 'sheets' ? 'sheets-snapshot-meta' : 'bq-snapshot-meta');
   if (!el) return;
-  const connectorHtml = renderConnectorMeta(meta?.connector);
   if (!meta?.exists) {
-    el.innerHTML = 'まだスナップショットがありません。「今すぐ更新」を押して取得してください。' + connectorHtml;
+    el.innerHTML = 'まだスナップショットがありません。「今すぐ更新」を押して取得してください。';
     return;
   }
   const when = formatRelativeTime(meta.updatedAt);
-  el.innerHTML = `最終更新: ${escapeHtml(when)}  (${(meta.rows || 0).toLocaleString()}行)` + connectorHtml;
+  el.innerHTML = `最終更新: ${escapeHtml(when)}  (${(meta.rows || 0).toLocaleString()}行)`;
 }
 
 // source 切替ごとに増えるバージョン。await から戻った時に「呼び出し時の sid と
@@ -429,8 +409,6 @@ export async function loadSnapshotIfNeeded(options: { emitRender?: boolean } = {
   // 前 source の補助 API を一括 cancel (新規 controller を作る)
   const signal = startNewSourceSignal();
   dlog('source switch start', { sid, version });
-  await sheets.refreshConnectionState();
-  if (!isFresh(sid, version)) { dlog('discard: switched during refreshConnectionState'); return SNAPSHOT.STALE; }
   const ds = S.DATA_SOURCES.find((d) => d.id === sid);
   const method = ds?.method || '';
 
@@ -509,8 +487,7 @@ export async function loadSnapshotIfNeeded(options: { emitRender?: boolean } = {
   }
 }
 
-// このデータソースのメソッド + 入力をクリアする。
-// Google OAuth（ユーザー単位）には影響しない。
+// このデータソースのメソッド + 入力をクリアする (別メソッドへ切り替える時)。
 async function disconnectCurrentSource() {
   const sid = S.CURRENT_SOURCE;
   if (!sid) return;
@@ -551,13 +528,7 @@ async function refreshSnapshotNow(method: string) {
     await showModal({title: '更新完了', body: 'スナップショットを更新しました。', okText: 'OK', cancelText: ''});
   } catch (e: any) {
     const msg = e.message || '更新に失敗しました';
-    if (/再度連携|not connected/i.test(msg)) {
-      await sheets.refreshConnectionState();
-      renderSourceView();
-      await showModal({title: 'Google連携の期限切れ', body: 'Google連携の有効期限が切れました。「Googleアカウント連携」ボタンから再度連携してください。', okText: 'OK', cancelText: ''});
-    } else {
-      await showModal({title: '更新失敗', body: msg, okText: 'OK', cancelText: ''});
-    }
+    await showModal({title: '更新失敗', body: msg, okText: 'OK', cancelText: ''});
   } finally {
     if (fetchBtn) { fetchBtn.textContent = origLabel; fetchBtn.disabled = false; }
     if (metaEl) { metaEl.classList.remove('updating'); setTimeout(() => metaEl.classList.remove('update-success'), 2000); }
@@ -694,32 +665,18 @@ function renderSourceView() {
     previewEl.innerHTML = '<div class="preset-empty">データなし</div>';
   }
 
-  // Sheets UI state
-  const sheetsConnect = document.getElementById('sheets-connect')!;
+  // Sheets UI state。更新は SA (ADC) で行うため OAuth ゲートは無い。
+  // form (URL/シート名の入力欄 + 保存/今すぐ更新/解除) は常に表示し、SA 共有案内を出す。
   const sheetsForm = document.getElementById('sheets-form')!;
-  // 連携済み/未連携どちらでも form (URL/シート名の入力欄 + snapshot-meta) を表示して設定を見せる。
-  // 未連携の人は「今すぐ更新」に本人の OAuth が要るので、連携ボタンも併せて残す。
   {
     const savedInput = loadSheetsInput();
     (document.getElementById('sheets-url-input') as HTMLInputElement).value = savedInput.url || '';
     (document.getElementById('sheets-tab-input') as HTMLInputElement).value = savedInput.tab || '';
   }
   sheetsForm.classList.remove('hidden');
-  // 「保存」(設定だけ更新、OAuth 不要) は常に表示。「今すぐ更新」(本人 OAuth 必須) と
-  // 「連携を解除」(ソース全体の連携を外す破壊的操作) は連携済みの人にだけ表示。
-  const sheetsAuthed = sheets.isAuthenticated();
-  document.getElementById('sheets-fetch-btn')?.classList.toggle('hidden', !sheetsAuthed);
-  document.getElementById('sheets-disconnect')?.classList.toggle('hidden', !sheetsAuthed);
-  if (sheetsAuthed) {
-    sheetsConnect.classList.add('hidden');
-    document.getElementById('sheets-status')!.innerHTML = '<span class="api-status-ok" style="font-size:11px">✓ Googleアカウント連携済み</span>';
-  } else {
-    sheetsConnect.classList.remove('hidden');
-    document.getElementById('sheets-status')!.innerHTML = '';
-  }
+  renderSaShareNote('sheets');
 
   // BQ UI state
-  const bqConnect = document.getElementById('bq-connect')!;
   const bqForm = document.getElementById('bq-form')!;
   {
     const savedBq = loadBqInput();
@@ -727,16 +684,7 @@ function renderSourceView() {
     (document.getElementById('bq-query-input') as HTMLInputElement).value = savedBq.query || '';
   }
   bqForm.classList.remove('hidden');
-  const bqAuthed = bq.isAuthenticated();
-  document.getElementById('bq-fetch-btn')?.classList.toggle('hidden', !bqAuthed);
-  document.getElementById('bq-disconnect')?.classList.toggle('hidden', !bqAuthed);
-  if (bqAuthed) {
-    bqConnect.classList.add('hidden');
-    document.getElementById('bq-status')!.innerHTML = '<span class="api-status-ok" style="font-size:11px">✓ Googleアカウント連携済み</span>';
-  } else {
-    bqConnect.classList.remove('hidden');
-    document.getElementById('bq-status')!.innerHTML = '';
-  }
+  renderSaShareNote('bq');
 }
 
 // Sheets / BQ の入力欄は自動保存しない。「今すぐ更新」ボタン押下時のみ saveSheetsInput /
@@ -832,22 +780,10 @@ document.querySelectorAll('.source-method-card').forEach(card => {
   });
 });
 
-// ----- SHEETS: AUTH -----
-document.getElementById('sheets-auth-btn')!.addEventListener('click', async () => {
-  if (!(await confirmConnectWhenAlreadyConnected())) return;
-  try {
-    await sheets.authenticate();
-    renderSourceView();
-    await showModal({title: '連携完了', body: 'Googleアカウントの連携が完了しました。', okText: 'OK', cancelText: ''});
-  } catch (e: any) {
-    await showModal({title: '認証エラー', body: e.message, okText: 'OK', cancelText: ''});
-  }
-});
-
 // ----- SHEETS: 今すぐ更新 (save config + refresh snapshot) -----
 document.getElementById('sheets-fetch-btn')!.addEventListener('click', async () => {
   const urlOrId = (document.getElementById('sheets-url-input') as HTMLInputElement).value.trim();
-  const fileId = sheets.extractSpreadsheetId(urlOrId);
+  const fileId = extractSpreadsheetId(urlOrId);
   const tab = (document.getElementById('sheets-tab-input') as HTMLInputElement).value.trim();
   if (!fileId) { await showModal({title: 'エラー', body: 'スプレッドシートのURLまたはIDが正しくありません', okText: 'OK', cancelText: ''}); return; }
   if (!tab) { await showModal({title: 'エラー', body: 'タブ名を入力してください', okText: 'OK', cancelText: ''}); return; }
@@ -858,8 +794,7 @@ document.getElementById('sheets-fetch-btn')!.addEventListener('click', async () 
   await refreshSnapshotNow('sheets');
 });
 
-// ----- SHEETS: 保存 (設定だけ更新。OAuth 不要 = 連携者でない管理者でも設定を保存できる。
-// 次回の定期更新から反映。スナップショットの再取得はしない) -----
+// ----- SHEETS: 保存 (設定だけ更新。次回の定期更新から反映。スナップショットの再取得はしない) -----
 document.getElementById('sheets-save-btn')!.addEventListener('click', async () => {
   const url = (document.getElementById('sheets-url-input') as HTMLInputElement).value.trim();
   const tab = (document.getElementById('sheets-tab-input') as HTMLInputElement).value.trim();
@@ -871,7 +806,7 @@ document.getElementById('sheets-save-btn')!.addEventListener('click', async () =
     const ds = S.DATA_SOURCES.find((d) => d.id === S.CURRENT_SOURCE);
     if (ds) { ds.sheetsInput = { url, tab }; ds.method = 'sheets'; }
     _clearSheetsDirty();
-    await showModal({title: '保存しました', body: '設定を保存しました。次回の定期更新から反映されます（今すぐ反映するには連携者が「今すぐ更新」を実行してください）。', okText: 'OK', cancelText: ''});
+    await showModal({title: '保存しました', body: '設定を保存しました。次回の定期更新から反映されます（今すぐ反映するには「今すぐ更新」を実行してください）。', okText: 'OK', cancelText: ''});
   } catch (e: any) {
     await showModal({title: '保存に失敗しました', body: e?.message || '保存に失敗しました', okText: 'OK', cancelText: ''});
   }
@@ -889,18 +824,6 @@ document.getElementById('sheets-disconnect')!.addEventListener('click', async ()
   await disconnectCurrentSource();
 });
 
-// ----- BQ: AUTH -----
-document.getElementById('bq-auth-btn')!.addEventListener('click', async () => {
-  if (!(await confirmConnectWhenAlreadyConnected())) return;
-  try {
-    await bq.authenticate();
-    renderSourceView();
-    await showModal({title: '連携完了', body: 'Googleアカウントの連携が完了しました。', okText: 'OK', cancelText: ''});
-  } catch (e: any) {
-    await showModal({title: '認証エラー', body: e.message, okText: 'OK', cancelText: ''});
-  }
-});
-
 // ----- BQ: 今すぐ更新 (save config + refresh snapshot) -----
 document.getElementById('bq-fetch-btn')!.addEventListener('click', async () => {
   const project = (document.getElementById('bq-project-input') as HTMLInputElement).value.trim();
@@ -913,7 +836,7 @@ document.getElementById('bq-fetch-btn')!.addEventListener('click', async () => {
   await refreshSnapshotNow('bq');
 });
 
-// ----- BQ: 保存 (設定だけ更新。OAuth 不要。次回の定期更新から反映) -----
+// ----- BQ: 保存 (設定だけ更新。次回の定期更新から反映) -----
 document.getElementById('bq-save-btn')!.addEventListener('click', async () => {
   const project = (document.getElementById('bq-project-input') as HTMLInputElement).value.trim();
   const query = (document.getElementById('bq-query-input') as HTMLTextAreaElement).value.trim();
@@ -925,7 +848,7 @@ document.getElementById('bq-save-btn')!.addEventListener('click', async () => {
     const ds = S.DATA_SOURCES.find((d) => d.id === S.CURRENT_SOURCE);
     if (ds) { ds.bqInput = { project, query }; ds.method = 'bq'; }
     _clearBqDirty();
-    await showModal({title: '保存しました', body: '設定を保存しました。次回の定期更新から反映されます（今すぐ反映するには連携者が「今すぐ更新」を実行してください）。', okText: 'OK', cancelText: ''});
+    await showModal({title: '保存しました', body: '設定を保存しました。次回の定期更新から反映されます（今すぐ反映するには「今すぐ更新」を実行してください）。', okText: 'OK', cancelText: ''});
   } catch (e: any) {
     await showModal({title: '保存に失敗しました', body: e?.message || '保存に失敗しました', okText: 'OK', cancelText: ''});
   }
@@ -963,7 +886,12 @@ document.getElementById('add-source')!.addEventListener('click', async () => {
     const created = await api.createSource({ name, copyFromId: copyFromId || undefined });
     S.DATA_SOURCES.push(created);
     S.SOURCE_DATA[created.id] = [];
-    const switched = await switchSource(created.id);
+    // 作成直後にサイドバーへ反映 (switchSource が stale 等で return しても、作られたことが分かる)。
+    renderSourceNav();
+    // 作成は明示アクションなので skipGuard で確実に新ソースへ遷移する (白紙作成と同じ挙動)。
+    // コピー作成は config/presets のロードが重く、guard/stale で無言 return して
+    // 「飛ばない」ことがあったため。
+    const switched = await switchSource(created.id, { skipGuard: true });
     if (!switched) return;
     reloadFullUI();
   } catch (e: any) {

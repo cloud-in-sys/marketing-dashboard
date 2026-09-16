@@ -6,6 +6,7 @@ import { httpError } from '../middleware/error.js';
 import { invalidateSourceAccessCache } from '../aggregate/sourceAccess.js';
 import { canCreateSource } from '../utils/perms.js';
 import { sourceVisible } from '../utils/sourceVisibility.js';
+import { chunkBySize } from '../utils/chunkWrites.js';
 
 // Shared sources: stored at top-level `sources/{id}`.
 // Permissions:
@@ -78,23 +79,26 @@ const EMPTY_CONFIG_FIELDS = {
 };
 
 async function cleanupFailedSource(ref) {
-  try {
-    for (const sub of ['config', 'presets']) {
+  // サブコレクション削除が失敗しても、ソース doc 本体の削除は必ず試みる
+  // (「ソース本体だけ残る」状態を作らないため)。各段を独立の try で囲む。
+  for (const sub of ['config', 'presets']) {
+    try {
       const subSnap = await ref.collection(sub).get();
-      for (let i = 0; i < subSnap.docs.length; i += 400) {
+      const targets = subSnap.docs.map(d => ({ ref: d.ref, bytes: Buffer.byteLength(JSON.stringify(d.data() || {})) }));
+      const chunks = chunkBySize(targets, t => t.bytes, 3 * 1024 * 1024, 400);
+      for (const chunk of chunks) {
         const batch = db.batch();
-        subSnap.docs.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+        chunk.forEach(t => batch.delete(t.ref));
         await batch.commit();
       }
+    } catch (e) {
+      console.log(JSON.stringify({ severity: 'ERROR', message: 'source cleanup: subcollection delete failed', sid: ref.id, sub, error: e.message }));
     }
+  }
+  try {
     await ref.delete();
   } catch (e) {
-    console.log(JSON.stringify({
-      severity: 'ERROR',
-      message: 'source create cleanup failed',
-      sid: ref.id,
-      error: e.message,
-    }));
+    console.log(JSON.stringify({ severity: 'ERROR', message: 'source cleanup: source doc delete failed', sid: ref.id, error: e.message }));
   }
 }
 
@@ -147,7 +151,7 @@ app.post('/', async c => {
       configToSave = { ...EMPTY_CONFIG_FIELDS, createdAt: now, updatedAt: now };
     }
 
-    // config + presets を 400 ops ずつ batch で書き込む。
+    // config + presets を書き込む。1 コミット上限を超えないよう下でサイズ分割する。
     const writes = [{ ref: ref.collection('config').doc('current'), data: configToSave }];
     if (copyPresetsData && copyPresetsData.length) {
       copyPresetsData.forEach((p, i) => {
@@ -155,9 +159,13 @@ app.post('/', async c => {
         writes.push({ ref: ref.collection('presets').doc(), data: { ...rest, order: i } });
       });
     }
-    for (let i = 0; i < writes.length; i += 400) {
+    // 1 コミット上限 (10 MiB) を超えないよう、件数(400)だけでなくバイト数でも分割する。
+    // 育ったプリセットは 1 件でも大きく、数件で 10 MiB を超えて Transaction too big になるため。
+    const MAX_COMMIT_BYTES = 3 * 1024 * 1024;  // 3 MiB (インデックス膨張ぶんの余裕を持たせる)
+    const chunks = chunkBySize(writes, w => Buffer.byteLength(JSON.stringify(w.data)), MAX_COMMIT_BYTES, 400);
+    for (const chunk of chunks) {
       const batch = db.batch();
-      writes.slice(i, i + 400).forEach(w => batch.set(w.ref, w.data));
+      chunk.forEach(w => batch.set(w.ref, w.data));
       await batch.commit();
     }
 
@@ -238,15 +246,19 @@ app.post('/:id/disconnect', requirePerm('manageSources'), requireSourceAccess('i
 app.delete('/:id', requirePerm('manageSources'), requireSourceAccess('id'), async c => {
   const id = c.req.param('id');
   const ref = sourcesCol().doc(id);
-  const docsToDelete = [];
+  // 削除も件数(400)だけでなくサイズで分割する。Firestore は削除時に対象ドキュメントの
+  // インデックスエントリも消すため、インデックスの多い巨大プリセットを 1 コミットで
+  // まとめて消すと、削除でも Transaction too big になる (作成の対称形)。
+  const targets = [];
   for (const sub of ['config', 'presets']) {
     const subSnap = await ref.collection(sub).get();
-    subSnap.docs.forEach(d => docsToDelete.push(d.ref));
+    subSnap.docs.forEach(d => targets.push({ ref: d.ref, bytes: Buffer.byteLength(JSON.stringify(d.data() || {})) }));
   }
-  docsToDelete.push(ref);
-  for (let i = 0; i < docsToDelete.length; i += 400) {
+  targets.push({ ref, bytes: 0 });
+  const chunks = chunkBySize(targets, t => t.bytes, 3 * 1024 * 1024, 400);
+  for (const chunk of chunks) {
     const batch = db.batch();
-    docsToDelete.slice(i, i + 400).forEach(r => batch.delete(r));
+    chunk.forEach(t => batch.delete(t.ref));
     await batch.commit();
   }
   invalidateSourceAccessCache(id);

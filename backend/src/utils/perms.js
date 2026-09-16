@@ -2,7 +2,7 @@
 // フロントと同じ順・キーを保つこと (frontend/src/app/state.js の PERM_GROUPS)
 export const PERM_GROUPS = [
   // 閲覧可否はグループ管理 (canAccessSource) が判定する。旧 viewSources は廃止。
-  { group: 'sources', perms: ['manageSources', 'connectAccount'] },
+  { group: 'sources', perms: ['manageSources'] },
   { group: 'custom',  perms: ['viewCustom', 'addCustom', 'editCustom', 'deleteCustom'] },
   { group: 'settings', perms: [
     'editMetrics', 'editFilters', 'editDimensions', 'editDefaults',

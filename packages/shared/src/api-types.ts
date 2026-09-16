@@ -105,7 +105,7 @@ export interface BqInput { project: string; query: string }
 export interface DataSource {
   id: string;
   name: string;
-  /** '' | 'csv' | 'sheets' | 'bq'。未連携は '' */
+  /** '' | 'csv' | 'sheets' | 'bq'。未設定は '' */
   method: string;
   /** 空配列 + isPublic!==false なら全員に見える (可視性の正は backend の sourceVisible) */
   allowedGroupIds?: string[];
@@ -113,7 +113,7 @@ export interface DataSource {
   /** 一覧の並び順 (GET /api/sources が order → createdAt でソート)。未設定は末尾 */
   order?: number;
   createdAt?: string;
-  /** 定期更新で優先的に使う OAuth の持ち主。作成者が削除されると backend が null にする */
+  /** ソースの作成者 (メタ情報)。作成者が削除されると backend が null にする。更新は SA が行う */
   createdBy?: string | null;
   sheetsInput?: SheetsInput;
   bqInput?: BqInput;
@@ -124,15 +124,9 @@ export interface ListSourcesResult { sources: DataSource[] }
 // ===== スナップショット =====
 // 由来: backend/src/routes/snapshots.js
 
-/** 「定期更新の優先アカウント」。CSV / 権限なし / レガシーでは null */
-export interface SnapshotConnector {
-  name: string;
-  connected: boolean;
-}
-
 export type SnapshotMetaResult =
-  | { exists: false; connector: SnapshotConnector | null; updatedAt?: undefined; rows?: undefined }
-  | { exists: true; updatedAt: string; rows: number; connector: SnapshotConnector | null };
+  | { exists: false; updatedAt?: undefined; rows?: undefined }
+  | { exists: true; updatedAt: string; rows: number };
 
 // GET /api/snapshots/:sid。存在時は本体 { rows } のみで updatedAt はヘッダ
 // (X-Snapshot-Updated-At)。未生成時のみ { rows: [], updatedAt: null } を返す。
@@ -251,12 +245,6 @@ export interface GroupMember {
   isAdmin?: boolean;
 }
 export interface ListGroupMembersResult { members: GroupMember[] }
-
-// ===== Google 連携 =====
-// 由来: backend/src/routes/google.js
-
-export interface GoogleStatusResult { connected: boolean; scope: string | null }
-export interface GoogleAuthUrlResult { url: string }
 
 // ===== 共通 =====
 

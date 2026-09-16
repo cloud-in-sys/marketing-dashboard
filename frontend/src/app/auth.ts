@@ -64,7 +64,7 @@ export function applyPermissionUI(): void {
   // typo すると「その機能が一般ユーザーにだけ永久に隠れる」(admin は isAdmin で
   // 短絡するため気づけない)。型で落とす。
   const keys: PermissionKey[] = [
-    'manageSources','connectAccount',
+    'manageSources',
     'viewCustom','addCustom','savePreset',
     'editCustom','editPreset','deleteCustom','deletePreset',
     'editMetrics','editFilters','editDefaults','editDimensions','manageGroups','manageBranding',

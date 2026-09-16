@@ -22,6 +22,8 @@ declare global {
       apiBase?: string;
       /** App Check (reCAPTCHA v3) のサイトキー。空なら App Check を無効にする */
       appCheckSiteKey?: string;
+      /** スナップショット更新を行うサービスアカウントのメール。共有案内の表示に使う */
+      updaterServiceAccount?: string;
       features?: Record<string, boolean>;
     };
   }

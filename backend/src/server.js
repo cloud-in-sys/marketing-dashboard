@@ -15,10 +15,10 @@ import usersRoutes from './routes/users.js';
 import sourcesRoutes from './routes/sources.js';
 import configRoutes from './routes/config.js';
 import presetsRoutes from './routes/presets.js';
-import googleRoutes, { oauthCallback } from './routes/google.js';
 import snapshotsRoutes from './routes/snapshots.js';
 import aggregateRoutes from './routes/aggregate.js';
 import batchRoutes from './routes/batch.js';
+import { GoogleAuth } from 'google-auth-library';
 import groupsRoutes from './routes/groups.js';
 import brandingRoutes, { getBrandingPublic } from './routes/branding.js';
 
@@ -72,10 +72,6 @@ if (allowedOrigins.length) {
 // Public
 app.get('/api/health', c => c.json({ ok: true, service: 'dashboard-backend' }));
 
-// OAuth callback must be public (Google redirects the browser here without
-// our auth header). The callback route itself verifies a signed `state`.
-app.get('/api/google/auth/callback', oauthCallback);
-
 // Batch endpoints: OIDC-authenticated (Cloud Scheduler), not Firebase ID token.
 app.route('/api/batch', batchRoutes);
 
@@ -87,7 +83,7 @@ app.get('/api/branding', getBrandingPublic);
 // それ以外はログのみ(Enforce モードに切替前の様子見期間用)。
 const APP_CHECK_ENFORCE = process.env.APP_CHECK_ENFORCE === 'true';
 app.use('/api/*', async (c, next) => {
-  // OAuth callback / batch は authMiddleware より前にマウント済みなので対象外
+  // batch は authMiddleware より前にマウント済みなので対象外
   const token = c.req.header('X-Firebase-AppCheck');
   if (!token) {
     if (APP_CHECK_ENFORCE) return c.json({ error: 'App Check token missing' }, 401);
@@ -107,13 +103,31 @@ app.use('/api/*', async (c, next) => {
 // Auth required below
 app.use('/api/*', authMiddleware);
 
+// 更新用サービスアカウントのメール = この Cloud Run コンテナのランタイム SA。
+// メタデータサーバ経由で取得してキャッシュする (ハードコードせず、環境ごとに自動で正しい値になる)。
+// ソース設定画面の「このシートを共有 / BQ に権限付与してください」案内で表示する。
+// ローカル/非 GCP では取得できず null → フロントは app-config 値か汎用文にフォールバック。
+let _updaterSaEmail;
+async function getUpdaterServiceAccountEmail() {
+  if (_updaterSaEmail !== undefined) return _updaterSaEmail;
+  try {
+    const creds = await new GoogleAuth().getCredentials();
+    _updaterSaEmail = creds?.client_email || null;
+  } catch (e) {
+    _updaterSaEmail = null;
+  }
+  return _updaterSaEmail;
+}
+app.get('/api/updater-service-account', async c => {
+  return c.json({ serviceAccount: await getUpdaterServiceAccountEmail() });
+});
+
 // Routes
 app.route('/api/me', meRoutes);
 app.route('/api/users', usersRoutes);
 app.route('/api/sources', sourcesRoutes);
 app.route('/api/config', configRoutes);
 app.route('/api/presets', presetsRoutes);
-app.route('/api/google', googleRoutes);
 app.route('/api/snapshots', snapshotsRoutes);
 app.route('/api/aggregate', aggregateRoutes);
 app.route('/api/groups', groupsRoutes);

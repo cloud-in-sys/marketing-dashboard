@@ -45,7 +45,6 @@ export const PERM_GROUPS = [
   // 一切見ておらず、グループ管理と役割が重複していたため廃止した。
   {group: 'sources', label: 'データソース', perms: [
     {key: 'manageSources',     label: '管理（追加・編集・削除・更新）'},
-    {key: 'connectAccount',    label: 'Googleアカウント連携'},
   ]},
   {group: 'custom', label: 'カスタムタブ', perms: [
     {key: 'viewCustom',   label: 'グループを表示'},

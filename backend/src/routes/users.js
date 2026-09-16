@@ -4,7 +4,6 @@ import { db, auth } from '../firebase.js';
 import { adminOnly, invalidateUserCache } from '../middleware/auth.js';
 import { ADMIN_PERMS, VIEWER_PERMS, PERM_KEYS } from '../utils/perms.js';
 import { httpError } from '../middleware/error.js';
-import { revokeAndDeleteGoogleToken } from '../utils/googleTokens.js';
 
 const app = new Hono();
 
@@ -95,8 +94,8 @@ app.put('/:uid', adminOnly, async c => {
 
 // Delete user (admin only)
 // Firestore は親 doc を消してもサブコレクションを消さないので、users/{uid} を
-// 消すだけでは users/{uid}/tokens/google が残り、退職者の Google 資格情報で
-// 自動更新が回り続ける。ユーザー doc 削除に成功したら必ずトークンも失効させる。
+// 消すだけでは users/{uid}/tokens/google が残る。更新は SA 化されトークンは使わないが、
+// 退職者の資格情報を残さない衛生上、レガシートークンも削除する。
 app.delete('/:uid', adminOnly, async c => {
   const uid = c.req.param('uid');
   const me = c.get('uid');
@@ -118,10 +117,8 @@ app.delete('/:uid', adminOnly, async c => {
 
   // ここから先は「ユーザー doc は既に消えた」後の後始末。個別に失敗しても
   // 削除自体は成立しているので 500 にせず、構造化ログに残して続行する。
-  // (トークンが万一残っても、refreshAll / findAnyConnectedUser 側で
-  //  ユーザー doc の存在を確認しているので使われることはない)
-  await revokeAndDeleteGoogleToken(uid, { reason: 'user_deleted', deletedBy: me })
-    .catch(e => logCleanupFailure('token cleanup failed', uid, e));
+  // (更新は SA 化済みでトークンは使われない。ここでの削除はレガシー掃除)
+  await db.collection('users').doc(uid).collection('tokens').doc('google').delete().catch(e => logCleanupFailure('token cleanup failed', uid, e));
   await clearCreatedBy(uid).catch(e => logCleanupFailure('createdBy cleanup failed', uid, e));
   try { await auth.deleteUser(uid); } catch (e) { /* already gone */ }
   invalidateUserCache(uid);
@@ -132,10 +129,8 @@ function logCleanupFailure(message, uid, e) {
   console.log(JSON.stringify({ severity: 'ERROR', message, uid, error: e?.message || String(e) }));
 }
 
-// 削除ユーザーが作成したソースの createdBy を外す。
-// 残すと「定期更新の優先アカウント」に存在しないユーザーが表示され続け、
-// refreshAll も毎回そのユーザーのトークンを探しにいく。null にして
-// 管理者に再設定を促す (フォールバックの連携ユーザーで更新は継続する)。
+// 削除ユーザーが作成したソースの createdBy (作成者メタ) を外す。更新は SA 化されており
+// createdBy は更新に使われないが、存在しないユーザーを参照したままにしないための掃除。
 async function clearCreatedBy(uid) {
   const snap = await db.collection('sources').where('createdBy', '==', uid).get();
   if (snap.empty) return;

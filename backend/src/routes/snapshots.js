@@ -4,9 +4,7 @@ import { Storage } from '@google-cloud/storage';
 import zlib from 'zlib';
 import { promisify } from 'util';
 import { google } from 'googleapis';
-import { OAuth2Client } from 'google-auth-library';
 import { db } from '../firebase.js';
-import { getSecret } from '../utils/secrets.js';
 import { requirePerm } from '../middleware/auth.js';
 import { httpError } from '../middleware/error.js';
 import { requireSourceAccess, getGroupFilter, matchGroupFilter } from '../aggregate/sourceAccess.js';
@@ -95,138 +93,47 @@ function hashFast(s) {
   return Math.abs(h).toString(36);
 }
 
-// 「定期更新の優先アカウント」= source.createdBy の表示名 + その人が今も Google 連携中か。
-// sheets/bq ソースかつ createdBy がある場合のみ生成。連携判定は token doc の存在
-// (GET /api/google/status と同基準)。返すのは name と connected のみで、
-// トークン値 / refreshToken / uid は絶対に含めない。
-async function buildConnector(source) {
-  const method = source?.method || '';
-  const createdBy = source?.createdBy;
-  if ((method !== 'sheets' && method !== 'bq') || !createdBy) return null; // CSV / レガシー
-  const userRef = db.collection('users').doc(createdBy);
-  const [userSnap, tokenSnap] = await Promise.all([
-    userRef.get(),
-    userRef.collection('tokens').doc('google').get(),
-  ]);
-  const profile = userSnap.exists ? userSnap.data() : null;
-  const name = profile?.name || profile?.email || null;
-  if (!name) return null;
-  return { name, connected: tokenSnap.exists };
-}
-
 // Return just metadata (fast, for UI)
 app.get('/:sid/meta', async c => {
   const sid = c.req.param('sid');
   const user = c.get('user');
-  // requireSourceAccess は source data を返す (60s キャッシュ)。source doc を再取得しない。
-  const source = await requireSourceAccess(user, sid);
-  // connector は admin / manageSources 保有者にだけ返す (UI 非表示だけでは API 直叩きで
-  // 氏名・連携状態が漏れる)。閲覧者には null を返し、追加の Firestore read もしない。
-  // meta 本体 (exists/updatedAt/rows) は閲覧者の集計にも必要なので、connector の read が
-  // 失敗しても 500 にせず connector: null にフォールバックする。
-  const canViewConnector = user?.isAdmin || user?.perms?.manageSources;
-  let connector = null;
-  if (canViewConnector) {
-    try { connector = await buildConnector(source); }
-    catch (e) { connector = null; }
-  }
+  await requireSourceAccess(user, sid);
   const file = bucket().file(objectName(sid));
   const [exists] = await file.exists();
-  if (!exists) return c.json(/** @type {import('@pkg/shared/api-types.ts').SnapshotMetaResult} */ ({ exists: false, connector }));
+  if (!exists) return c.json(/** @type {import('@pkg/shared/api-types.ts').SnapshotMetaResult} */ ({ exists: false }));
   const [meta] = await file.getMetadata();
   /** @type {import('@pkg/shared/api-types.ts').SnapshotMetaResult} */
   const res = {
     exists: true,
     updatedAt: String(meta.metadata?.updatedAt || meta.updated || ''),
     rows: Number(meta.metadata?.rows || 0),
-    connector,
   };
   return c.json(res);
 });
 
 // Refresh a single source's snapshot.
-// Uses the CALLER's Google OAuth token (not createdBy)
+// 更新はサービスアカウント (ADC) で行う。実行者本人の Google 連携は不要。
 // manageSources だけでは「どのソースでも更新してよい」ことにならないので、
 // 見えるソースかどうかも確認する (別グループの非公開ソースを更新させない)。
 app.post('/:sid/refresh', requirePerm('manageSources'), async c => {
   const sid = c.req.param('sid');
-  const uid = c.get('uid');
   await requireSourceAccess(c.get('user'), sid);
-  const result = await refreshSnapshot(sid, uid);
+  // SA で更新するため、更新実行者本人の Google 連携は不要。
+  const result = await refreshSnapshot(sid);
   return c.json(result);
 });
 
-// ユーザー doc が存在する = まだ在籍しているか。削除済みユーザーの残留トークンを
-// 使わないための確認。users.js の削除処理でトークンも消しているが、そちらが
-// 失敗した場合の保険としてここでも見る (fail-closed)。
-async function isActiveUser(uid) {
-  if (!uid) return false;
-  const snap = await db.collection('users').doc(uid).get();
-  return snap.exists;
-}
-
-// 1 ページあたりのユーザー数と、探索するユーザー数の上限。
-// 上限は無限ループ / 全件大量読み込みの歯止め。到達したらログを出して諦める。
-const USER_SCAN_PAGE = 25;
-const USER_SCAN_MAX = 1000;
-
-// Find any user that has a Google connection (for batch refresh fallback).
-//
-// users をページングして、各ユーザーの google トークンを見る。
-// 以前は collectionGroup('tokens').limit(10) で先頭 10 件だけを見ていたため、
-//   - 有効な連携ユーザーが 11 件目以降にいると見つけられない
-//   - 先頭 10 件が削除済みユーザーの残留トークンだと候補ゼロになる
-// という問題があった。users 側から辿れば、削除済みユーザーのトークンは
-// 構造上いっさい候補に入らない (ユーザー doc が無ければ辿り着かない)。
-async function findAnyConnectedUser() {
-  let last = null;
-  let scanned = 0;
-  while (scanned < USER_SCAN_MAX) {
-    let q = db.collection('users').orderBy('__name__').limit(USER_SCAN_PAGE);
-    if (last) q = q.startAfter(last);
-    const page = await q.get();
-    if (page.empty) return null;
-    // このページぶんのトークンをまとめて確認 (直列だと人数ぶん待つため)
-    const tokens = await Promise.all(
-      page.docs.map(d => d.ref.collection('tokens').doc('google').get())
-    );
-    for (let i = 0; i < tokens.length; i++) {
-      if (tokens[i].exists && tokens[i].data()?.refreshToken) return page.docs[i].id;
-    }
-    scanned += page.size;
-    if (page.size < USER_SCAN_PAGE) return null;   // 最終ページまで見て候補なし
-    last = page.docs[page.docs.length - 1];
-  }
-  console.log(JSON.stringify({
-    severity: 'WARNING',
-    message: 'findAnyConnectedUser hit scan limit without finding a connected user',
-    scanned, limit: USER_SCAN_MAX,
-  }));
-  return null;
-}
-
-// Batch refresh all sources (for Cloud Scheduler). Tries createdBy first,
-// falls back to any connected user.
+// Batch refresh all sources (for Cloud Scheduler)。SA (ADC) で更新するため、
+// 連携ユーザーの有無に関わらず全 sheets/bq ソースを更新する。
 export async function refreshAll() {
   const sources = await db.collection('sources').get();
-  const fallback = await findAnyConnectedUser();
   const results = [];
   for (const s of sources.docs) {
+    // SA で更新するのは外部ソース (sheets / bq) のみ。CSV 等は取得元が無いのでスキップ。
+    const method = s.data().method;
+    if (method !== 'sheets' && method !== 'bq') continue;
     try {
-      // Prefer createdBy if they are still an active user AND have a Google connection.
-      // 在籍確認をしないと、削除ユーザーの残留トークンで更新が回り続ける。
-      let uid = s.data().createdBy;
-      if (uid) {
-        const [active, t] = await Promise.all([
-          isActiveUser(uid),
-          db.collection('users').doc(uid).collection('tokens').doc('google').get(),
-        ]);
-        if (!active || !t.exists) uid = fallback;
-      } else {
-        uid = fallback;
-      }
-      if (!uid) throw new Error('No user has a Google connection');
-      const r = await refreshSnapshot(s.id, uid);
+      const r = await refreshSnapshot(s.id);
       results.push({ id: s.id, ...r });
     } catch (e) {
       results.push({ id: s.id, error: e.message });
@@ -235,49 +142,26 @@ export async function refreshAll() {
   return results;
 }
 
-async function getOAuthClient() {
-  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
-  const clientSecret = await getSecret('google-oauth-client-secret');
-  const redirectUri = process.env.OAUTH_REDIRECT_URI;
-  return new OAuth2Client(clientId, clientSecret, redirectUri);
-}
-
-async function getAuthorizedClientFor(uid) {
-  const tokenRef = db.collection('users').doc(uid).collection('tokens').doc('google');
-  const snap = await tokenRef.get();
-  if (!snap.exists) throw new Error('Google連携されていません。連携ボタンから接続してください。');
-  const { refreshToken, accessToken, expiryDate } = snap.data();
-  const oauth = await getOAuthClient();
-  oauth.setCredentials({
-    refresh_token: refreshToken,
-    access_token: accessToken,
-    expiry_date: expiryDate,
-  });
-  oauth.on('tokens', async tokens => {
-    const patch = { updatedAt: new Date().toISOString() };
-    if (tokens.access_token) patch.accessToken = tokens.access_token;
-    if (tokens.expiry_date) patch.expiryDate = tokens.expiry_date;
-    if (tokens.refresh_token) patch.refreshToken = tokens.refresh_token;
-    await tokenRef.set(patch, { merge: true });
-  });
-  // トークン有効性チェック — invalid_grant なら自動削除して再連携を促す
-  try {
-    await oauth.getAccessToken();
-  } catch (e) {
-    const msg = String(e?.response?.data?.error || e.message || e);
-    if (/invalid_grant|invalid_rapt/.test(msg)) {
-      await tokenRef.delete();
-      throw new Error('Google連携の有効期限が切れました。再度連携してください。');
-    }
-    throw e;
+// Cloud Run のランタイム SA (ADC) で Sheets/BQ を読むための認証クライアント。
+// ユーザーの OAuth には依存しない。SA (dashboard-backend@...) に対象シートを閲覧共有し、
+// BQ プロジェクト/データセットへ jobUser / dataViewer を付与しておくこと。
+// Sheets API / BigQuery API がプロジェクトで有効化されている必要がある。
+let _saAuth = null;
+function getServiceAccountAuth() {
+  if (!_saAuth) {
+    _saAuth = new google.auth.GoogleAuth({
+      scopes: [
+        'https://www.googleapis.com/auth/spreadsheets.readonly',
+        'https://www.googleapis.com/auth/bigquery',
+      ],
+    });
   }
-  return oauth;
+  return _saAuth;
 }
 
-// Fetch rows from BQ or Sheets using the given user's OAuth token
-async function fetchRows(source, uid) {
-  if (!uid) throw new Error('No uid provided for fetch');
-  const auth = await getAuthorizedClientFor(uid);
+// Fetch rows from BQ or Sheets using the Cloud Run service account (ADC)。
+async function fetchRows(source) {
+  const auth = getServiceAccountAuth();
 
   if (source.method === 'sheets') {
     const { url, tab } = source.sheetsInput || {};
@@ -333,13 +217,13 @@ async function fetchRows(source, uid) {
   throw new Error(`Unsupported source method: ${source.method}`);
 }
 
-async function refreshSnapshot(sid, uid) {
+async function refreshSnapshot(sid) {
   const srcSnap = await db.collection('sources').doc(sid).get();
   if (!srcSnap.exists) throw httpError(404, 'Source not found');
   const source = srcSnap.data();
   if (!source.method) throw httpError(400, 'Source method not configured');
 
-  const rows = await fetchRows(source, uid);
+  const rows = await fetchRows(source);
   const json = JSON.stringify({ rows });
   const compressed = await gzip(Buffer.from(json, 'utf8'));
   const updatedAt = new Date().toISOString();

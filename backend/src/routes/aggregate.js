@@ -235,10 +235,14 @@ function runAggregation({ rowsAfterGroup, config, input, sourceUpdatedAt, config
   return { result, cacheHit: false };
 }
 
-function buildCacheKey(sid, user, sourceUpdatedAt, configUpdatedAt, input) {
+function buildCacheKey(sid, user, sourceUpdatedAt, configUpdatedAt, input, groupFilter) {
   return hashKey([
     sid,
     user.isAdmin ? 'admin' : (user.groupId || 'nogroup'),
+    // グループ行フィルタの内容を鍵に含める。groupId だけだと、同じグループのフィルタを
+    // 変更しても鍵が変わらず古い結果に hit し続ける (データは追従するのに集計/選択肢が
+    // 変更前のまま残る) 不整合になる。内容を入れることで変更時に自動 miss する。
+    groupFilter || 'nofilter',
     sourceUpdatedAt,
     configUpdatedAt,
     input.dims,
@@ -277,7 +281,7 @@ app.post('/', async c => {
   const groupFilter = await getGroupFilter(user, sid);
   const rowsAfterGroup = applyGroupFilter(rawRows, groupFilter);
 
-  const cacheKey = buildCacheKey(sid, user, sourceUpdatedAt, configUpdatedAt, input);
+  const cacheKey = buildCacheKey(sid, user, sourceUpdatedAt, configUpdatedAt, input, groupFilter);
   const { result, cacheHit } = runAggregation({
     rowsAfterGroup, config, input, sourceUpdatedAt, configUpdatedAt, cacheKey,
   });
@@ -336,7 +340,7 @@ app.post('/batch', async c => {
   let maxFilteredRows = 0;
   let totalGroupCount = 0;
   for (const v of validated) {
-    const cacheKey = buildCacheKey(sid, user, sourceUpdatedAt, configUpdatedAt, v.input);
+    const cacheKey = buildCacheKey(sid, user, sourceUpdatedAt, configUpdatedAt, v.input, groupFilter);
     const { result, cacheHit } = runAggregation({
       rowsAfterGroup, config, input: v.input, sourceUpdatedAt, configUpdatedAt, cacheKey,
     });
@@ -421,8 +425,10 @@ app.post('/options', async c => {
 
   // sourceUpdatedAt + groupKey + fieldsKey でキャッシュ。snapshot 更新で key 変わって自動 miss。
   const groupKey = user.isAdmin ? 'admin' : (user.groupId || 'nogroup');
+  // グループ行フィルタの内容を鍵に含める (変更で自動 miss。groupId だけだと古い選択肢に hit し続ける)。
+  const filterHash = groupFilter ? hashKey([groupFilter]) : 'nofilter';
   const fieldsKey = [...fields].sort().join(',');
-  const cacheKey = `${sid}|${sourceUpdatedAt}|${groupKey}|${fieldsKey}|${limit}`;
+  const cacheKey = `${sid}|${sourceUpdatedAt}|${groupKey}|${filterHash}|${fieldsKey}|${limit}`;
   const cached = optionsCacheGet(cacheKey);
   if (cached) {
     c.header('X-Options-Cache', 'hit');
@@ -487,7 +493,9 @@ app.post('/columns', async c => {
 
   // sourceUpdatedAt + groupKey でキャッシュ
   const groupKey = user.isAdmin ? 'admin' : (user.groupId || 'nogroup');
-  const cacheKey = `${sid}|${sourceUpdatedAt}|${groupKey}`;
+  // グループ行フィルタの内容を鍵に含める (変更で自動 miss)。
+  const filterHash = groupFilter ? hashKey([groupFilter]) : 'nofilter';
+  const cacheKey = `${sid}|${sourceUpdatedAt}|${groupKey}|${filterHash}`;
   const cached = columnsCacheGet(cacheKey);
   if (cached) {
     c.header('X-Columns-Cache', 'hit');

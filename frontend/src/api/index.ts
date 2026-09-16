@@ -7,7 +7,7 @@ import type {
   ListPresetsResult, Preset, CreatePresetRequest, ReplacePresetRequest, GetConfigResult,
   MeResult, MyStateResult, ListUsersResult, UserProfile,
   ListGroupsResult, ListGroupMembersResult, Group,
-  GoogleStatusResult, GoogleAuthUrlResult, OkResult,
+  OkResult,
 } from '@pkg/shared/api-types.ts';
 
 export interface RequestOptions {
@@ -140,15 +140,12 @@ export const api = {
   deletePreset:  (sid: string, pid: string, opts?: RequestOptions) => request<OkResult>('DELETE', `/api/presets/${sid}/${encodeURIComponent(pid)}`, null, opts),
   reorderPresets: (sid: string, order: string[], opts?: RequestOptions) => request<OkResult>('PATCH', `/api/presets/${sid}`, { order }, opts),
 
-  // Google integration
-  googleStatus:  () => request<GoogleStatusResult>('GET', '/api/google/status'),
-  googleAuthUrl: () => request<GoogleAuthUrlResult>('GET', '/api/google/auth/url'),
-  googleDisconnect: () => request<OkResult>('DELETE', '/api/google/connection'),
-
   // Snapshots (daily batch + on-demand refresh)
   getSnapshot:   (sid: string) => request<SnapshotResult>('GET', `/api/snapshots/${sid}`),
   getSnapshotMeta: (sid: string) => request<SnapshotMetaResult>('GET', `/api/snapshots/${sid}/meta`),
   refreshSnapshot: (sid: string) => request<RefreshSnapshotResult>('POST', `/api/snapshots/${sid}/refresh`),
+  // 更新用サービスアカウントのメール (ランタイム SA)。ソース設定の共有案内で表示。
+  getUpdaterServiceAccount: () => request<{ serviceAccount: string | null }>('GET', '/api/updater-service-account'),
 
   // Backend aggregation (offload heavy compute to Cloud Run)
   aggregate:        (body: { sourceId: string } & AggregateInput, opts?: RequestOptions) =>
